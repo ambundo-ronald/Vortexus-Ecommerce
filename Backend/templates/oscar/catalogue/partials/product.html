@@ -1,0 +1,48 @@
+{% load display_tags %}
+{% load i18n %}
+{% load image_tags %}
+{% load reviews_tags %}
+
+{% block product %}
+    <article class="product_pod border rounded p-2 h-100">
+        {% block product_image %}
+            <div class="image_container w-100 bg-light rounded p-2 mb-2 text-center">
+                {% with image=product.primary_image %}
+                    {% oscar_thumbnail image.original "x220" upscale=False as thumb %}
+                    <a href="{{ product.get_absolute_url }}">
+                        <img src="{{ thumb.url }}" alt="{{ product.get_title }}" class="img-fluid" style="max-height: 180px; object-fit: contain;">
+                    </a>
+                {% endwith %}
+            </div>
+        {% endblock %}
+
+        {% block product_title %}
+            <h3 class="h6 mb-2">
+                <a href="{{ product.get_absolute_url }}" title="{{ product.get_title }}" class="text-dark">
+                    {{ product.get_title|truncatewords:8 }}
+                </a>
+            </h3>
+        {% endblock %}
+
+        {% block product_review %}
+            {% iffeature "reviews" %}
+                <p class="star-rating {{ product.rating|as_stars }} mb-2">
+                    <i class="fas fa-star"></i>
+                    <i class="fas fa-star"></i>
+                    <i class="fas fa-star"></i>
+                    <i class="fas fa-star"></i>
+                    <i class="fas fa-star"></i>
+                </p>
+            {% endiffeature %}
+        {% endblock %}
+
+        {% block product_price %}
+            <div class="product_price w-100">
+                {% include "oscar/catalogue/partials/stock_record.html" %}
+                {% if not product.is_parent and not product.has_options %}
+                    {% include "oscar/catalogue/partials/add_to_basket_form_compact.html" %}
+                {% endif %}
+            </div>
+        {% endblock %}
+    </article>
+{% endblock %}
