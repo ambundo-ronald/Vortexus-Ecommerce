@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     *OSCAR_CORE_APPS,
     'rest_framework',
     'django_filters',
+    'apps.accounts',
     'apps.search',
     'apps.image_search',
     'apps.recommendations',
@@ -33,6 +34,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'apps.api.middleware.ApiExceptionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'oscar.apps.basket.middleware.BasketMiddleware',
@@ -98,6 +100,7 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'EXCEPTION_HANDLER': 'apps.api.exceptions.api_exception_handler',
     'PAGE_SIZE': 24,
 }
 
@@ -151,6 +154,16 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in env(
         'CORS_ALLOWED_ORIGINS',
+        default='http://127.0.0.1:5173,http://localhost:5173',
+    ).split(',')
+    if origin.strip()
+]
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in env(
+        'CSRF_TRUSTED_ORIGINS',
         default='http://127.0.0.1:5173,http://localhost:5173',
     ).split(',')
     if origin.strip()

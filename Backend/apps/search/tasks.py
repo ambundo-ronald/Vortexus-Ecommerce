@@ -5,6 +5,7 @@ from django.apps import apps
 from django.conf import settings
 
 from apps.common.clients import get_opensearch_client
+from apps.common.products import stockrecord_currency, stockrecord_price
 
 
 def _build_product_document(product: Any) -> dict[str, Any]:
@@ -35,8 +36,8 @@ def _build_product_document(product: Any) -> dict[str, Any]:
         'sku': product.upc,
         'description': product.description,
         'category_slug': category_slug,
-        'price': float(stockrecord.price_excl_tax) if stockrecord and stockrecord.price_excl_tax is not None else None,
-        'currency': stockrecord.price_currency if stockrecord and stockrecord.price_currency else 'USD',
+        'price': stockrecord_price(stockrecord),
+        'currency': stockrecord_currency(stockrecord),
         'thumbnail': image_url,
         'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
         'attributes_text': attributes_text,

@@ -4,14 +4,14 @@ from django.apps import apps
 from django.core.paginator import Paginator
 from django.db.models import Min, Q
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.products import serialize_product_card
 from apps.recommendations.services import RecommendationService
 
-from .serializers import ProductListQuerySerializer, QuoteRequestSerializer
+from .serializers import ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,60 @@ def _get_primary_image_url(product) -> str:
     return ""
 
 
+def _product_queryset(include_hidden: bool = False):
+    Product = apps.get_model("catalogue", "Product")
+    queryset = (
+        Product.objects.exclude(structure="parent")
+        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images")
+        .distinct()
+    )
+    if include_hidden:
+        return queryset
+    return queryset.filter(is_public=True)
+
+
+def _build_product_detail(product) -> dict:
+    card = serialize_product_card(product=product)
+    specs = []
+    for attribute_value in product.attribute_values.all():
+        attribute = getattr(attribute_value, "attribute", None)
+        if not attribute:
+            continue
+        value = str(attribute_value.value) if getattr(attribute_value, "value", None) not in (None, "") else ""
+        if not value:
+            value = str(attribute_value)
+        specs.append(
+            {
+                "name": attribute.name,
+                "code": attribute.code,
+                "value": value,
+            }
+        )
+
+    images = []
+    for image in product.images.all():
+        if getattr(image, "original", None):
+            images.append(image.original.url or "")
+
+    return {
+        **card,
+        "description": product.description or "",
+        "images": images,
+        "primary_image": _get_primary_image_url(product),
+        "categories": [_serialize_category(category) for category in product.categories.all()],
+        "specifications": specs,
+        "updated_at": product.date_updated,
+        "is_public": product.is_public,
+    }
+
+
+class StaffWritePermissionMixin:
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [permissions.IsAdminUser()]
+
+
 class CategoryListAPIView(APIView):
     def get(self, request):
         Category = apps.get_model("catalogue", "Category")
@@ -58,7 +112,7 @@ class CategoryListAPIView(APIView):
         return Response({"results": results})
 
 
-class ProductListAPIView(APIView):
+class ProductListAPIView(StaffWritePermissionMixin, APIView):
     def get(self, request):
         serializer = ProductListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
@@ -133,54 +187,45 @@ class ProductListAPIView(APIView):
             }
         )
 
+    def post(self, request):
+        serializer = ProductWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        return Response({"product": _build_product_detail(product)}, status=status.HTTP_201_CREATED)
 
-class ProductDetailAPIView(APIView):
+
+class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
     recommendation_service = RecommendationService()
 
     def get(self, request, product_id: int):
-        Product = apps.get_model("catalogue", "Product")
-        product = get_object_or_404(
-            Product.objects.filter(is_public=True)
-            .exclude(structure="parent")
-            .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images"),
-            id=product_id,
-        )
-
-        card = serialize_product_card(product=product)
-        specs = []
-        for attribute_value in product.attribute_values.all():
-            attribute = getattr(attribute_value, "attribute", None)
-            if not attribute:
-                continue
-            value = str(attribute_value.value) if getattr(attribute_value, "value", None) not in (None, "") else ""
-            if not value:
-                value = str(attribute_value)
-            specs.append(
-                {
-                    "name": attribute.name,
-                    "code": attribute.code,
-                    "value": value,
-                }
-            )
-
-        images = []
-        for image in product.images.all():
-            if getattr(image, "original", None):
-                images.append(image.original.url or "")
-
-        detail = {
-            **card,
-            "description": product.description or "",
-            "images": images,
-            "primary_image": _get_primary_image_url(product),
-            "categories": [_serialize_category(category) for category in product.categories.all()],
-            "specifications": specs,
-            "updated_at": product.date_updated,
-        }
-
+        include_hidden = bool(request.user and request.user.is_staff)
+        product = get_object_or_404(_product_queryset(include_hidden=include_hidden), id=product_id)
+        detail = _build_product_detail(product)
         related = self.recommendation_service.recommend_for_product(product_id=product.id, limit=8)
 
         return Response({"product": detail, "related": related})
+
+    def put(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        serializer = ProductWriteSerializer(instance=product, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        return Response({"product": _build_product_detail(product)})
+
+    def patch(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        serializer = ProductWriteSerializer(instance=product, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        return Response({"product": _build_product_detail(product)})
+
+    def delete(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class QuoteRequestAPIView(APIView):

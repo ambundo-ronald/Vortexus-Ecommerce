@@ -1,16 +1,29 @@
 from typing import Any
 
 
+def stockrecord_price(stockrecord: Any) -> float | None:
+    if not stockrecord:
+        return None
+
+    # Oscar installations may expose `price` or `price_excl_tax` depending on strategy/model.
+    raw_price = getattr(stockrecord, 'price_excl_tax', None)
+    if raw_price is None:
+        raw_price = getattr(stockrecord, 'price', None)
+
+    if raw_price is None:
+        return None
+
+    return float(raw_price)
+
+
+def stockrecord_currency(stockrecord: Any) -> str:
+    if stockrecord and getattr(stockrecord, 'price_currency', None):
+        return stockrecord.price_currency
+    return 'USD'
+
+
 def serialize_product_card(product: Any, score: float | None = None, reason: str | None = None) -> dict[str, Any]:
     stockrecord = product.stockrecords.first() if hasattr(product, 'stockrecords') else None
-    price_value = None
-    if stockrecord:
-        # Oscar installations may expose `price` or `price_excl_tax` depending on model strategy.
-        raw_price = getattr(stockrecord, 'price_excl_tax', None)
-        if raw_price is None:
-            raw_price = getattr(stockrecord, 'price', None)
-        if raw_price is not None:
-            price_value = float(raw_price)
 
     image_url = ''
     try:
@@ -24,8 +37,8 @@ def serialize_product_card(product: Any, score: float | None = None, reason: str
         'id': product.id,
         'title': product.title,
         'sku': product.upc,
-        'price': price_value,
-        'currency': stockrecord.price_currency if stockrecord and stockrecord.price_currency else 'USD',
+        'price': stockrecord_price(stockrecord),
+        'currency': stockrecord_currency(stockrecord),
         'thumbnail': image_url,
         'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
     }
