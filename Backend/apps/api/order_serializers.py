@@ -14,6 +14,27 @@ from .checkout_utils import (
 )
 
 
+class SupplierGroupSerializer(serializers.Serializer):
+    def to_representation(self, group):
+        return {
+            'id': group.id,
+            'partner': {
+                'id': group.partner_id,
+                'name': group.partner.name,
+                'code': group.partner.code,
+            },
+            'status': group.status,
+            'line_count': group.line_count,
+            'item_count': group.item_count,
+            'total_excl_tax': float(group.total_excl_tax or Decimal('0.00')),
+            'total_incl_tax': float(group.total_incl_tax or Decimal('0.00')),
+            'shipping_excl_tax': float(group.shipping_excl_tax or Decimal('0.00')),
+            'shipping_incl_tax': float(group.shipping_incl_tax or Decimal('0.00')),
+            'tracking_reference': group.tracking_reference or '',
+            'notes': group.notes or '',
+        }
+
+
 class OrderPlacementSerializer(serializers.Serializer):
     guest_email = serializers.EmailField(required=False, allow_blank=True)
     payment_reference = serializers.CharField(required=False, allow_blank=True, max_length=64)
@@ -75,6 +96,9 @@ class OrderLineSerializer(serializers.Serializer):
 class OrderSummarySerializer(serializers.Serializer):
     def to_representation(self, order):
         shipping_address = getattr(order, 'shipping_address', None)
+        supplier_groups = getattr(order, 'supplier_groups', None)
+        if supplier_groups is None:
+            supplier_groups = order.supplier_groups.select_related('partner').all()
         return {
             'id': order.id,
             'number': order.number,
@@ -91,6 +115,7 @@ class OrderSummarySerializer(serializers.Serializer):
                 'shipping_incl_tax': float(order.shipping_incl_tax or Decimal('0.00')),
                 'tax': float((order.total_incl_tax or Decimal('0.00')) - (order.total_excl_tax or Decimal('0.00'))),
             },
+            'tax_code': order.tax_code or '',
             'shipping_address': {
                 'first_name': getattr(shipping_address, 'first_name', '') or '',
                 'last_name': getattr(shipping_address, 'last_name', '') or '',
@@ -107,6 +132,57 @@ class OrderSummarySerializer(serializers.Serializer):
             if shipping_address
             else None,
             'lines': OrderLineSerializer(order.lines.select_related('partner', 'stockrecord', 'product').all(), many=True).data,
+            'supplier_groups': SupplierGroupSerializer(supplier_groups, many=True).data,
+        }
+
+
+class OrderListSerializer(serializers.Serializer):
+    def to_representation(self, order):
+        line_count = getattr(order, 'line_count', None)
+        item_count = getattr(order, 'item_count', None)
+        if item_count is None:
+            item_count = sum(line.quantity for line in order.lines.all())
+
+        return {
+            'id': order.id,
+            'number': order.number,
+            'status': order.status,
+            'currency': order.currency,
+            'date_placed': order.date_placed,
+            'line_count': line_count if line_count is not None else order.lines.count(),
+            'item_count': item_count,
+            'total_incl_tax': float(order.total_incl_tax or Decimal('0.00')),
+            'shipping_incl_tax': float(order.shipping_incl_tax or Decimal('0.00')),
+            'supplier_group_count': order.supplier_groups.count() if hasattr(order, 'supplier_groups') else 0,
+        }
+
+
+class OrderStatusSerializer(serializers.Serializer):
+    def to_representation(self, order):
+        changes = []
+        for change in order.status_changes.order_by('date_created'):
+            changes.append(
+                {
+                    'old_status': change.old_status or '',
+                    'new_status': change.new_status or '',
+                    'date_created': change.date_created,
+                }
+            )
+
+        timeline = []
+        if not changes:
+            timeline.append({'status': order.status, 'date_created': order.date_placed})
+        else:
+            for change in changes:
+                timeline.append({'status': change['new_status'], 'date_created': change['date_created']})
+
+        return {
+            'number': order.number,
+            'status': order.status,
+            'date_placed': order.date_placed,
+            'shipping_method': order.shipping_method,
+            'shipping_code': order.shipping_code,
+            'timeline': timeline,
         }
 
 
@@ -119,7 +195,13 @@ def build_order_prices(basket, shipping_address, shipping_method):
     shipping_excl_tax = shipping_charge_for_method(shipping_method, basket)
     country_code = shipping_country_code(shipping_address)
 
-    tax_breakdown = calculate_checkout_taxes(subtotal_excl_tax, shipping_excl_tax, country_code)
+    tax_breakdown = calculate_checkout_taxes(
+        subtotal_excl_tax,
+        shipping_excl_tax,
+        country_code,
+        basket=basket,
+        shipping_method=shipping_method,
+    )
     merchandise_tax = Decimal(str(tax_breakdown['merchandise_tax']))
     shipping_tax = Decimal(str(tax_breakdown['shipping_tax']))
 
@@ -133,7 +215,7 @@ def build_order_prices(basket, shipping_address, shipping_method):
         currency=basket_currency(basket),
         excl_tax=subtotal_excl_tax + shipping_excl_tax,
         incl_tax=subtotal_excl_tax + shipping_excl_tax + merchandise_tax + shipping_tax,
-        tax_code=f'{country_code or "XX"}-order',
+        tax_code=f'{country_code or "XX"}-{tax_breakdown.get("shipping_profile") or "order"}',
     )
 
     return {

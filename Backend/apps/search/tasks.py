@@ -3,6 +3,8 @@ from typing import Any
 from celery import shared_task
 from django.apps import apps
 from django.conf import settings
+from opensearchpy import NotFoundError
+from opensearchpy.helpers import bulk
 
 from apps.common.clients import get_opensearch_client
 from apps.common.products import stockrecord_currency, stockrecord_price
@@ -53,6 +55,7 @@ def index_product_for_search(product_id: int) -> bool:
         .first()
     )
     if not product:
+        delete_product_from_search.run(product_id=product_id)
         return False
 
     client = get_opensearch_client()
@@ -62,13 +65,40 @@ def index_product_for_search(product_id: int) -> bool:
 
 
 @shared_task
+def delete_product_from_search(product_id: int) -> bool:
+    client = get_opensearch_client()
+    try:
+        client.delete(index=settings.SEARCH_INDEX_PRODUCTS, id=product_id, refresh=False)
+    except NotFoundError:
+        return False
+    return True
+
+
+@shared_task
 def reindex_all_products(batch_size: int = 500) -> int:
     Product = apps.get_model('catalogue', 'Product')
+    count = 0
+    client = get_opensearch_client()
     product_ids = list(Product.objects.filter(is_public=True).values_list('id', flat=True))
 
-    count = 0
-    for product_id in product_ids:
-        if index_product_for_search(product_id):
-            count += 1
+    for start in range(0, len(product_ids), batch_size):
+        batch_ids = product_ids[start : start + batch_size]
+        products = (
+            Product.objects.filter(id__in=batch_ids, is_public=True)
+            .prefetch_related('categories', 'stockrecords', 'attribute_values')
+            .all()
+        )
+        actions = [
+            {
+                '_op_type': 'index',
+                '_index': settings.SEARCH_INDEX_PRODUCTS,
+                '_id': product.id,
+                '_source': _build_product_document(product),
+            }
+            for product in products
+        ]
+        if actions:
+            bulk(client, actions, refresh=False)
+            count += len(actions)
 
     return count

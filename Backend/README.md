@@ -68,6 +68,10 @@ Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast AP
 - `GET /api/v1/catalog/products/?q=pump&category=borehole-pumps&in_stock=true&sort_by=price_asc&page=1&page_size=24`
 - `GET /api/v1/catalog/products/<id>/`
 - `POST /api/v1/quotes/` (name/email/phone/company/message + optional `product_id`)
+- `GET /api/v1/account/orders/`
+- `GET /api/v1/account/orders/<order_number>/`
+- `GET /api/v1/account/orders/<order_number>/status/`
+- `POST /api/v1/account/orders/<order_number>/reorder/`
 - `GET /api/v1/checkout/payments/methods/`
 - `POST /api/v1/checkout/payments/`
 - `GET /api/v1/checkout/payments/<reference>/`
@@ -75,6 +79,9 @@ Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast AP
 - `POST /api/v1/checkout/orders/` (places an order from the current basket + shipping session)
 - `GET|POST|PATCH /api/v1/supplier/profile/`
 - `GET /api/v1/supplier/dashboard/`
+- `GET /api/v1/supplier/orders/`
+- `GET /api/v1/supplier/orders/<order_number>/`
+- `POST /api/v1/supplier/orders/<order_number>/lines/<line_id>/status/`
 - `GET|POST /api/v1/supplier/products/`
 - `GET|PATCH|DELETE /api/v1/supplier/products/<id>/`
 - `GET /api/v1/admin/suppliers/`
@@ -108,6 +115,8 @@ Implemented marketplace flow:
 - supplier application/profile creation linked to Oscar `Partner`
 - supplier approval workflow (`pending`, `approved`, `suspended`)
 - supplier dashboard metrics
+- supplier order management
+- marketplace order splitting by supplier
 - supplier-owned product CRUD via supplier partner stock records
 - safe supplier delete behavior:
   - removes only the supplier's own offer
@@ -116,6 +125,30 @@ Implemented marketplace flow:
 Approval options:
 - Django admin: `Supplier Profiles`
 - API: `PATCH /api/v1/admin/suppliers/<id>/`
+
+Supplier order endpoints:
+- `GET /api/v1/supplier/orders/`
+- `GET /api/v1/supplier/orders/<order_number>/`
+- `POST /api/v1/supplier/orders/<order_number>/lines/<line_id>/status/`
+
+Supplier order management behavior:
+- suppliers only see orders containing their own lines
+- supplier detail only exposes that supplier's lines
+- supplier fulfillment updates create shipping events
+- supplier shipping updates can roll up the order status
+- shipped/delivered updates trigger customer shipping emails
+
+Marketplace order splitting behavior:
+- one customer checkout still creates one customer-facing order number
+- backend creates supplier order groups under that order, one per supplier partner
+- each supplier group carries its own:
+  - status
+  - line count
+  - item count
+  - subtotal share
+  - shipping share
+  - tracking reference
+- customer order detail now exposes `supplier_groups`
 
 ## 7) Order Placement API
 Implemented:
@@ -142,7 +175,20 @@ Example payload for guest checkout:
 }
 ```
 
-## 8) Payment API
+## 8) Customer Order APIs
+Implemented:
+- authenticated order history listing
+- authenticated order detail lookup
+- lightweight order status tracking timeline
+- reorder endpoint to add a previous order's items back into the active basket
+
+Endpoints:
+- `GET /api/v1/account/orders/`
+- `GET /api/v1/account/orders/<order_number>/`
+- `GET /api/v1/account/orders/<order_number>/status/`
+- `POST /api/v1/account/orders/<order_number>/reorder/`
+
+## 9) Payment API
 Supported payment methods:
 - `mpesa`
 - `airtel_money`
@@ -253,7 +299,97 @@ Example payload:
 }
 ```
 
-## 9) Image Embedding Settings
+## 10) Inventory Reservation And Oversell Protection
+Implemented:
+- basket-level stock reservations tied to basket lines
+- reservation release when basket lines are reduced or removed
+- final locked stock validation before order placement
+- automatic reservation release just before order creation so Oscar can convert stock to order allocations cleanly
+- shipped order lines now consume allocated stock
+- cancelled order lines now release allocated stock
+
+Notes:
+- basket responses now include `reserved_quantity` and `available_quantity` per line
+- checkout blocks order placement if current stock can no longer satisfy the basket
+- reorder skips lines that cannot be reserved because stock is no longer sufficient
+
+## 11) Production-Grade Search Indexing
+Implemented:
+- OpenSearch is now the single live indexing path for product text and image metadata
+- Haystack realtime signal processing is disabled to avoid the simple-backend `update is not implemented` warnings
+- product create, update, delete, stock changes, image changes, attribute changes, and category changes now trigger index refresh
+- product deletes now remove both the text-search document and the image-search document
+- image index refresh distinguishes between:
+  - metadata-only refreshes for stock/price/title/category changes
+  - full embedding regeneration when the product image itself changes
+- recommendation caches are cleared whenever product indexing is refreshed or removed
+
+Command:
+
+```powershell
+python manage.py reindex_search_data
+python manage.py reindex_search_data --batch-size 200 --limit 100
+```
+
+## 12) Shipping Rule Hardening
+Implemented:
+- centralized, data-driven shipping rule engine
+- shipping eligibility based on:
+  - destination country
+  - basket subtotal
+  - total basket weight
+  - supplier count
+  - project-logistics requirement
+- carrier/service metadata on shipping methods
+- ETA metadata on shipping methods
+- payment/order validation to block checkout if shipping destination or method changed after payment initialization
+- stronger shipping address validation for:
+  - phone number requirement
+  - postcode requirement for international shipping
+
+Checkout shipping payload now includes:
+- `metrics.item_count`
+- `metrics.line_count`
+- `metrics.supplier_count`
+- `metrics.total_weight_kg`
+- `metrics.requires_project_logistics`
+
+Shipping methods now include:
+- `carrier_code`
+- `service_code`
+- `method_type`
+- `is_pickup`
+- `eta.min_days`
+- `eta.max_days`
+
+## 13) Tax Rule Hardening
+Implemented:
+- rule-based tax configuration per country
+- separate product-profile tax rates and shipping-profile tax rates
+- support for tax-exempt product profiles such as:
+  - `water_treatment_chemical`
+  - `service`
+- checkout tax breakdown now includes:
+  - `default_rate`
+  - `shipping_rate`
+  - `shipping_profile`
+  - `item_count`
+  - `line_breakdown[]`
+- order pricing now uses the same tax rule engine as checkout and payment initialization
+- order payloads now expose `tax_code`
+
+Current tax profile resolution:
+- explicit product attribute `tax_profile` if present
+- otherwise backend heuristics based on title
+
+Current shipping tax profile resolution:
+- derived from shipping method type such as:
+  - `pickup`
+  - `freight`
+  - `express`
+  - `project`
+
+## 10) Image Embedding Settings
 Environment variables:
 - `IMAGE_EMBEDDING_BACKEND=clip` (`hash` is available fallback)
 - `CLIP_MODEL_NAME=openai/clip-vit-base-patch32`
@@ -265,7 +401,7 @@ Behavior:
 - If CLIP backend fails to initialize, service falls back to hash embedding and logs the error.
 - First CLIP usage downloads model weights and can be slower.
 
-## 10) What Is Implemented vs Placeholder
+## 11) What Is Implemented vs Placeholder
 Implemented:
 - API wiring and service structure.
 - Database fallback logic for all three features.
@@ -277,7 +413,7 @@ Placeholder:
 - Better ranking rules and offline evaluation for recommendations.
 - Full product ingestion pipeline with industrial attributes normalization.
 
-## 11) Performance-first Next Tasks
+## 12) Performance-first Next Tasks
 1. Add query profiling and response-time metrics (p95 targets).
 2. Add aggressive Redis caching for common search and recommendation queries.
 3. Use exact part-number analyzers in OpenSearch and synonyms for industrial terms.

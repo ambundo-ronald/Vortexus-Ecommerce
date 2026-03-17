@@ -10,7 +10,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.notifications.services import send_order_confirmation_email
+from apps.inventory.services import (
+    InventoryReservationError,
+    prepare_basket_for_order_submission,
+    release_basket_line_reservation,
+    sync_basket_line_reservation,
+)
 from apps.payments.services import link_payment_to_order, payment_requires_prepayment
+from apps.marketplace.orders import ensure_supplier_order_groups
 
 from .checkout_serializers import (
     BasketItemCreateSerializer,
@@ -40,10 +47,18 @@ class BasketAPIView(APIView):
 class BasketItemCollectionAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @transaction.atomic
     def post(self, request):
         serializer = BasketItemCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        request.basket.add_product(serializer.validated_data['product'], quantity=serializer.validated_data['quantity'])
+        line, _ = request.basket.add_product(
+            serializer.validated_data['product'],
+            quantity=serializer.validated_data['quantity'],
+        )
+        try:
+            sync_basket_line_reservation(line)
+        except InventoryReservationError as exc:
+            raise serializers.ValidationError({'quantity': str(exc)}) from exc
         request.basket._lines = None
         return Response(build_checkout_payload(request), status=status.HTTP_201_CREATED)
 
@@ -51,6 +66,7 @@ class BasketItemCollectionAPIView(APIView):
 class BasketLineDetailAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @transaction.atomic
     def patch(self, request, line_id: int):
         line = get_object_or_404(request.basket.lines.select_related('product', 'stockrecord'), id=line_id)
         serializer = BasketLineUpdateSerializer(data=request.data, context={'request': request, 'line': line})
@@ -58,16 +74,23 @@ class BasketLineDetailAPIView(APIView):
 
         quantity = serializer.validated_data['quantity']
         if quantity == 0:
+            release_basket_line_reservation(line)
             line.delete()
         else:
             line.quantity = quantity
             line.save()
+            try:
+                sync_basket_line_reservation(line)
+            except InventoryReservationError as exc:
+                raise serializers.ValidationError({'quantity': str(exc)}) from exc
 
         request.basket.reset_offer_applications()
         return Response(build_checkout_payload(request))
 
+    @transaction.atomic
     def delete(self, request, line_id: int):
         line = get_object_or_404(request.basket.lines.all(), id=line_id)
+        release_basket_line_reservation(line)
         line.delete()
         request.basket.reset_offer_applications()
         return Response(build_checkout_payload(request), status=status.HTTP_200_OK)
@@ -154,10 +177,20 @@ class OrderPlacementAPIView(APIView):
                 raise serializers.ValidationError({'payment_reference': 'Payment currency does not match the current order currency.'})
             if payment_session.amount != pricing['order_total'].incl_tax:
                 raise serializers.ValidationError({'payment_reference': 'Payment amount no longer matches the current order total.'})
+            expected_shipping_code = shipping_method.code if shipping_method else ''
+            if (payment_session.metadata or {}).get('shipping_method', '') != expected_shipping_code:
+                raise serializers.ValidationError({'payment_reference': 'Shipping method changed after payment initialization.'})
+            if (payment_session.metadata or {}).get('country_code', '') != pricing['tax_breakdown']['country_code']:
+                raise serializers.ValidationError({'payment_reference': 'Shipping destination changed after payment initialization.'})
             if payment_requires_prepayment(payment_session.method) and payment_session.status not in {'authorized', 'paid'}:
                 raise serializers.ValidationError({'payment_reference': 'Payment must be completed before placing the order.'})
         else:
             raise serializers.ValidationError({'payment_reference': 'Payment reference is required before placing the order.'})
+
+        try:
+            prepare_basket_for_order_submission(basket)
+        except InventoryReservationError as exc:
+            raise serializers.ValidationError({'basket': str(exc)}) from exc
 
         order_number = OrderNumberGenerator().order_number(basket)
         checkout_session.set_order_number(order_number)
@@ -183,6 +216,7 @@ class OrderPlacementAPIView(APIView):
         except ValueError as exc:
             raise serializers.ValidationError({'order': str(exc)}) from exc
         link_payment_to_order(payment_session, order)
+        ensure_supplier_order_groups(order)
         basket.submit()
         checkout_session.flush()
 

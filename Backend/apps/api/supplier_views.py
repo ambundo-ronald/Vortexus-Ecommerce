@@ -6,6 +6,13 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.services import send_shipping_update_email
+
+from .supplier_order_serializers import (
+    SupplierOrderDetailSerializer,
+    SupplierOrderLineStatusSerializer,
+    SupplierOrderListSerializer,
+)
 from .supplier_serializers import (
     SupplierAdminStatusSerializer,
     SupplierDashboardSerializer,
@@ -58,6 +65,63 @@ def _build_supplier_product_detail(product, supplier_profile):
     return detail
 
 
+def _supplier_order_queryset(supplier_profile):
+    SupplierOrderGroup = apps.get_model('marketplace', 'SupplierOrderGroup')
+    return (
+        SupplierOrderGroup.objects.filter(partner=supplier_profile.partner)
+        .select_related('partner', 'order__user', 'order__shipping_address')
+        .prefetch_related('order__lines__partner', 'order__lines__product', 'order__status_changes')
+        .order_by('-order__date_placed', '-id')
+    )
+
+
+def _recompute_order_status(order):
+    Line = apps.get_model('order', 'Line')
+    statuses = {
+        ((status or '').strip().lower() or 'pending')
+        for status in Line.objects.filter(order=order).values_list('status', flat=True)
+    }
+
+    if statuses == {'delivered'}:
+        return 'Delivered'
+    if statuses == {'cancelled'}:
+        return 'Cancelled'
+    if statuses.issubset({'shipped', 'delivered'}):
+        return 'Shipped'
+    if 'shipped' in statuses or 'delivered' in statuses:
+        return 'Partially Shipped'
+    if statuses == {'packed'}:
+        return 'Packed'
+    if 'packed' in statuses:
+        return 'Processing'
+    if statuses == {'processing'}:
+        return 'Processing'
+    return 'Pending'
+
+
+def _recompute_supplier_group_status(order, partner_id: int):
+    Line = apps.get_model('order', 'Line')
+    statuses = {
+        ((status or '').strip().lower() or 'pending')
+        for status in Line.objects.filter(order=order, partner_id=partner_id).values_list('status', flat=True)
+    }
+    if statuses == {'delivered'}:
+        return 'delivered'
+    if statuses == {'cancelled'}:
+        return 'cancelled'
+    if statuses.issubset({'shipped', 'delivered'}):
+        return 'shipped'
+    if 'shipped' in statuses or 'delivered' in statuses:
+        return 'partially_shipped'
+    if statuses == {'packed'}:
+        return 'packed'
+    if 'packed' in statuses:
+        return 'processing'
+    if statuses == {'processing'}:
+        return 'processing'
+    return 'pending'
+
+
 class SupplierProfileAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -107,7 +171,14 @@ class SupplierDashboardAPIView(APIView):
     permission_classes = [SupplierOnlyPermission]
 
     def get(self, request):
-        return Response(SupplierDashboardSerializer(request.user.supplier_profile).data)
+        supplier_profile = request.user.supplier_profile
+        data = SupplierDashboardSerializer(supplier_profile).data
+        supplier_orders = _supplier_order_queryset(supplier_profile)
+        data['orders'] = {
+            'count': supplier_orders.count(),
+            'open_count': supplier_orders.exclude(status__in=['delivered', 'cancelled']).count(),
+        }
+        return Response(data)
 
 
 class SupplierProductCollectionAPIView(APIView):
@@ -223,3 +294,137 @@ class SupplierAdminDetailAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         supplier_profile = serializer.save()
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
+
+
+class SupplierOrderCollectionAPIView(APIView):
+    permission_classes = [SupplierOnlyPermission]
+
+    def get(self, request):
+        supplier_profile = request.user.supplier_profile
+        queryset = _supplier_order_queryset(supplier_profile)
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 20) or 20), 1), 100)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_pagination',
+                        'detail': 'Page and page_size must be integers.',
+                        'status': 400,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        serializer = SupplierOrderListSerializer(page_obj.object_list, many=True, context={'supplier_profile': supplier_profile})
+        return Response(
+            {
+                'results': serializer.data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+
+class SupplierOrderDetailAPIView(APIView):
+    permission_classes = [SupplierOnlyPermission]
+
+    def get(self, request, order_number: str):
+        supplier_profile = request.user.supplier_profile
+        group = get_object_or_404(_supplier_order_queryset(supplier_profile), order__number=order_number)
+        return Response({'order': SupplierOrderDetailSerializer(group, context={'supplier_profile': supplier_profile}).data})
+
+
+class SupplierOrderLineStatusAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+
+    @transaction.atomic
+    def post(self, request, order_number: str, line_id: int):
+        supplier_profile = request.user.supplier_profile
+        Order = apps.get_model('order', 'Order')
+        Line = apps.get_model('order', 'Line')
+        OrderStatusChange = apps.get_model('order', 'OrderStatusChange')
+        ShippingEventType = apps.get_model('order', 'ShippingEventType')
+        ShippingEvent = apps.get_model('order', 'ShippingEvent')
+        ShippingEventQuantity = apps.get_model('order', 'ShippingEventQuantity')
+        SupplierOrderGroup = apps.get_model('marketplace', 'SupplierOrderGroup')
+
+        order = get_object_or_404(Order.objects.prefetch_related('lines').select_related('user'), number=order_number, lines__partner=supplier_profile.partner)
+        line = get_object_or_404(Line.objects.select_related('order', 'partner'), id=line_id, order=order, partner=supplier_profile.partner)
+        group = get_object_or_404(SupplierOrderGroup, order=order, partner=supplier_profile.partner)
+        serializer = SupplierOrderLineStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        old_line_status = line.status or ''
+        new_line_status = serializer.validated_data['status']
+        note = serializer.validated_data.get('note', '')
+        tracking_reference = serializer.validated_data.get('tracking_reference', '')
+
+        line.status = new_line_status
+        line.save(update_fields=['status'])
+
+        if old_line_status not in {'shipped', 'delivered'} and new_line_status in {'shipped', 'delivered'}:
+            if getattr(line, 'num_allocated', 0):
+                line.consume_allocation(line.num_allocated)
+        elif old_line_status not in {'cancelled', 'shipped', 'delivered'} and new_line_status == 'cancelled':
+            if getattr(line, 'num_allocated', 0):
+                line.cancel_allocation(line.num_allocated)
+
+        event_type, _ = ShippingEventType.objects.get_or_create(
+            code=new_line_status,
+            defaults={'name': new_line_status.replace('_', ' ').title()},
+        )
+        notes = f'Supplier {supplier_profile.company_name} updated line {line.id} to {new_line_status}.'
+        if tracking_reference:
+            notes += f' Tracking: {tracking_reference}.'
+        if note:
+            notes += f' Note: {note}'
+        event = ShippingEvent.objects.create(order=order, event_type=event_type, notes=notes)
+        ShippingEventQuantity.objects.create(event=event, line=line, quantity=line.quantity)
+
+        group.status = _recompute_supplier_group_status(order, supplier_profile.partner_id)
+        if tracking_reference:
+            group.tracking_reference = tracking_reference
+        if note:
+            group.notes = note
+        group.save(update_fields=['status', 'tracking_reference', 'notes', 'updated_at'])
+
+        new_order_status = _recompute_order_status(order)
+        if (order.status or '') != new_order_status:
+            OrderStatusChange.objects.create(order=order, old_status=order.status or '', new_status=new_order_status)
+            order.status = new_order_status
+            order.save(update_fields=['status'])
+
+        if new_line_status in {'shipped', 'delivered'}:
+            send_shipping_update_email(
+                order,
+                status_label=new_line_status.replace('_', ' ').title(),
+                tracking_reference=tracking_reference,
+                note=note or f'Updated by supplier {supplier_profile.company_name}.',
+            )
+
+        return Response(
+            {
+                'detail': 'Supplier line status updated successfully.',
+                'order_number': order.number,
+                'line': {
+                    'id': line.id,
+                    'old_status': old_line_status,
+                    'new_status': new_line_status,
+                },
+                'supplier_group': {
+                    'id': group.id,
+                    'status': group.status,
+                    'tracking_reference': group.tracking_reference,
+                },
+                'order_status': order.status,
+            }
+        )

@@ -17,6 +17,12 @@ from .checkout_views import (
     ShippingMethodSelectionAPIView,
     ShippingStateAPIView,
 )
+from .order_views import (
+    CustomerOrderCollectionAPIView,
+    CustomerOrderDetailAPIView,
+    CustomerOrderReorderAPIView,
+    CustomerOrderStatusAPIView,
+)
 from .payment_views import (
     AirtelMoneyCallbackAPIView,
     AirtelMoneyInitializationAPIView,
@@ -35,6 +41,9 @@ from .supplier_views import (
     SupplierAdminCollectionAPIView,
     SupplierAdminDetailAPIView,
     SupplierDashboardAPIView,
+    SupplierOrderCollectionAPIView,
+    SupplierOrderDetailAPIView,
+    SupplierOrderLineStatusAPIView,
     SupplierProductCollectionAPIView,
     SupplierProductDetailAPIView,
     SupplierProfileAPIView,
@@ -58,8 +67,15 @@ urlpatterns = [
     path('account/logout/', AccountLogoutAPIView.as_view(), name='account-logout'),
     path('account/me/', AccountProfileAPIView.as_view(), name='account-profile'),
     path('account/password/', AccountPasswordAPIView.as_view(), name='account-password'),
+    path('account/orders/', CustomerOrderCollectionAPIView.as_view(), name='account-orders'),
+    path('account/orders/<str:order_number>/', CustomerOrderDetailAPIView.as_view(), name='account-order-detail'),
+    path('account/orders/<str:order_number>/status/', CustomerOrderStatusAPIView.as_view(), name='account-order-status'),
+    path('account/orders/<str:order_number>/reorder/', CustomerOrderReorderAPIView.as_view(), name='account-order-reorder'),
     path('supplier/profile/', SupplierProfileAPIView.as_view(), name='supplier-profile'),
     path('supplier/dashboard/', SupplierDashboardAPIView.as_view(), name='supplier-dashboard'),
+    path('supplier/orders/', SupplierOrderCollectionAPIView.as_view(), name='supplier-orders'),
+    path('supplier/orders/<str:order_number>/', SupplierOrderDetailAPIView.as_view(), name='supplier-order-detail'),
+    path('supplier/orders/<str:order_number>/lines/<int:line_id>/status/', SupplierOrderLineStatusAPIView.as_view(), name='supplier-order-line-status'),
     path('supplier/products/', SupplierProductCollectionAPIView.as_view(), name='supplier-products'),
     path('supplier/products/<int:product_id>/', SupplierProductDetailAPIView.as_view(), name='supplier-product-detail'),
     path('admin/suppliers/', SupplierAdminCollectionAPIView.as_view(), name='admin-suppliers'),

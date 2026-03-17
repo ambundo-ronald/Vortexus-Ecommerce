@@ -1,11 +1,13 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
+from django.conf import settings
 from oscar.apps.checkout.utils import CheckoutSessionData
 from oscar.apps.shipping.methods import FixedPrice, Free, NoShippingRequired
 
 from apps.common.currency import convert_amount, resolve_display_currency
 from apps.common.products import serialize_product_card
+from apps.inventory.services import available_quantity_for_line, reserved_quantity_for_line
 from apps.common.taxes import calculate_checkout_taxes
 
 ZERO = Decimal('0.00')
@@ -54,28 +56,183 @@ class IndustrialShippingRepository:
         if not basket.is_shipping_required():
             return [NoShippingRequired()]
 
-        subtotal = basket_subtotal(basket)
         country_code = shipping_country_code(shipping_addr)
+        metrics = basket_shipping_metrics(basket)
 
-        if country_code and country_code not in self.LOCAL_COUNTRIES:
-            return [
-                StandardFreight(charge_excl_tax=Decimal('95.00'), charge_incl_tax=Decimal('95.00')),
-                ProjectLogistics(
-                    charge_excl_tax=Decimal('260.00') if subtotal < Decimal('3000.00') else Decimal('180.00'),
-                    charge_incl_tax=Decimal('260.00') if subtotal < Decimal('3000.00') else Decimal('180.00'),
-                ),
-            ]
+        methods = []
+        for rule in settings.INDUSTRIAL_SHIPPING_RULES:
+            if not shipping_rule_matches(rule, metrics, country_code):
+                continue
+            methods.append(build_shipping_method_from_rule(rule, metrics, country_code))
 
-        standard_charge = ZERO if subtotal >= Decimal('1500.00') else Decimal('35.00')
-        priority_charge = ZERO if subtotal >= Decimal('2500.00') else Decimal('85.00')
-        project_charge = Decimal('180.00') if subtotal < Decimal('3000.00') else Decimal('120.00')
+        return methods
 
-        return [
-            DispatchHubPickup(),
-            StandardFreight(charge_excl_tax=standard_charge, charge_incl_tax=standard_charge),
-            PriorityDispatch(charge_excl_tax=priority_charge, charge_incl_tax=priority_charge),
-            ProjectLogistics(charge_excl_tax=project_charge, charge_incl_tax=project_charge),
-        ]
+
+class RuleBasedShippingMethod(FixedPrice):
+    def __init__(self, *, rule: dict, charge: Decimal):
+        super().__init__(charge_excl_tax=charge, charge_incl_tax=charge)
+        self.rule = rule
+        self.code = rule['code']
+        self.name = rule['name']
+        self.description = rule.get('description', '')
+        self.carrier_code = rule.get('carrier_code', '')
+        self.service_code = rule.get('service_code', '')
+        self.method_type = rule.get('method_type', 'freight')
+        self.min_eta_days = rule.get('min_eta_days')
+        self.max_eta_days = rule.get('max_eta_days')
+        self.is_pickup = bool(rule.get('is_pickup', False))
+
+
+def _decimal(value, default: Decimal = ZERO) -> Decimal:
+    if value in (None, ''):
+        return default
+    if isinstance(value, Decimal):
+        return value.quantize(Decimal('0.01'))
+    try:
+        return Decimal(str(value)).quantize(Decimal('0.01'))
+    except (InvalidOperation, TypeError, ValueError):
+        return default
+
+
+def _product_attribute_map(product) -> dict[str, str]:
+    values = {}
+    for attribute_value in getattr(product, 'attribute_values', []).all():
+        attribute = getattr(attribute_value, 'attribute', None)
+        if not attribute:
+            continue
+        values[attribute.code] = (attribute_value.value_as_text or '').strip()
+    return values
+
+
+def product_shipping_weight_kg(product) -> Decimal:
+    attrs = _product_attribute_map(product)
+    for code in ('shipping_weight_kg', 'weight_kg', 'weight'):
+        value = attrs.get(code)
+        if not value:
+            continue
+        normalized = value.lower().replace('kg', '').strip()
+        parsed = _decimal(normalized, default=ZERO)
+        if parsed > ZERO:
+            return parsed
+    return ZERO
+
+
+def product_shipping_profile(product) -> str:
+    attrs = _product_attribute_map(product)
+    profile = (attrs.get('shipping_profile') or '').strip().lower()
+    if profile:
+        return profile
+
+    category_slugs = {category.slug for category in product.categories.all()}
+    title = (product.title or '').lower()
+    if {'water-treatment', 'boreholes', 'pumps', 'tanks'} & category_slugs:
+        return 'project'
+    if any(token in title for token in ('borehole', 'treatment system', 'dosing plant', 'tank')):
+        return 'project'
+    return 'standard'
+
+
+def basket_shipping_metrics(basket) -> dict:
+    lines = list(basket.all_lines())
+    total_weight = ZERO
+    profiles = set()
+    supplier_ids = set()
+
+    for line in lines:
+        product = line.product
+        stockrecord = getattr(line, 'stockrecord', None)
+        if stockrecord and getattr(stockrecord, 'partner_id', None):
+            supplier_ids.add(stockrecord.partner_id)
+        quantity = Decimal(str(line.quantity or 0))
+        total_weight += product_shipping_weight_kg(product) * quantity
+        profiles.add(product_shipping_profile(product))
+
+    return {
+        'subtotal_excl_tax': basket_subtotal_excl_tax(basket),
+        'item_count': sum(line.quantity for line in lines),
+        'line_count': len(lines),
+        'supplier_count': len(supplier_ids),
+        'total_weight_kg': total_weight.quantize(Decimal('0.01')),
+        'requires_project_logistics': 'project' in profiles,
+    }
+
+
+def shipping_rule_matches(rule: dict, metrics: dict, country_code: str) -> bool:
+    allowed_countries = {code.upper() for code in rule.get('countries', []) if code}
+    normalized_country = (country_code or '').strip().upper()
+    if allowed_countries and normalized_country and normalized_country not in allowed_countries:
+        return False
+    if allowed_countries and not normalized_country:
+        return False
+
+    max_supplier_groups = rule.get('max_supplier_groups')
+    if max_supplier_groups is not None and metrics['supplier_count'] > int(max_supplier_groups):
+        return False
+
+    min_weight = _decimal(rule.get('min_weight_kg'))
+    if min_weight and metrics['total_weight_kg'] < min_weight:
+        return False
+
+    max_weight = _decimal(rule.get('max_weight_kg'))
+    if max_weight and metrics['total_weight_kg'] > max_weight:
+        return False
+
+    if rule.get('project_only') and not metrics['requires_project_logistics']:
+        return False
+
+    if rule.get('exclude_project') and metrics['requires_project_logistics']:
+        return False
+
+    return True
+
+
+def build_shipping_method_from_rule(rule: dict, metrics: dict, country_code: str):
+    normalized_country = (country_code or '').strip().upper()
+    is_international = bool(normalized_country and normalized_country not in {'KE'})
+    subtotal = metrics['subtotal_excl_tax']
+
+    charge = _decimal(rule.get('international_charge' if is_international else 'charge'))
+
+    free_threshold = _decimal(rule.get('free_subtotal_threshold'))
+    if free_threshold and subtotal >= free_threshold:
+        charge = ZERO
+
+    reduced_threshold = _decimal(rule.get('reduced_charge_threshold'))
+    if reduced_threshold and subtotal >= reduced_threshold:
+        reduced_key = 'reduced_international_charge' if is_international else 'reduced_charge'
+        reduced_charge = _decimal(rule.get(reduced_key))
+        if reduced_charge or rule.get(reduced_key) in (0, '0', '0.00'):
+            charge = reduced_charge
+
+    if rule['code'] == 'dispatch-hub-pickup':
+        method = DispatchHubPickup()
+        method.rule = rule
+        method.carrier_code = rule.get('carrier_code', '')
+        method.service_code = rule.get('service_code', '')
+        method.method_type = rule.get('method_type', 'pickup')
+        method.min_eta_days = rule.get('min_eta_days')
+        method.max_eta_days = rule.get('max_eta_days')
+        method.is_pickup = True
+        return method
+
+    method_map = {
+        'standard-freight': StandardFreight,
+        'priority-dispatch': PriorityDispatch,
+        'project-logistics': ProjectLogistics,
+    }
+    method_class = method_map.get(rule['code'])
+    if method_class:
+        method = method_class(charge_excl_tax=charge, charge_incl_tax=charge)
+        method.rule = rule
+        method.carrier_code = rule.get('carrier_code', '')
+        method.service_code = rule.get('service_code', '')
+        method.method_type = rule.get('method_type', 'freight')
+        method.min_eta_days = rule.get('min_eta_days')
+        method.max_eta_days = rule.get('max_eta_days')
+        method.is_pickup = bool(rule.get('is_pickup', False))
+        return method
+
+    return RuleBasedShippingMethod(rule=rule, charge=charge)
 
 
 def shipping_country_code(shipping_address) -> str:
@@ -234,6 +391,14 @@ def serialize_shipping_method(method, basket, selected: bool = False, display_cu
         'code': method.code,
         'name': str(method.name),
         'description': str(getattr(method, 'description', '') or ''),
+        'carrier_code': getattr(method, 'carrier_code', ''),
+        'service_code': getattr(method, 'service_code', ''),
+        'method_type': getattr(method, 'method_type', ''),
+        'is_pickup': bool(getattr(method, 'is_pickup', False)),
+        'eta': {
+            'min_days': getattr(method, 'min_eta_days', None),
+            'max_days': getattr(method, 'max_eta_days', None),
+        },
         'charge': display_amount,
         'currency': output_currency,
         'base_charge': _money_payload(base_amount),
@@ -262,6 +427,8 @@ def serialize_basket_line(line, display_currency: str | None = None) -> dict:
         'id': line.id,
         'line_reference': line.line_reference,
         'quantity': line.quantity,
+        'reserved_quantity': reserved_quantity_for_line(line),
+        'available_quantity': available_quantity_for_line(line),
         'unit_price': display_unit_price,
         'line_total': display_line_total,
         'currency': output_currency,
@@ -305,9 +472,16 @@ def build_checkout_payload(request) -> dict:
     display_currency = resolve_display_currency(request, country_code=country_code)
     methods = get_shipping_methods(request, basket, shipping_address=shipping_address)
     selected_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
+    metrics = basket_shipping_metrics(basket)
     subtotal = basket_subtotal_excl_tax(basket)
     shipping_total = shipping_charge_for_method(selected_method, basket)
-    taxes = calculate_checkout_taxes(subtotal, shipping_total, country_code)
+    taxes = calculate_checkout_taxes(
+        subtotal,
+        shipping_total,
+        country_code,
+        basket=basket,
+        shipping_method=selected_method,
+    )
     tax_total = _money(taxes['total_tax'])
     order_total = subtotal + shipping_total + tax_total
     display_subtotal, output_currency = convert_amount(subtotal, basket_currency(basket), display_currency)
@@ -331,6 +505,13 @@ def build_checkout_payload(request) -> dict:
             'address': serialize_shipping_address(shipping_address),
             'shipping_required': basket.is_shipping_required(),
             'display_currency': output_currency,
+            'metrics': {
+                'item_count': metrics['item_count'],
+                'line_count': metrics['line_count'],
+                'supplier_count': metrics['supplier_count'],
+                'total_weight_kg': _money_payload(metrics['total_weight_kg']),
+                'requires_project_logistics': metrics['requires_project_logistics'],
+            },
             'methods': [
                 serialize_shipping_method(
                     method,

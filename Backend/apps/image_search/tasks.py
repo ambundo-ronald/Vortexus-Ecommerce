@@ -70,8 +70,20 @@ def _delete_embedding_doc(client, product_id: int) -> None:
         return
 
 
+def _existing_embedding(client, product_id: int) -> list[float] | None:
+    try:
+        response = client.get(index=settings.SEARCH_INDEX_IMAGE_EMBEDDINGS, id=product_id)
+    except NotFoundError:
+        return None
+    source = response.get('_source', {})
+    embedding = source.get('embedding')
+    if isinstance(embedding, list) and embedding:
+        return embedding
+    return None
+
+
 @shared_task(bind=True, autoretry_for=(OpenSearchException,), retry_backoff=True, retry_kwargs={'max_retries': 5})
-def generate_product_image_embedding(self, product_id: int) -> dict[str, Any]:
+def sync_product_image_index(self, product_id: int, regenerate_embedding: bool = False) -> dict[str, Any]:
     Product = apps.get_model('catalogue', 'Product')
     product = (
         Product.objects.filter(id=product_id, is_public=True)
@@ -90,11 +102,13 @@ def generate_product_image_embedding(self, product_id: int) -> dict[str, Any]:
         _delete_embedding_doc(client=client, product_id=product_id)
         return {'product_id': product_id, 'status': 'skipped', 'reason': 'missing-image'}
 
-    file_field.open('rb')
-    try:
-        embedding = ImageEmbeddingService().embed_image(file_field)
-    finally:
-        file_field.close()
+    embedding = None if regenerate_embedding else _existing_embedding(client, product_id)
+    if embedding is None:
+        file_field.open('rb')
+        try:
+            embedding = ImageEmbeddingService().embed_image(file_field)
+        finally:
+            file_field.close()
 
     document = _index_document(product=product, embedding=embedding, file_field=file_field)
     client.index(
@@ -108,7 +122,20 @@ def generate_product_image_embedding(self, product_id: int) -> dict[str, Any]:
         'product_id': product.id,
         'status': 'indexed',
         'dimension': len(embedding),
+        'regenerated_embedding': regenerate_embedding or embedding is not None,
     }
+
+
+@shared_task(bind=True, autoretry_for=(OpenSearchException,), retry_backoff=True, retry_kwargs={'max_retries': 5})
+def generate_product_image_embedding(self, product_id: int) -> dict[str, Any]:
+    return sync_product_image_index.run(product_id=product_id, regenerate_embedding=True)
+
+
+@shared_task
+def remove_product_image_embedding(product_id: int) -> bool:
+    client = get_opensearch_client()
+    _delete_embedding_doc(client=client, product_id=product_id)
+    return True
 
 
 @shared_task(bind=True)
@@ -120,7 +147,7 @@ def backfill_product_image_embeddings(self, limit: int | None = None) -> int:
 
     indexed = 0
     for product_id in queryset:
-        result = generate_product_image_embedding.run(product_id=product_id)
+        result = sync_product_image_index.run(product_id=product_id, regenerate_embedding=True)
         if result.get('status') == 'indexed':
             indexed += 1
 

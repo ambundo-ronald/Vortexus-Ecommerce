@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'apps.accounts',
+    'apps.inventory',
     'apps.marketplace',
     'apps.notifications',
     'apps.payments',
@@ -151,8 +152,161 @@ HAYSTACK_CONNECTIONS = {
         'ENGINE': 'haystack.backends.simple_backend.SimpleEngine',
     }
 }
+HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.BaseSignalProcessor'
 
 ENABLE_ASYNC_TASKS = env.bool('ENABLE_ASYNC_TASKS', default=False)
+
+INDUSTRIAL_SHIPPING_RULES = [
+    {
+        'code': 'dispatch-hub-pickup',
+        'name': 'Dispatch Hub Pickup',
+        'description': 'Collect stocked parts and equipment from the Vortexus dispatch hub.',
+        'carrier_code': 'vortexus',
+        'service_code': 'pickup',
+        'method_type': 'pickup',
+        'countries': ['KE'],
+        'is_pickup': True,
+        'charge': '0.00',
+        'min_eta_days': 0,
+        'max_eta_days': 1,
+        'max_supplier_groups': 1,
+    },
+    {
+        'code': 'standard-freight',
+        'name': 'Standard Freight',
+        'description': 'Standard freight for stocked pumps, filters, treatment systems, and accessories.',
+        'carrier_code': 'vortexus',
+        'service_code': 'standard',
+        'method_type': 'freight',
+        'countries': ['KE', 'UG', 'TZ', 'RW', 'ET'],
+        'charge': '35.00',
+        'international_charge': '95.00',
+        'free_subtotal_threshold': '1500.00',
+        'min_eta_days': 2,
+        'max_eta_days': 5,
+        'max_weight_kg': '250.00',
+    },
+    {
+        'code': 'priority-dispatch',
+        'name': 'Priority Dispatch',
+        'description': 'Priority dispatch for urgent replacements and service-critical equipment.',
+        'carrier_code': 'vortexus',
+        'service_code': 'priority',
+        'method_type': 'express',
+        'countries': ['KE'],
+        'charge': '85.00',
+        'free_subtotal_threshold': '2500.00',
+        'min_eta_days': 1,
+        'max_eta_days': 2,
+        'max_weight_kg': '80.00',
+        'max_supplier_groups': 1,
+    },
+    {
+        'code': 'project-logistics',
+        'name': 'Project Logistics',
+        'description': 'Coordinated site delivery for larger borehole, pumping, and treatment projects.',
+        'carrier_code': 'vortexus',
+        'service_code': 'project',
+        'method_type': 'project',
+        'countries': ['KE', 'UG', 'TZ', 'RW', 'ET'],
+        'charge': '180.00',
+        'international_charge': '260.00',
+        'reduced_charge_threshold': '3000.00',
+        'reduced_charge': '120.00',
+        'reduced_international_charge': '180.00',
+        'min_eta_days': 3,
+        'max_eta_days': 10,
+        'project_only': True,
+    },
+]
+
+INDUSTRIAL_TAX_RULES = {
+    'KE': {
+        'default_rate': '0.16',
+        'shipping_rate': '0.16',
+        'product_profile_rates': {
+            'accessory': '0.16',
+            'standard': '0.16',
+            'project': '0.16',
+            'water_treatment_chemical': '0.00',
+            'service': '0.00',
+        },
+        'shipping_profile_rates': {
+            'pickup': '0.00',
+            'freight': '0.16',
+            'express': '0.16',
+            'project': '0.16',
+        },
+    },
+    'UG': {
+        'default_rate': '0.18',
+        'shipping_rate': '0.18',
+        'product_profile_rates': {
+            'accessory': '0.18',
+            'standard': '0.18',
+            'project': '0.18',
+            'water_treatment_chemical': '0.00',
+            'service': '0.00',
+        },
+        'shipping_profile_rates': {
+            'pickup': '0.00',
+            'freight': '0.18',
+            'express': '0.18',
+            'project': '0.18',
+        },
+    },
+    'TZ': {
+        'default_rate': '0.18',
+        'shipping_rate': '0.18',
+        'product_profile_rates': {
+            'accessory': '0.18',
+            'standard': '0.18',
+            'project': '0.18',
+            'water_treatment_chemical': '0.00',
+            'service': '0.00',
+        },
+        'shipping_profile_rates': {
+            'pickup': '0.00',
+            'freight': '0.18',
+            'express': '0.18',
+            'project': '0.18',
+        },
+    },
+    'RW': {
+        'default_rate': '0.18',
+        'shipping_rate': '0.18',
+        'product_profile_rates': {
+            'accessory': '0.18',
+            'standard': '0.18',
+            'project': '0.18',
+            'water_treatment_chemical': '0.00',
+            'service': '0.00',
+        },
+        'shipping_profile_rates': {
+            'pickup': '0.00',
+            'freight': '0.18',
+            'express': '0.18',
+            'project': '0.18',
+        },
+    },
+    'ET': {
+        'default_rate': '0.15',
+        'shipping_rate': '0.15',
+        'product_profile_rates': {
+            'accessory': '0.15',
+            'standard': '0.15',
+            'project': '0.15',
+            'water_treatment_chemical': '0.00',
+            'service': '0.00',
+        },
+        'shipping_profile_rates': {
+            'pickup': '0.00',
+            'freight': '0.15',
+            'express': '0.15',
+            'project': '0.15',
+        },
+    },
+}
 
 CORS_ALLOWED_ORIGINS = [
     origin.strip()

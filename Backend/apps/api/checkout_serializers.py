@@ -79,6 +79,14 @@ class ShippingAddressSerializer(serializers.Serializer):
         self.context['country'] = country
         return country.iso_3166_1_a2
 
+    def validate(self, attrs):
+        country_code = (attrs.get('country_code') or '').strip().upper()
+        if not (attrs.get('phone_number') or '').strip():
+            raise serializers.ValidationError({'phone_number': 'Phone number is required for shipping updates.'})
+        if country_code and country_code != 'KE' and not (attrs.get('postcode') or '').strip():
+            raise serializers.ValidationError({'postcode': 'Postcode is required for international shipping.'})
+        return attrs
+
     def to_session_fields(self) -> dict:
         data = self.validated_data
         country = self.context['country']
