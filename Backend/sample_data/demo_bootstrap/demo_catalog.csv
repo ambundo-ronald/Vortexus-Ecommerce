@@ -1,0 +1,3 @@
+upc,title,description,category_path,price,num_in_stock,partner_sku,is_public,image_path,image_caption,attr__brand,attr__flow_rate,attr__head,attr__capacity,attr__material
+DEMO-PUMP-001,Industrial Borehole Pump 5HP,5HP borehole pump for agricultural and commercial water supply projects.,Pumps > Borehole Pumps,1299.00,18,DEMO-PUMP-001,true,images/demo_pump.png,Borehole pump,Vortexus Demo,7m3/h,110m,,
+DEMO-TANK-001,Pressure Tank 300L,Heavy-duty pressure tank for pump systems and booster applications.,Accessories > Pressure Tanks,349.00,25,DEMO-TANK-001,true,images/demo_tank.png,Pressure tank,Vortexus Demo,,,300L,Powder-coated steel

@@ -616,6 +616,45 @@ Current supported image extensions:
 - `.png`
 - `.webp`
 
+## 20) Demo And Bootstrap Data Flow
+Implemented:
+- idempotent demo seed command:
+  - `python manage.py bootstrap_demo_data`
+- optional seed extras:
+  - `--with-order`
+  - `--with-reviews`
+  - `--with-wishlist`
+- generated local demo media under:
+  - `sample_data/demo_bootstrap/`
+- bootstrap uses the existing industrial catalog importer rather than a separate product-seeding path
+
+What the bootstrap command creates:
+- demo admin user
+- demo customer user + customer profile
+- two approved supplier users + supplier profiles
+- demo catalog products
+- supplier-owned marketplace products
+- optional sample customer order with supplier order groups
+- optional sample review
+- optional sample wishlist
+
+Demo credentials:
+- admin: `admin@vortexus.demo` / `Adminpass123!`
+- customer: `customer@vortexus.demo` / `Customerpass123!`
+- supplier: `supplier.alpha@vortexus.demo` / `Supplierpass123!`
+- supplier: `supplier.beta@vortexus.demo` / `Supplierpass123!`
+
+Command examples:
+
+```powershell
+python manage.py bootstrap_demo_data
+python manage.py bootstrap_demo_data --with-order --with-reviews --with-wishlist
+```
+
+Operational note:
+- if OpenSearch is still offline locally, the bootstrap command can print indexing warnings after saving demo products
+- the seed data itself still completes successfully
+
 ## 10) Image Embedding Settings
 Environment variables:
 - `IMAGE_EMBEDDING_BACKEND=clip` (`hash` is available fallback)

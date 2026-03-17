@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db import transaction
 
 from apps.common.async_utils import dispatch_background_task
 from apps.image_search.tasks import remove_product_image_embedding, sync_product_image_index
