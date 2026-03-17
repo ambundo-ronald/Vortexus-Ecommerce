@@ -17,6 +17,14 @@ from .checkout_views import (
     ShippingStateAPIView,
 )
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
+from .supplier_views import (
+    SupplierAdminCollectionAPIView,
+    SupplierAdminDetailAPIView,
+    SupplierDashboardAPIView,
+    SupplierProductCollectionAPIView,
+    SupplierProductDetailAPIView,
+    SupplierProfileAPIView,
+)
 from .wishlist_views import (
     DefaultWishListAPIView,
     DefaultWishListItemCollectionAPIView,
@@ -36,6 +44,12 @@ urlpatterns = [
     path('account/logout/', AccountLogoutAPIView.as_view(), name='account-logout'),
     path('account/me/', AccountProfileAPIView.as_view(), name='account-profile'),
     path('account/password/', AccountPasswordAPIView.as_view(), name='account-password'),
+    path('supplier/profile/', SupplierProfileAPIView.as_view(), name='supplier-profile'),
+    path('supplier/dashboard/', SupplierDashboardAPIView.as_view(), name='supplier-dashboard'),
+    path('supplier/products/', SupplierProductCollectionAPIView.as_view(), name='supplier-products'),
+    path('supplier/products/<int:product_id>/', SupplierProductDetailAPIView.as_view(), name='supplier-product-detail'),
+    path('admin/suppliers/', SupplierAdminCollectionAPIView.as_view(), name='admin-suppliers'),
+    path('admin/suppliers/<int:supplier_id>/', SupplierAdminDetailAPIView.as_view(), name='admin-supplier-detail'),
     path('checkout/basket/', BasketAPIView.as_view(), name='checkout-basket'),
     path('checkout/basket/items/', BasketItemCollectionAPIView.as_view(), name='checkout-basket-items'),
     path('checkout/basket/items/<int:line_id>/', BasketLineDetailAPIView.as_view(), name='checkout-basket-line'),

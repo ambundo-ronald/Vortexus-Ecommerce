@@ -68,8 +68,51 @@ Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast AP
 - `GET /api/v1/catalog/products/?q=pump&category=borehole-pumps&in_stock=true&sort_by=price_asc&page=1&page_size=24`
 - `GET /api/v1/catalog/products/<id>/`
 - `POST /api/v1/quotes/` (name/email/phone/company/message + optional `product_id`)
+- `GET|POST|PATCH /api/v1/supplier/profile/`
+- `GET /api/v1/supplier/dashboard/`
+- `GET|POST /api/v1/supplier/products/`
+- `GET|PATCH|DELETE /api/v1/supplier/products/<id>/`
+- `GET /api/v1/admin/suppliers/`
+- `PATCH /api/v1/admin/suppliers/<id>/`
 
-## 5) Image Embedding Settings
+## 5) Email Notifications
+Implemented notification flows:
+- account registration confirmation
+- password change confirmation
+- quote request acknowledgement to customer
+- quote request alert to internal sales inbox
+- reusable order confirmation email command
+- reusable shipping update email command
+
+Environment variables:
+- `DEFAULT_FROM_EMAIL`
+- `NOTIFICATION_REPLY_TO_EMAIL`
+- `SALES_NOTIFICATION_RECIPIENTS`
+
+Local development uses Django's console email backend by default, so emails print in the terminal.
+
+Manual order/shipping email commands:
+
+```powershell
+python manage.py send_order_confirmation ORDER-10001
+python manage.py send_shipping_update ORDER-10001 --status-label "Out for delivery" --tracking-reference TRK-10001
+```
+
+## 6) Supplier Marketplace Backend
+Implemented marketplace flow:
+- supplier application/profile creation linked to Oscar `Partner`
+- supplier approval workflow (`pending`, `approved`, `suspended`)
+- supplier dashboard metrics
+- supplier-owned product CRUD via supplier partner stock records
+- safe supplier delete behavior:
+  - removes only the supplier's own offer
+  - deletes the product only if no supplier offers remain
+
+Approval options:
+- Django admin: `Supplier Profiles`
+- API: `PATCH /api/v1/admin/suppliers/<id>/`
+
+## 7) Image Embedding Settings
 Environment variables:
 - `IMAGE_EMBEDDING_BACKEND=clip` (`hash` is available fallback)
 - `CLIP_MODEL_NAME=openai/clip-vit-base-patch32`
@@ -81,7 +124,7 @@ Behavior:
 - If CLIP backend fails to initialize, service falls back to hash embedding and logs the error.
 - First CLIP usage downloads model weights and can be slower.
 
-## 6) What Is Implemented vs Placeholder
+## 8) What Is Implemented vs Placeholder
 Implemented:
 - API wiring and service structure.
 - Database fallback logic for all three features.
@@ -93,7 +136,7 @@ Placeholder:
 - Better ranking rules and offline evaluation for recommendations.
 - Full product ingestion pipeline with industrial attributes normalization.
 
-## 7) Performance-first Next Tasks
+## 9) Performance-first Next Tasks
 1. Add query profiling and response-time metrics (p95 targets).
 2. Add aggressive Redis caching for common search and recommendation queries.
 3. Use exact part-number analyzers in OpenSearch and synonyms for industrial terms.

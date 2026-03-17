@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import environ
@@ -24,6 +25,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'apps.accounts',
+    'apps.marketplace',
+    'apps.notifications',
     'apps.search',
     'apps.image_search',
     'apps.recommendations',
@@ -167,5 +170,27 @@ CSRF_TRUSTED_ORIGINS = [
         default='http://127.0.0.1:5173,http://localhost:5173',
     ).split(',')
     if origin.strip()
+]
+
+COUNTRY_CURRENCY_MAP = json.loads(
+    env(
+        'COUNTRY_CURRENCY_MAP',
+        default='{"US":"USD","KE":"KES","UG":"UGX","TZ":"TZS","RW":"RWF","ET":"ETB"}',
+    )
+)
+
+DISPLAY_CURRENCY_RATES = json.loads(
+    env(
+        'DISPLAY_CURRENCY_RATES',
+        default='{"USD":1,"KES":129.25,"UGX":3719.0,"TZS":2588.0,"RWF":1466.79,"ETB":155.44}',
+    )
+)
+
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
+NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
+SALES_NOTIFICATION_RECIPIENTS = [
+    recipient.strip()
+    for recipient in env('SALES_NOTIFICATION_RECIPIENTS', default='sales@vortexus.local').split(',')
+    if recipient.strip()
 ]
 

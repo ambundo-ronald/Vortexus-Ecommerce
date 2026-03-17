@@ -1,6 +1,8 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.currency import resolve_display_currency
+
 from .serializers import SearchQuerySerializer
 from .services import ProductSearchService
 
@@ -21,5 +23,6 @@ class ProductSearchAPIView(APIView):
             },
             page=params.get('page', 1),
             page_size=params.get('page_size', 24),
+            display_currency=resolve_display_currency(request),
         )
         return Response(response)

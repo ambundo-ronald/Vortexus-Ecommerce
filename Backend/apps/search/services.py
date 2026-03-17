@@ -7,20 +7,47 @@ from django.db.models import Q
 from opensearchpy.exceptions import OpenSearchException
 
 from apps.common.clients import get_opensearch_client
+from apps.common.currency import convert_product_payload
 from apps.common.products import serialize_product_card
 
 
 class ProductSearchService:
-    def search(self, query: str, filters: dict[str, Any], page: int, page_size: int) -> dict[str, Any]:
+    def search(
+        self,
+        query: str,
+        filters: dict[str, Any],
+        page: int,
+        page_size: int,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         if query.strip():
             try:
-                return self._search_opensearch(query=query, filters=filters, page=page, page_size=page_size)
+                return self._search_opensearch(
+                    query=query,
+                    filters=filters,
+                    page=page,
+                    page_size=page_size,
+                    display_currency=display_currency,
+                )
             except (OpenSearchException, ValueError, KeyError):
                 pass
 
-        return self._search_database(query=query, filters=filters, page=page, page_size=page_size)
+        return self._search_database(
+            query=query,
+            filters=filters,
+            page=page,
+            page_size=page_size,
+            display_currency=display_currency,
+        )
 
-    def _search_opensearch(self, query: str, filters: dict[str, Any], page: int, page_size: int) -> dict[str, Any]:
+    def _search_opensearch(
+        self,
+        query: str,
+        filters: dict[str, Any],
+        page: int,
+        page_size: int,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         client = get_opensearch_client()
         os_filters = []
 
@@ -61,16 +88,21 @@ class ProductSearchService:
         for hit in response['hits']['hits']:
             source = hit.get('_source', {})
             results.append(
+                convert_product_payload(
                 {
                     'id': source.get('id'),
                     'title': source.get('title'),
                     'sku': source.get('sku'),
                     'price': source.get('price'),
+                    'base_price': source.get('price'),
                     'currency': source.get('currency', 'USD'),
+                    'base_currency': source.get('currency', 'USD'),
                     'thumbnail': source.get('thumbnail', ''),
                     'in_stock': source.get('in_stock', False),
                     'score': hit.get('_score'),
-                }
+                },
+                display_currency,
+                )
             )
 
         return {
@@ -83,7 +115,14 @@ class ProductSearchService:
             'source': 'opensearch',
         }
 
-    def _search_database(self, query: str, filters: dict[str, Any], page: int, page_size: int) -> dict[str, Any]:
+    def _search_database(
+        self,
+        query: str,
+        filters: dict[str, Any],
+        page: int,
+        page_size: int,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
 
         queryset = Product.objects.filter(is_public=True).prefetch_related('stockrecords').distinct()
@@ -102,7 +141,7 @@ class ProductSearchService:
         paginator = Paginator(queryset.order_by('title'), page_size)
         page_obj = paginator.get_page(page)
 
-        results = [serialize_product_card(product=product) for product in page_obj.object_list]
+        results = [serialize_product_card(product=product, display_currency=display_currency) for product in page_obj.object_list]
 
         return {
             'results': results,

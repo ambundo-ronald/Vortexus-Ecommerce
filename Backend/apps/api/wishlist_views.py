@@ -3,6 +3,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.currency import resolve_display_currency
+
 from .wishlist_serializers import (
     WishListAddItemSerializer,
     WishListBulkStatusQuerySerializer,
@@ -49,7 +51,15 @@ class DefaultWishListAPIView(APIView):
     def get(self, request):
         wishlist = get_default_wishlist(request.user, create=True)
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
-        return Response({'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=wishlist.id)})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=wishlist.id,
+                    display_currency=resolve_display_currency(request),
+                )
+            }
+        )
 
 
 class WishListDetailAPIView(APIView):
@@ -62,7 +72,15 @@ class WishListDetailAPIView(APIView):
         wishlist = self.get_object(request, wishlist_id)
         default_wishlist = get_default_wishlist(request.user, create=False)
         default_wishlist_id = default_wishlist.id if default_wishlist else None
-        return Response({'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=default_wishlist_id)})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                )
+            }
+        )
 
     def patch(self, request, wishlist_id: int):
         wishlist = self.get_object(request, wishlist_id)
@@ -72,7 +90,15 @@ class WishListDetailAPIView(APIView):
         default_wishlist = get_default_wishlist(request.user, create=False)
         default_wishlist_id = default_wishlist.id if default_wishlist else None
         wishlist = self.get_object(request, wishlist.id)
-        return Response({'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=default_wishlist_id)})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                )
+            }
+        )
 
     def delete(self, request, wishlist_id: int):
         wishlist = self.get_object(request, wishlist_id)
@@ -100,7 +126,11 @@ class WishListItemCollectionAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=default_wishlist_id),
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                ),
                 'item_id': line.id,
             },
             status=status.HTTP_201_CREATED,
@@ -124,7 +154,11 @@ class DefaultWishListItemCollectionAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=wishlist.id),
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=wishlist.id,
+                    display_currency=resolve_display_currency(request),
+                ),
                 'item_id': line.id,
             },
             status=status.HTTP_201_CREATED,
@@ -142,7 +176,15 @@ class WishListItemDetailAPIView(APIView):
         default_wishlist = get_default_wishlist(request.user, create=False)
         default_wishlist_id = default_wishlist.id if default_wishlist else None
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
-        return Response({'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=default_wishlist_id)})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                )
+            }
+        )
 
 
 class DefaultWishListItemDetailAPIView(APIView):
@@ -158,7 +200,15 @@ class DefaultWishListItemDetailAPIView(APIView):
             line.delete()
 
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
-        return Response({'wishlist': wishlist_detail_payload(wishlist, default_wishlist_id=wishlist.id)})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    default_wishlist_id=wishlist.id,
+                    display_currency=resolve_display_currency(request),
+                )
+            }
+        )
 
 
 class WishListItemStatusAPIView(APIView):

@@ -4,7 +4,9 @@ from django.apps import apps
 from oscar.apps.checkout.utils import CheckoutSessionData
 from oscar.apps.shipping.methods import FixedPrice, Free, NoShippingRequired
 
+from apps.common.currency import convert_amount, resolve_display_currency
 from apps.common.products import serialize_product_card
+from apps.common.taxes import calculate_checkout_taxes
 
 ZERO = Decimal('0.00')
 
@@ -213,23 +215,28 @@ def serialize_shipping_address(address) -> dict | None:
     }
 
 
-def serialize_shipping_method(method, basket, selected: bool = False) -> dict:
+def serialize_shipping_method(method, basket, selected: bool = False, display_currency: str | None = None) -> dict:
     charge = method.calculate(basket)
     incl_tax = getattr(charge, 'incl_tax', None)
     excl_tax = getattr(charge, 'excl_tax', None)
+    base_amount = incl_tax if incl_tax is not None else excl_tax
+    base_currency = getattr(charge, 'currency', None) or basket_currency(basket)
+    display_amount, output_currency = convert_amount(base_amount, base_currency, display_currency)
 
     return {
         'code': method.code,
         'name': str(method.name),
         'description': str(getattr(method, 'description', '') or ''),
-        'charge': _money_payload(incl_tax if incl_tax is not None else excl_tax),
-        'currency': getattr(charge, 'currency', None) or basket_currency(basket),
+        'charge': display_amount,
+        'currency': output_currency,
+        'base_charge': _money_payload(base_amount),
+        'base_currency': base_currency,
         'selected': selected,
     }
 
 
-def serialize_basket_line(line) -> dict:
-    product = serialize_product_card(line.product)
+def serialize_basket_line(line, display_currency: str | None = None) -> dict:
+    product = serialize_product_card(line.product, display_currency=display_currency)
     unit_price = line.unit_price_incl_tax
     if unit_price is None:
         unit_price = line.unit_price_excl_tax
@@ -238,16 +245,22 @@ def serialize_basket_line(line) -> dict:
         line_total = line.line_price_excl_tax
 
     availability = line.purchase_info.availability
-    product['price'] = _money_payload(unit_price)
-    product['currency'] = line.price_currency or basket_currency(line.basket)
+    base_currency = line.price_currency or basket_currency(line.basket)
+    display_unit_price, output_currency = convert_amount(unit_price, base_currency, display_currency)
+    display_line_total, _ = convert_amount(line_total, base_currency, display_currency)
+    product['price'] = display_unit_price
+    product['currency'] = output_currency
 
     return {
         'id': line.id,
         'line_reference': line.line_reference,
         'quantity': line.quantity,
-        'unit_price': _money_payload(unit_price),
-        'line_total': _money_payload(line_total),
-        'currency': line.price_currency or basket_currency(line.basket),
+        'unit_price': display_unit_price,
+        'line_total': display_line_total,
+        'currency': output_currency,
+        'base_unit_price': _money_payload(unit_price),
+        'base_line_total': _money_payload(line_total),
+        'base_currency': base_currency,
         'product': product,
         'availability': {
             'is_available': bool(getattr(availability, 'is_available_to_buy', False)),
@@ -256,21 +269,24 @@ def serialize_basket_line(line) -> dict:
     }
 
 
-def serialize_basket(basket) -> dict:
-    lines = [serialize_basket_line(line) for line in basket.all_lines()]
+def serialize_basket(basket, display_currency: str | None = None) -> dict:
+    lines = [serialize_basket_line(line, display_currency=display_currency) for line in basket.all_lines()]
     subtotal = basket_subtotal(basket)
+    display_subtotal, output_currency = convert_amount(subtotal, basket_currency(basket), display_currency)
     return {
         'id': basket.id,
         'status': basket.status,
-        'currency': basket_currency(basket),
+        'currency': output_currency,
         'is_empty': basket.is_empty,
         'shipping_required': basket.is_shipping_required(),
         'line_count': len(lines),
         'item_count': basket.num_items,
         'lines': lines,
         'totals': {
-            'subtotal': _money_payload(subtotal),
-            'currency': basket_currency(basket),
+            'subtotal': display_subtotal,
+            'currency': output_currency,
+            'base_subtotal': _money_payload(subtotal),
+            'base_currency': basket_currency(basket),
         },
     }
 
@@ -278,11 +294,19 @@ def serialize_basket(basket) -> dict:
 def build_checkout_payload(request) -> dict:
     basket = request.basket
     shipping_address = get_shipping_address(request, basket)
+    country_code = shipping_country_code(shipping_address)
+    display_currency = resolve_display_currency(request, country_code=country_code)
     methods = get_shipping_methods(request, basket, shipping_address=shipping_address)
     selected_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
     subtotal = basket_subtotal(basket)
     shipping_total = shipping_charge_for_method(selected_method, basket)
-    order_total = subtotal + shipping_total
+    taxes = calculate_checkout_taxes(subtotal, shipping_total, country_code)
+    tax_total = _money(taxes['total_tax'])
+    order_total = subtotal + shipping_total + tax_total
+    display_subtotal, output_currency = convert_amount(subtotal, basket_currency(basket), display_currency)
+    display_shipping_total, _ = convert_amount(shipping_total, basket_currency(basket), display_currency)
+    display_tax_total, _ = convert_amount(tax_total, basket_currency(basket), display_currency)
+    display_order_total, _ = convert_amount(order_total, basket_currency(basket), display_currency)
 
     missing = []
     if basket.is_empty:
@@ -294,25 +318,40 @@ def build_checkout_payload(request) -> dict:
             missing.append('shipping_method')
 
     return {
-        'basket': serialize_basket(basket),
+        'basket': serialize_basket(basket, display_currency=display_currency),
         'shipping': {
             'countries': available_shipping_countries(),
             'address': serialize_shipping_address(shipping_address),
             'shipping_required': basket.is_shipping_required(),
+            'display_currency': output_currency,
             'methods': [
-                serialize_shipping_method(method, basket, selected=bool(selected_method and method.code == selected_method.code))
+                serialize_shipping_method(
+                    method,
+                    basket,
+                    selected=bool(selected_method and method.code == selected_method.code),
+                    display_currency=display_currency,
+                )
                 for method in methods
             ],
             'selected_method': (
-                serialize_shipping_method(selected_method, basket, selected=True) if selected_method else None
+                serialize_shipping_method(selected_method, basket, selected=True, display_currency=display_currency)
+                if selected_method
+                else None
             ),
             'ready_for_checkout': not missing,
             'missing': missing,
+            'taxes': taxes,
             'totals': {
-                'subtotal': _money_payload(subtotal),
-                'shipping': _money_payload(shipping_total),
-                'order_total': _money_payload(order_total),
-                'currency': basket_currency(basket),
+                'subtotal': display_subtotal,
+                'shipping': display_shipping_total,
+                'tax': display_tax_total,
+                'order_total': display_order_total,
+                'currency': output_currency,
+                'base_subtotal': _money_payload(subtotal),
+                'base_shipping': _money_payload(shipping_total),
+                'base_tax': _money_payload(tax_total),
+                'base_order_total': _money_payload(order_total),
+                'base_currency': basket_currency(basket),
             },
         },
     }

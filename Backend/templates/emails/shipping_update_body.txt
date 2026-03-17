@@ -1,0 +1,13 @@
+Hello {{ display_name }},
+
+There is a shipping update for your order {{ order.number }} on {{ shop_name }}.
+
+Update:
+- Order status: {{ order.status }}
+- Shipping status: {{ status_label }}
+{% if order.shipping_method %}- Shipping method: {{ order.shipping_method }}
+{% endif %}{% if tracking_reference %}- Tracking reference: {{ tracking_reference }}
+{% endif %}{% if note %}- Note: {{ note }}
+{% endif %}
+
+Thank you for choosing {{ shop_name }}.

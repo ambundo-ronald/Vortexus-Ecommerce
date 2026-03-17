@@ -1,0 +1,14 @@
+Hello {{ name }},
+
+We received your quote request on {{ shop_name }}{% if product %} for {{ product.title }}{% endif %}.
+
+Request details:
+{% if company %}- Company: {{ company }}
+{% endif %}{% if phone %}- Phone: {{ phone }}
+{% endif %}{% if email %}- Email: {{ email }}
+{% endif %}- Message: {{ message }}
+
+Our team will review your request and contact you shortly.
+
+{{ shop_name }}
+

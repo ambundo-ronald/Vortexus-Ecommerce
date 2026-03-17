@@ -44,21 +44,21 @@ def wishlist_summary_payload(wishlist, default_wishlist_id: int | None = None):
     }
 
 
-def wishlist_line_payload(line):
+def wishlist_line_payload(line, display_currency: str | None = None):
     product = line.product
     return {
         'id': line.id,
         'quantity': line.quantity,
         'title': line.get_title(),
         'product_id': product.id if product else None,
-        'product': serialize_product_card(product) if product else None,
+        'product': serialize_product_card(product, display_currency=display_currency) if product else None,
     }
 
 
-def wishlist_detail_payload(wishlist, default_wishlist_id: int | None = None):
+def wishlist_detail_payload(wishlist, default_wishlist_id: int | None = None, display_currency: str | None = None):
     return {
         **wishlist_summary_payload(wishlist, default_wishlist_id=default_wishlist_id),
-        'items': [wishlist_line_payload(line) for line in wishlist.lines.all()],
+        'items': [wishlist_line_payload(line, display_currency=display_currency) for line in wishlist.lines.all()],
     }
 
 

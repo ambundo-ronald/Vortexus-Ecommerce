@@ -8,7 +8,9 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
+from apps.notifications.services import send_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
 from .serializers import ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
@@ -50,8 +52,8 @@ def _product_queryset(include_hidden: bool = False):
     return queryset.filter(is_public=True)
 
 
-def _build_product_detail(product) -> dict:
-    card = serialize_product_card(product=product)
+def _build_product_detail(product, display_currency: str | None = None) -> dict:
+    card = serialize_product_card(product=product, display_currency=display_currency)
     specs = []
     for attribute_value in product.attribute_values.all():
         attribute = getattr(attribute_value, "attribute", None)
@@ -117,6 +119,7 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         serializer = ProductListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         params = serializer.validated_data
+        display_currency = resolve_display_currency(request)
 
         Product = apps.get_model("catalogue", "Product")
         queryset = (
@@ -168,7 +171,10 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         return Response(
             {
-                "results": [serialize_product_card(product=item) for item in page_obj.object_list],
+                "results": [
+                    serialize_product_card(product=item, display_currency=display_currency)
+                    for item in page_obj.object_list
+                ],
                 "pagination": {
                     "page": page_obj.number,
                     "page_size": page_size,
@@ -192,7 +198,8 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
-        return Response({"product": _build_product_detail(product)}, status=status.HTTP_201_CREATED)
+        display_currency = resolve_display_currency(request)
+        return Response({"product": _build_product_detail(product, display_currency=display_currency)}, status=status.HTTP_201_CREATED)
 
 
 class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
@@ -200,9 +207,14 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
 
     def get(self, request, product_id: int):
         include_hidden = bool(request.user and request.user.is_staff)
+        display_currency = resolve_display_currency(request)
         product = get_object_or_404(_product_queryset(include_hidden=include_hidden), id=product_id)
-        detail = _build_product_detail(product)
-        related = self.recommendation_service.recommend_for_product(product_id=product.id, limit=8)
+        detail = _build_product_detail(product, display_currency=display_currency)
+        related = self.recommendation_service.recommend_for_product(
+            product_id=product.id,
+            limit=8,
+            display_currency=display_currency,
+        )
 
         return Response({"product": detail, "related": related})
 
@@ -212,7 +224,8 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
-        return Response({"product": _build_product_detail(product)})
+        display_currency = resolve_display_currency(request)
+        return Response({"product": _build_product_detail(product, display_currency=display_currency)})
 
     def patch(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
@@ -220,7 +233,8 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
-        return Response({"product": _build_product_detail(product)})
+        display_currency = resolve_display_currency(request)
+        return Response({"product": _build_product_detail(product, display_currency=display_currency)})
 
     def delete(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
@@ -233,12 +247,19 @@ class QuoteRequestAPIView(APIView):
         serializer = QuoteRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         payload = serializer.validated_data
+        product = None
+
+        product_id = payload.get('product_id')
+        if product_id:
+            product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
 
         logger.info("Quote request received: %s", payload)
+        notification_result = send_quote_request_notifications(payload, product=product)
         return Response(
             {
                 "detail": "Quote request received. Our team will contact you shortly.",
                 "received": payload,
+                "notifications": notification_result,
             },
             status=status.HTTP_201_CREATED,
         )

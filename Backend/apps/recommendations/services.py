@@ -8,26 +8,45 @@ from apps.common.products import serialize_product_card
 
 
 class RecommendationService:
-    def recommend(self, product_id: int | None = None, user_id: int | None = None, limit: int = 12) -> dict[str, Any]:
+    def recommend(
+        self,
+        product_id: int | None = None,
+        user_id: int | None = None,
+        limit: int = 12,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         if product_id:
             return {
-                'results': self.recommend_for_product(product_id=product_id, limit=limit),
+                'results': self.recommend_for_product(
+                    product_id=product_id,
+                    limit=limit,
+                    display_currency=display_currency,
+                ),
                 'strategy': 'similar-products',
             }
 
         if user_id:
             return {
-                'results': self.recommend_for_user(user_id=user_id, limit=limit),
+                'results': self.recommend_for_user(
+                    user_id=user_id,
+                    limit=limit,
+                    display_currency=display_currency,
+                ),
                 'strategy': 'user-history',
             }
 
         return {
-            'results': self.trending(limit=limit),
+            'results': self.trending(limit=limit, display_currency=display_currency),
             'strategy': 'trending',
         }
 
-    def recommend_for_product(self, product_id: int, limit: int) -> list[dict[str, Any]]:
-        cache_key = f'recommendations:product:{product_id}:{limit}'
+    def recommend_for_product(
+        self,
+        product_id: int,
+        limit: int,
+        display_currency: str | None = None,
+    ) -> list[dict[str, Any]]:
+        cache_key = f'recommendations:product:{product_id}:{limit}:{display_currency or "default"}'
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -47,11 +66,14 @@ class RecommendationService:
             .order_by('-date_updated')
         )
 
-        results = [serialize_product_card(product=item, reason='similar-category') for item in queryset[:limit]]
+        results = [
+            serialize_product_card(product=item, reason='similar-category', display_currency=display_currency)
+            for item in queryset[:limit]
+        ]
         cache.set(cache_key, results, timeout=60 * 30)
         return results
 
-    def recommend_for_user(self, user_id: int, limit: int) -> list[dict[str, Any]]:
+    def recommend_for_user(self, user_id: int, limit: int, display_currency: str | None = None) -> list[dict[str, Any]]:
         OrderLine = apps.get_model('order', 'Line')
         user_product_ids = list(
             OrderLine.objects.filter(order__user_id=user_id).values_list('product_id', flat=True).distinct()[:100]
@@ -67,10 +89,13 @@ class RecommendationService:
             .order_by('-date_updated')
         )
 
-        results = [serialize_product_card(product=item, reason='history-based') for item in queryset[:limit]]
+        results = [
+            serialize_product_card(product=item, reason='history-based', display_currency=display_currency)
+            for item in queryset[:limit]
+        ]
         if len(results) < limit:
             seen_ids = {item['id'] for item in results}
-            for candidate in self.trending(limit=limit * 2):
+            for candidate in self.trending(limit=limit * 2, display_currency=display_currency):
                 if candidate['id'] in seen_ids:
                     continue
                 results.append(candidate)
@@ -79,8 +104,8 @@ class RecommendationService:
 
         return results
 
-    def trending(self, limit: int) -> list[dict[str, Any]]:
-        cache_key = f'recommendations:trending:{limit}'
+    def trending(self, limit: int, display_currency: str | None = None) -> list[dict[str, Any]]:
+        cache_key = f'recommendations:trending:{limit}:{display_currency or "default"}'
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -99,6 +124,9 @@ class RecommendationService:
         if trending_ids:
             queryset = queryset.filter(id__in=trending_ids)
 
-        results = [serialize_product_card(product=item, reason='trending') for item in queryset[:limit]]
+        results = [
+            serialize_product_card(product=item, reason='trending', display_currency=display_currency)
+            for item in queryset[:limit]
+        ]
         cache.set(cache_key, results, timeout=60 * 15)
         return results

@@ -1,0 +1,16 @@
+New quote request received on {{ shop_name }}.
+
+Customer details:
+- Name: {{ name }}
+{% if company %}- Company: {{ company }}
+{% endif %}{% if phone %}- Phone: {{ phone }}
+{% endif %}{% if email %}- Email: {{ email }}
+{% endif %}
+{% if product %}Product:
+- ID: {{ product.id }}
+- Title: {{ product.title }}
+- UPC: {{ product.upc }}
+{% endif %}
+Message:
+{{ message }}
+

@@ -4,6 +4,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.services import send_account_registration_email, send_password_changed_email
+
 from .account_serializers import (
     AccountLoginSerializer,
     AccountPasswordChangeSerializer,
@@ -28,6 +30,7 @@ class AccountRegisterAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        send_account_registration_email(user)
         return Response(
             {
                 'user': AccountSummarySerializer(user).data,
@@ -92,4 +95,5 @@ class AccountPasswordAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         update_session_auth_hash(request, user)
+        send_password_changed_email(user)
         return Response({'detail': 'Password updated successfully.'})

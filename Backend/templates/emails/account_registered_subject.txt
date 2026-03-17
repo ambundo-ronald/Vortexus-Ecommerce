@@ -1,0 +1,2 @@
+Welcome to {{ shop_name }}
+

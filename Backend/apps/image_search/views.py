@@ -3,6 +3,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.currency import resolve_display_currency
+
 from .serializers import ImageSearchRequestSerializer
 from .services import ImageSearchService
 
@@ -21,6 +23,7 @@ class ImageSearchAPIView(APIView):
                 image_file=data['image'],
                 top_k=data.get('top_k', 12),
                 category=data.get('category') or None,
+                display_currency=resolve_display_currency(request),
             )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

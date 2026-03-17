@@ -1,0 +1,2 @@
+We received your quote request{% if product %} for {{ product.title }}{% endif %}
+

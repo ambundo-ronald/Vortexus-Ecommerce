@@ -1,0 +1,2 @@
+Shipping update for order {{ order.number }}: {{ status_label }}
+

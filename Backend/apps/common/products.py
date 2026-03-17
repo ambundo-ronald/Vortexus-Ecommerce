@@ -1,5 +1,7 @@
 from typing import Any
 
+from apps.common.currency import convert_product_payload
+
 
 def stockrecord_price(stockrecord: Any) -> float | None:
     if not stockrecord:
@@ -22,8 +24,15 @@ def stockrecord_currency(stockrecord: Any) -> str:
     return 'USD'
 
 
-def serialize_product_card(product: Any, score: float | None = None, reason: str | None = None) -> dict[str, Any]:
+def serialize_product_card(
+    product: Any,
+    score: float | None = None,
+    reason: str | None = None,
+    display_currency: str | None = None,
+) -> dict[str, Any]:
     stockrecord = product.stockrecords.first() if hasattr(product, 'stockrecords') else None
+    base_price = stockrecord_price(stockrecord)
+    base_currency = stockrecord_currency(stockrecord)
 
     image_url = ''
     try:
@@ -37,8 +46,10 @@ def serialize_product_card(product: Any, score: float | None = None, reason: str
         'id': product.id,
         'title': product.title,
         'sku': product.upc,
-        'price': stockrecord_price(stockrecord),
-        'currency': stockrecord_currency(stockrecord),
+        'price': base_price,
+        'currency': base_currency,
+        'base_price': base_price,
+        'base_currency': base_currency,
         'thumbnail': image_url,
         'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
     }
@@ -48,4 +59,4 @@ def serialize_product_card(product: Any, score: float | None = None, reason: str
     if reason:
         payload['reason'] = reason
 
-    return payload
+    return convert_product_payload(payload, display_currency)

@@ -1,0 +1,16 @@
+Hello {{ display_name }},
+
+Your order {{ order.number }} has been confirmed on {{ shop_name }}.
+
+Order summary:
+- Status: {{ order.status }}
+- Total: {{ total }}
+- Shipping: {{ shipping_total }}
+- Placed: {{ order.date_placed }}
+{% if order.shipping_method %}- Shipping method: {{ order.shipping_method }}
+{% endif %}
+
+We will email you again when the shipment status changes.
+
+{{ shop_name }}
+

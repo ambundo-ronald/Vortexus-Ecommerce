@@ -10,6 +10,7 @@ from opensearchpy.exceptions import OpenSearchException
 from PIL import Image, UnidentifiedImageError
 
 from apps.common.clients import get_opensearch_client
+from apps.common.currency import convert_product_payload
 from apps.common.products import serialize_product_card
 
 logger = logging.getLogger(__name__)
@@ -105,15 +106,36 @@ class ImageSearchService:
     def __init__(self) -> None:
         self.embedding_service = ImageEmbeddingService()
 
-    def search_similar(self, image_file, top_k: int, category: str | None = None) -> dict[str, Any]:
+    def search_similar(
+        self,
+        image_file,
+        top_k: int,
+        category: str | None = None,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         query_vector = self.embedding_service.embed_image(image_file)
 
         try:
-            return self._search_opensearch(query_vector=query_vector, top_k=top_k, category=category)
+            return self._search_opensearch(
+                query_vector=query_vector,
+                top_k=top_k,
+                category=category,
+                display_currency=display_currency,
+            )
         except (OpenSearchException, KeyError):
-            return self._search_database_fallback(top_k=top_k, category=category)
+            return self._search_database_fallback(
+                top_k=top_k,
+                category=category,
+                display_currency=display_currency,
+            )
 
-    def _search_opensearch(self, query_vector: list[float], top_k: int, category: str | None = None) -> dict[str, Any]:
+    def _search_opensearch(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        category: str | None = None,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         client = get_opensearch_client()
 
         knn_clause = {
@@ -146,16 +168,21 @@ class ImageSearchService:
         for hit in response['hits']['hits']:
             source = hit.get('_source', {})
             results.append(
+                convert_product_payload(
                 {
                     'id': source.get('product_id'),
                     'title': source.get('title'),
                     'sku': source.get('sku'),
                     'price': source.get('price'),
+                    'base_price': source.get('price'),
                     'currency': source.get('currency', 'USD'),
+                    'base_currency': source.get('currency', 'USD'),
                     'thumbnail': source.get('thumbnail', ''),
                     'in_stock': source.get('in_stock', False),
                     'score': hit.get('_score'),
-                }
+                },
+                display_currency,
+                )
             )
 
         return {
@@ -164,7 +191,12 @@ class ImageSearchService:
             'source': 'opensearch',
         }
 
-    def _search_database_fallback(self, top_k: int, category: str | None = None) -> dict[str, Any]:
+    def _search_database_fallback(
+        self,
+        top_k: int,
+        category: str | None = None,
+        display_currency: str | None = None,
+    ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
 
         queryset = Product.objects.filter(is_public=True).prefetch_related('stockrecords').order_by('-date_updated')
@@ -172,7 +204,7 @@ class ImageSearchService:
             queryset = queryset.filter(categories__slug=category)
 
         products = queryset.distinct()[:top_k]
-        results = [serialize_product_card(product=product) for product in products]
+        results = [serialize_product_card(product=product, display_currency=display_currency) for product in products]
 
         return {
             'results': results,

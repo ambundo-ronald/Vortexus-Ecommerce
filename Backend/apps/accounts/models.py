@@ -8,6 +8,8 @@ class CustomerProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='customer_profile',
     )
+    country_code = models.CharField(max_length=2, blank=True)
+    preferred_currency = models.CharField(max_length=3, blank=True)
     phone = models.CharField(max_length=40, blank=True)
     company = models.CharField(max_length=120, blank=True)
     receive_order_updates = models.BooleanField(default=True)

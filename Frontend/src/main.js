@@ -20,14 +20,36 @@ const state = {
   relatedProducts: [],
   recommendations: [],
   imageResults: [],
-  cart: loadCart(),
+  basket: {
+    lines: [],
+    line_count: 0,
+    item_count: 0,
+    totals: { subtotal: 0, currency: "USD" },
+    shipping_required: false,
+    is_empty: true
+  },
+  checkout: {
+    countries: [],
+    address: null,
+    shipping_required: false,
+    methods: [],
+    selected_method: null,
+    ready_for_checkout: false,
+    missing: [],
+    taxes: { known: false, country_code: "", rate: null, merchandise_tax: 0, shipping_tax: 0, total_tax: 0 },
+    totals: { subtotal: 0, shipping: 0, tax: 0, order_total: 0, currency: "USD" }
+  },
+  csrfToken: "",
   loading: {
     categories: false,
     products: false,
     detail: false,
     recommendations: false,
     imageSearch: false,
-    quote: false
+    quote: false,
+    checkout: false,
+    cartAction: false,
+    shippingSave: false
   },
   error: ""
 };
@@ -44,6 +66,7 @@ function route() {
   const hash = window.location.hash || "#/";
   if (hash.startsWith("#/catalog")) return "catalog";
   if (hash.startsWith("#/product/")) return "product";
+  if (hash.startsWith("#/checkout")) return "checkout";
   return "home";
 }
 
@@ -81,25 +104,19 @@ function updateCatalogHash() {
   }
 }
 
-function loadCart() {
-  try {
-    const raw = localStorage.getItem("vx_cart");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCart() {
-  localStorage.setItem("vx_cart", JSON.stringify(state.cart));
+function countCartItems() {
+  return state.basket.item_count || 0;
 }
 
 function cartTotal() {
-  return state.cart.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0);
+  if (state.checkout?.selected_method || route() === "checkout") {
+    return state.checkout.totals.order_total || 0;
+  }
+  return state.basket.totals.subtotal || 0;
 }
 
-function countCartItems() {
-  return state.cart.reduce((sum, item) => sum + item.qty, 0);
+function activeCurrency() {
+  return state.checkout.totals.currency || state.basket.totals.currency || "USD";
 }
 
 function toCurrency(value, currency = "USD") {
@@ -115,6 +132,67 @@ function imageUrl(url) {
   if (!url) return "https://via.placeholder.com/640x400?text=No+Image";
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
   return `${API_BASE}${url}`;
+}
+
+function apiErrorMessage(payload, fallback) {
+  if (!payload) return fallback;
+  if (payload.error?.detail) return payload.error.detail;
+  if (payload.detail) return payload.detail;
+  return fallback;
+}
+
+async function ensureCsrfToken() {
+  if (state.csrfToken) return state.csrfToken;
+  const response = await fetch(`${API_BASE}/api/v1/account/csrf/`, {
+    credentials: "include"
+  });
+  if (!response.ok) {
+    throw new Error(`CSRF bootstrap failed (${response.status})`);
+  }
+  const payload = await response.json();
+  state.csrfToken = payload.csrf_token || "";
+  return state.csrfToken;
+}
+
+async function apiRequest(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+  const isFormData = options.body instanceof FormData;
+
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    await ensureCsrfToken();
+    if (state.csrfToken) headers.set("X-CSRFToken", state.csrfToken);
+  }
+
+  if (!isFormData && options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    method,
+    credentials: "include",
+    headers
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  let payload = null;
+
+  if (contentType.includes("application/json")) {
+    payload = await response.json();
+  } else if (!response.ok) {
+    payload = { detail: await response.text() };
+  }
+
+  if (!response.ok) {
+    throw new Error(apiErrorMessage(payload, `Request failed (${response.status})`));
+  }
+
+  if (payload?.csrf_token) {
+    state.csrfToken = payload.csrf_token;
+  }
+
+  return payload;
 }
 
 function categoryChipsHtml(selectedCategory) {
@@ -146,7 +224,7 @@ function productCardHtml(product) {
         <p class="sku">${product.sku || "SKU N/A"}</p>
         <div class="card-foot">
           <p class="price">${toCurrency(product.price, product.currency)}</p>
-          <button class="btn-mini" data-add-to-cart="${product.id}">Add</button>
+          <button class="btn-mini" data-add-to-cart="${product.id}">${state.loading.cartAction ? "..." : "Add"}</button>
         </div>
       </div>
     </article>
@@ -205,7 +283,7 @@ function topNavHtml() {
         </form>
 
         <a class="account-link" href="${API_BASE}/accounts/login/" target="_blank" rel="noreferrer">Login & Register</a>
-        <a class="cart-pill" href="#/catalog">Cart ${countCartItems()}</a>
+        <a class="cart-pill" href="#/checkout">Cart ${countCartItems()}</a>
       </div>
 
       <nav class="menu-strip">
@@ -214,7 +292,6 @@ function topNavHtml() {
     </header>
   `;
 }
-
 function homeViewHtml() {
   return `
     <section class="hero">
@@ -364,7 +441,7 @@ function productViewHtml() {
   const image = product.primary_image || product.thumbnail;
   return `
     <section class="panel product-page">
-      <a class="back-link" href="#/catalog">← Back to catalog</a>
+      <a class="back-link" href="#/catalog">&lt; Back to catalog</a>
       <div class="product-layout">
         <div class="product-media-lg">
           <img src="${imageUrl(image)}" alt="${product.title}" />
@@ -404,9 +481,7 @@ function productViewHtml() {
     </section>
 
     <div class="sticky-actions">
-      <span>
-        ${toCurrency(product.price, product.currency)}
-      </span>
+      <span>${toCurrency(product.price, product.currency)}</span>
       <button class="primary-btn" data-detail-add="${product.id}">Add to Cart</button>
       <button class="secondary-btn" id="open-quote-btn-mobile">Quote</button>
     </div>
@@ -444,11 +519,188 @@ function productViewHtml() {
   `;
 }
 
+function basketLineHtml(line) {
+  return `
+    <article class="basket-line">
+      <a href="#/product/${line.product.id}" class="basket-thumb">
+        <img src="${imageUrl(line.product.thumbnail)}" alt="${line.product.title}" loading="lazy" />
+      </a>
+      <div class="basket-line-body">
+        <h3><a href="#/product/${line.product.id}">${line.product.title}</a></h3>
+        <p class="sku">${line.product.sku || line.line_reference}</p>
+        <p class="stock ${line.availability.is_available ? "ok" : "warn"}">${line.availability.message || (line.availability.is_available ? "Ready for checkout" : "Availability check required")}</p>
+      </div>
+      <div class="basket-line-actions">
+        <p class="price">${toCurrency(line.line_total, line.currency)}</p>
+        <div class="qty-control">
+          <button type="button" class="qty-btn" data-line-update="${line.id}" data-quantity="${Math.max(0, line.quantity - 1)}">-</button>
+          <span>${line.quantity}</span>
+          <button type="button" class="qty-btn" data-line-update="${line.id}" data-quantity="${line.quantity + 1}">+</button>
+        </div>
+        <button type="button" class="text-btn" data-remove-line="${line.id}">Remove</button>
+      </div>
+    </article>
+  `;
+}
+
+function shippingMethodHtml(method) {
+  return `
+    <button type="button" class="shipping-method ${method.selected ? "selected" : ""}" data-select-shipping="${method.code}">
+      <span>
+        <strong>${method.name}</strong>
+        <small>${method.description}</small>
+      </span>
+      <span class="shipping-charge">${toCurrency(method.charge, method.currency)}</span>
+    </button>
+  `;
+}
+
+function checkoutViewHtml() {
+  const lines = state.basket.lines || [];
+  const address = state.checkout.address || {};
+  const countries = state.checkout.countries || [];
+
+  return `
+    <section class="panel checkout-shell">
+      <div class="panel-head">
+        <h2>Checkout</h2>
+        <p>${state.basket.item_count || 0} items in basket</p>
+      </div>
+
+      <div class="checkout-grid">
+        <div class="checkout-main">
+          <section class="checkout-section">
+            <div class="section-head">
+              <h3>Basket</h3>
+              <a href="#/catalog" class="text-link">Add more products</a>
+            </div>
+            ${
+              lines.length
+                ? `<div class="basket-lines">${lines.map(basketLineHtml).join("")}</div>`
+                : `<p class="empty">Your basket is empty. Add pumps, accessories, or treatment components to continue.</p>`
+            }
+          </section>
+
+          <section class="checkout-section">
+            <div class="section-head">
+              <h3>Delivery Address</h3>
+              <p class="subtle">Used to determine available shipping options.</p>
+            </div>
+            <form id="shipping-address-form" class="shipping-form">
+              <div class="form-grid">
+                <label>
+                  First name
+                  <input type="text" name="first_name" value="${address.first_name || ""}" required />
+                </label>
+                <label>
+                  Last name
+                  <input type="text" name="last_name" value="${address.last_name || ""}" required />
+                </label>
+                <label>
+                  Phone
+                  <input type="text" name="phone_number" value="${address.phone_number || ""}" placeholder="+254..." />
+                </label>
+                <label>
+                  Country
+                  <select name="country_code" required>
+                    <option value="">Select country</option>
+                    ${countries
+                      .map(
+                        (country) =>
+                          `<option value="${country.code}" ${country.code === (address.country_code || "KE") ? "selected" : ""}>${country.name}</option>`
+                      )
+                      .join("")}
+                  </select>
+                </label>
+                <label class="full-span">
+                  Address line 1
+                  <input type="text" name="line1" value="${address.line1 || ""}" required />
+                </label>
+                <label class="full-span">
+                  Address line 2
+                  <input type="text" name="line2" value="${address.line2 || ""}" />
+                </label>
+                <label>
+                  Area / site
+                  <input type="text" name="line3" value="${address.line3 || ""}" />
+                </label>
+                <label>
+                  City
+                  <input type="text" name="line4" value="${address.line4 || ""}" required />
+                </label>
+                <label>
+                  State / county
+                  <input type="text" name="state" value="${address.state || ""}" />
+                </label>
+                <label>
+                  Postcode
+                  <input type="text" name="postcode" value="${address.postcode || ""}" />
+                </label>
+                <label class="full-span">
+                  Delivery notes
+                  <textarea name="notes" rows="3" placeholder="Site contact, gate instructions, unloading requirements...">${address.notes || ""}</textarea>
+                </label>
+              </div>
+              <button type="submit" class="primary-btn">${state.loading.shippingSave ? "Saving..." : "Save Delivery Address"}</button>
+            </form>
+          </section>
+
+          <section class="checkout-section">
+            <div class="section-head">
+              <h3>Shipping Method</h3>
+              <p class="subtle">Choose the delivery mode for this order.</p>
+            </div>
+            ${
+              state.checkout.methods.length
+                ? `<div class="shipping-methods">${state.checkout.methods.map(shippingMethodHtml).join("")}</div>`
+                : `<p class="empty">Add products to the basket to see shipping methods.</p>`
+            }
+          </section>
+        </div>
+
+        <aside class="checkout-side">
+          <section class="checkout-section order-summary">
+            <h3>Order Summary</h3>
+            <div class="summary-row">
+              <span>Subtotal</span>
+              <strong>${toCurrency(state.checkout.totals.subtotal, state.checkout.totals.currency)}</strong>
+            </div>
+            <div class="summary-row">
+              <span>Shipping</span>
+              <strong>${toCurrency(state.checkout.totals.shipping, state.checkout.totals.currency)}</strong>
+            </div>
+            <div class="summary-row">
+              <span>Tax</span>
+              <strong>${
+                state.checkout.taxes?.known
+                  ? toCurrency(state.checkout.totals.tax, state.checkout.totals.currency)
+                  : "Pending address"
+              }</strong>
+            </div>
+            <div class="summary-row total-row">
+              <span>Order total</span>
+              <strong>${toCurrency(state.checkout.totals.order_total, state.checkout.totals.currency)}</strong>
+            </div>
+            <div class="checkout-status ${state.checkout.ready_for_checkout ? "ready" : "pending"}">
+              ${
+                state.checkout.ready_for_checkout
+                  ? "Basket, address, and shipping method are captured."
+                  : `Missing: ${state.checkout.missing.join(", ") || "basket"}`
+              }
+            </div>
+            <button type="button" class="primary-btn" ${state.checkout.ready_for_checkout ? "" : "disabled"}>Proceed to payment</button>
+          </section>
+        </aside>
+      </div>
+    </section>
+  `;
+}
+
 function footerHtml() {
   return `
     <footer class="footer">
       <div>
-        <strong>Cart Total:</strong> ${toCurrency(cartTotal())}
+        <strong>Estimated Total:</strong> ${toCurrency(cartTotal(), activeCurrency())}
       </div>
       <div class="muted">
         Built for industrial procurement: pumps, boreholes, treatment systems, and accessories.
@@ -474,6 +726,7 @@ function render() {
   const current = route();
   if (current === "catalog") content = catalogViewHtml();
   else if (current === "product") content = productViewHtml();
+  else if (current === "checkout") content = checkoutViewHtml();
   else content = homeViewHtml();
   app.innerHTML = appShellHtml(content);
   bindEvents();
@@ -492,29 +745,15 @@ function navigateToCatalog(extra = {}) {
   }
 }
 
-function addToCart(product) {
-  const existing = state.cart.find((item) => item.id === product.id);
-  if (existing) {
-    existing.qty += 1;
-  } else {
-    state.cart.push({
-      id: product.id,
-      title: product.title,
-      price: product.price || 0,
-      currency: product.currency || "USD",
-      qty: 1
-    });
-  }
-  saveCart();
-  render();
+function syncCheckoutState(payload) {
+  if (payload?.basket) state.basket = payload.basket;
+  if (payload?.shipping) state.checkout = payload.shipping;
 }
 
 async function fetchCategories() {
   state.loading.categories = true;
   try {
-    const response = await fetch(`${API_BASE}/api/v1/catalog/categories/`);
-    if (!response.ok) throw new Error(`Category load failed (${response.status})`);
-    const payload = await response.json();
+    const payload = await apiRequest("/api/v1/catalog/categories/");
     state.categories = payload.results || [];
   } catch (error) {
     state.error = String(error);
@@ -533,9 +772,7 @@ async function fetchProducts({ append = false } = {}) {
       if (value === "" || value === false || value === null || value === undefined) return;
       params.set(key, String(value));
     });
-    const response = await fetch(`${API_BASE}/api/v1/catalog/products/?${params.toString()}`);
-    if (!response.ok) throw new Error(`Product list failed (${response.status})`);
-    const payload = await response.json();
+    const payload = await apiRequest(`/api/v1/catalog/products/?${params.toString()}`);
     if (append) state.products = [...state.products, ...(payload.results || [])];
     else state.products = payload.results || [];
     state.pagination = payload.pagination || null;
@@ -550,9 +787,7 @@ async function fetchProducts({ append = false } = {}) {
 async function fetchRecommendations() {
   state.loading.recommendations = true;
   try {
-    const response = await fetch(`${API_BASE}/api/v1/recommendations/?limit=8`);
-    if (!response.ok) throw new Error(`Recommendations failed (${response.status})`);
-    const payload = await response.json();
+    const payload = await apiRequest("/api/v1/recommendations/?limit=8");
     state.recommendations = payload.results || [];
   } catch (error) {
     state.error = String(error);
@@ -566,9 +801,7 @@ async function fetchProductDetail(productId) {
   state.error = "";
   render();
   try {
-    const response = await fetch(`${API_BASE}/api/v1/catalog/products/${productId}/`);
-    if (!response.ok) throw new Error(`Product detail failed (${response.status})`);
-    const payload = await response.json();
+    const payload = await apiRequest(`/api/v1/catalog/products/${productId}/`);
     state.productDetail = payload.product || null;
     state.relatedProducts = payload.related || [];
   } catch (error) {
@@ -576,6 +809,120 @@ async function fetchProductDetail(productId) {
     state.productDetail = null;
   } finally {
     state.loading.detail = false;
+    render();
+  }
+}
+
+async function fetchCheckoutState({ renderFirst = false } = {}) {
+  state.loading.checkout = true;
+  if (renderFirst) render();
+  try {
+    const payload = await apiRequest("/api/v1/checkout/shipping/");
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.checkout = false;
+    render();
+  }
+}
+
+async function addProductToBasket(productId) {
+  state.loading.cartAction = true;
+  state.error = "";
+  render();
+  try {
+    const payload = await apiRequest("/api/v1/checkout/basket/items/", {
+      method: "POST",
+      body: JSON.stringify({ product_id: productId, quantity: 1 })
+    });
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.cartAction = false;
+    render();
+  }
+}
+async function updateBasketLine(lineId, quantity) {
+  state.loading.cartAction = true;
+  state.error = "";
+  render();
+  try {
+    const payload = await apiRequest(`/api/v1/checkout/basket/items/${lineId}/`, {
+      method: "PATCH",
+      body: JSON.stringify({ quantity })
+    });
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.cartAction = false;
+    render();
+  }
+}
+
+async function removeBasketLine(lineId) {
+  state.loading.cartAction = true;
+  state.error = "";
+  render();
+  try {
+    const payload = await apiRequest(`/api/v1/checkout/basket/items/${lineId}/`, {
+      method: "DELETE"
+    });
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.cartAction = false;
+    render();
+  }
+}
+
+async function saveShippingAddress(formData) {
+  state.loading.shippingSave = true;
+  state.error = "";
+  render();
+  try {
+    const payload = await apiRequest("/api/v1/checkout/shipping/address/", {
+      method: "PUT",
+      body: JSON.stringify({
+        first_name: String(formData.get("first_name") || ""),
+        last_name: String(formData.get("last_name") || ""),
+        line1: String(formData.get("line1") || ""),
+        line2: String(formData.get("line2") || ""),
+        line3: String(formData.get("line3") || ""),
+        line4: String(formData.get("line4") || ""),
+        state: String(formData.get("state") || ""),
+        postcode: String(formData.get("postcode") || ""),
+        country_code: String(formData.get("country_code") || ""),
+        phone_number: String(formData.get("phone_number") || ""),
+        notes: String(formData.get("notes") || "")
+      })
+    });
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.shippingSave = false;
+    render();
+  }
+}
+
+async function selectShippingMethod(methodCode) {
+  state.loading.shippingSave = true;
+  state.error = "";
+  render();
+  try {
+    const payload = await apiRequest("/api/v1/checkout/shipping/select/", {
+      method: "POST",
+      body: JSON.stringify({ method_code: methodCode })
+    });
+    syncCheckoutState(payload);
+  } catch (error) {
+    state.error = String(error);
+  } finally {
+    state.loading.shippingSave = false;
     render();
   }
 }
@@ -589,12 +936,10 @@ async function runImageSearch(file) {
     formData.append("image", file);
     formData.append("top_k", "8");
     if (state.listFilters.category) formData.append("category", state.listFilters.category);
-    const response = await fetch(`${API_BASE}/api/v1/search/image/`, {
+    const payload = await apiRequest("/api/v1/search/image/", {
       method: "POST",
       body: formData
     });
-    if (!response.ok) throw new Error(`Image search failed (${response.status})`);
-    const payload = await response.json();
     state.imageResults = payload.results || [];
   } catch (error) {
     state.error = String(error);
@@ -609,20 +954,17 @@ async function submitQuote(formData) {
   state.error = "";
   render();
   try {
-    const payload = {
-      product_id: state.productDetail?.id,
-      name: formData.get("name"),
-      email: formData.get("email"),
-      phone: formData.get("phone"),
-      company: formData.get("company"),
-      message: formData.get("message")
-    };
-    const response = await fetch(`${API_BASE}/api/v1/quotes/`, {
+    await apiRequest("/api/v1/quotes/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        product_id: state.productDetail?.id,
+        name: formData.get("name"),
+        email: formData.get("email"),
+        phone: formData.get("phone"),
+        company: formData.get("company"),
+        message: formData.get("message")
+      })
     });
-    if (!response.ok) throw new Error(`Quote request failed (${response.status})`);
     alert("Quote request sent successfully.");
   } catch (error) {
     state.error = String(error);
@@ -650,6 +992,10 @@ function bindEvents() {
   const closeQuote = document.querySelector("#close-quote-btn");
   const quoteDialog = document.querySelector("#quote-dialog");
   const quoteForm = document.querySelector("#quote-form");
+  const lineUpdateButtons = document.querySelectorAll("[data-line-update]");
+  const removeLineButtons = document.querySelectorAll("[data-remove-line]");
+  const shippingForm = document.querySelector("#shipping-address-form");
+  const shippingButtons = document.querySelectorAll("[data-select-shipping]");
 
   headerSearchForm?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -712,21 +1058,44 @@ function bindEvents() {
     state.listFilters.page += 1;
     void fetchProducts({ append: true });
   });
-
   addToCartButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const productId = Number(button.getAttribute("data-add-to-cart"));
-      const product = [...state.products, ...state.recommendations, ...state.imageResults, ...state.relatedProducts].find(
-        (item) => item.id === productId
-      );
-      if (product) addToCart(product);
+      if (productId) void addProductToBasket(productId);
     });
   });
 
   detailAddButtons.forEach((button) => {
     button.addEventListener("click", () => {
       const productId = Number(button.getAttribute("data-detail-add"));
-      if (state.productDetail && state.productDetail.id === productId) addToCart(state.productDetail);
+      if (productId) void addProductToBasket(productId);
+    });
+  });
+
+  lineUpdateButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const lineId = Number(button.getAttribute("data-line-update"));
+      const quantity = Number(button.getAttribute("data-quantity"));
+      if (lineId >= 0 && quantity >= 0) void updateBasketLine(lineId, quantity);
+    });
+  });
+
+  removeLineButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const lineId = Number(button.getAttribute("data-remove-line"));
+      if (lineId) void removeBasketLine(lineId);
+    });
+  });
+
+  shippingForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveShippingAddress(new FormData(shippingForm));
+  });
+
+  shippingButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const methodCode = button.getAttribute("data-select-shipping");
+      if (methodCode) void selectShippingMethod(methodCode);
     });
   });
 
@@ -745,7 +1114,14 @@ function bindEvents() {
 
 async function syncRouteData() {
   const current = route();
-  if (!state.categories.length) await fetchCategories();
+
+  if (!state.csrfToken) {
+    await ensureCsrfToken();
+  }
+  if (!state.categories.length) {
+    await fetchCategories();
+  }
+  await fetchCheckoutState();
 
   if (current === "home") {
     if (!state.recommendations.length) await fetchRecommendations();
