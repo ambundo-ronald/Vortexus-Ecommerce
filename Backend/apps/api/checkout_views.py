@@ -1,7 +1,16 @@
+import logging
+
+from django.apps import apps
+from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import permissions, status
+from oscar.apps.order.utils import OrderCreator, OrderNumberGenerator
+from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.notifications.services import send_order_confirmation_email
+from apps.payments.services import link_payment_to_order, payment_requires_prepayment
 
 from .checkout_serializers import (
     BasketItemCreateSerializer,
@@ -16,6 +25,9 @@ from .checkout_utils import (
     get_shipping_address,
     get_shipping_methods,
 )
+from .order_serializers import OrderPlacementSerializer, OrderSummarySerializer, build_order_prices
+
+logger = logging.getLogger(__name__)
 
 
 class BasketAPIView(APIView):
@@ -107,3 +119,82 @@ class ShippingMethodSelectionAPIView(APIView):
 
         get_checkout_session(request).use_shipping_method(method_code)
         return Response(build_checkout_payload(request))
+
+
+class OrderPlacementAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = OrderPlacementSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        PaymentSession = apps.get_model('payments', 'PaymentSession')
+        basket = request.basket
+        shipping_address = serializer.validated_data['shipping_address']
+        shipping_method = serializer.validated_data['shipping_method']
+        guest_email = serializer.validated_data['guest_email']
+        payment_reference = serializer.validated_data['payment_reference']
+        checkout_session = get_checkout_session(request)
+
+        if guest_email:
+            checkout_session.set_guest_email(guest_email)
+
+        pricing = build_order_prices(basket, shipping_address, shipping_method)
+        payment_session = None
+        if payment_reference:
+            payment_session = get_object_or_404(PaymentSession, reference=payment_reference)
+            if payment_session.order_id:
+                raise serializers.ValidationError({'payment_reference': 'This payment has already been used for an order.'})
+            if payment_session.basket_id and payment_session.basket_id != basket.id:
+                raise serializers.ValidationError({'payment_reference': 'This payment session does not belong to the current basket.'})
+            if request.user.is_authenticated and payment_session.user_id and payment_session.user_id != request.user.id:
+                raise serializers.ValidationError({'payment_reference': 'This payment session belongs to a different account.'})
+            if payment_session.currency != pricing['order_total'].currency:
+                raise serializers.ValidationError({'payment_reference': 'Payment currency does not match the current order currency.'})
+            if payment_session.amount != pricing['order_total'].incl_tax:
+                raise serializers.ValidationError({'payment_reference': 'Payment amount no longer matches the current order total.'})
+            if payment_requires_prepayment(payment_session.method) and payment_session.status not in {'authorized', 'paid'}:
+                raise serializers.ValidationError({'payment_reference': 'Payment must be completed before placing the order.'})
+        else:
+            raise serializers.ValidationError({'payment_reference': 'Payment reference is required before placing the order.'})
+
+        order_number = OrderNumberGenerator().order_number(basket)
+        checkout_session.set_order_number(order_number)
+        checkout_session.set_submitted_basket(basket)
+
+        if shipping_address and shipping_address.pk is None:
+            shipping_address.save()
+
+        extra_order_fields = {'guest_email': guest_email} if guest_email else {}
+        try:
+            order = OrderCreator().place_order(
+                basket=basket,
+                total=pricing['order_total'],
+                shipping_method=shipping_method,
+                shipping_charge=pricing['shipping_price'],
+                user=request.user if request.user.is_authenticated else None,
+                shipping_address=shipping_address,
+                order_number=order_number,
+                status=getattr(settings, 'OSCAR_INITIAL_ORDER_STATUS', 'Pending'),
+                request=request,
+                **extra_order_fields,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({'order': str(exc)}) from exc
+        link_payment_to_order(payment_session, order)
+        basket.submit()
+        checkout_session.flush()
+
+        send_order_confirmation_email(order)
+        logger.info('Order placed successfully: number=%s user=%s', order.number, getattr(request.user, 'id', None))
+
+        return Response(
+            {
+                'detail': 'Order placed successfully.',
+                'order': OrderSummarySerializer(order).data,
+                'payment': {'reference': payment_session.reference, 'status': payment_session.status, 'method': payment_session.method},
+                'taxes': pricing['tax_breakdown'],
+            },
+            status=status.HTTP_201_CREATED,
+        )

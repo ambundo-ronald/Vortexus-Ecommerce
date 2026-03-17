@@ -68,6 +68,11 @@ Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast AP
 - `GET /api/v1/catalog/products/?q=pump&category=borehole-pumps&in_stock=true&sort_by=price_asc&page=1&page_size=24`
 - `GET /api/v1/catalog/products/<id>/`
 - `POST /api/v1/quotes/` (name/email/phone/company/message + optional `product_id`)
+- `GET /api/v1/checkout/payments/methods/`
+- `POST /api/v1/checkout/payments/`
+- `GET /api/v1/checkout/payments/<reference>/`
+- `POST /api/v1/checkout/payments/<reference>/confirm/`
+- `POST /api/v1/checkout/orders/` (places an order from the current basket + shipping session)
 - `GET|POST|PATCH /api/v1/supplier/profile/`
 - `GET /api/v1/supplier/dashboard/`
 - `GET|POST /api/v1/supplier/products/`
@@ -112,7 +117,143 @@ Approval options:
 - Django admin: `Supplier Profiles`
 - API: `PATCH /api/v1/admin/suppliers/<id>/`
 
-## 7) Image Embedding Settings
+## 7) Order Placement API
+Implemented:
+- validates basket readiness
+- requires shipping address/method when shipping is needed
+- supports guest checkout email capture
+- requires a payment reference before order placement
+- creates a real Oscar order
+- submits the basket after successful placement
+- sends order confirmation email
+
+Endpoint:
+
+```powershell
+POST /api/v1/checkout/orders/
+```
+
+Example payload for guest checkout:
+
+```json
+{
+  "guest_email": "buyer@example.com",
+  "payment_reference": "PAY-ABC123DEF456"
+}
+```
+
+## 8) Payment API
+Supported payment methods:
+- `mpesa`
+- `airtel_money`
+- `credit_card`
+- `debit_card`
+- `bank_transfer`
+- `cash_on_delivery`
+
+Implemented:
+- payment method discovery endpoint
+- payment session initialization
+- payment session status lookup
+- payment confirmation endpoint for provider callback / backend testing
+- payment linkage to Oscar payment `Source` and `Transaction` records on order placement
+
+Important scope note:
+- this is a gateway-ready backend contract
+- live gateway credentials/webhooks are not wired yet
+- `confirm` endpoint currently acts as the provider callback/testing hook for MVP development
+
+### M-Pesa Daraja sandbox
+Dedicated M-Pesa endpoints:
+- `POST /api/v1/checkout/payments/mpesa/initiate/`
+- `GET /api/v1/checkout/payments/mpesa/<reference>/status/`
+- `POST /api/v1/payments/mpesa/callback/`
+
+Required env vars:
+- `MPESA_BASE_URL`
+- `MPESA_CONSUMER_KEY`
+- `MPESA_CONSUMER_SECRET`
+- `MPESA_SHORTCODE`
+- `MPESA_PASSKEY`
+- `MPESA_CALLBACK_URL`
+- `MPESA_TRANSACTION_TYPE`
+
+Behavior:
+- initiates STK push against Daraja sandbox when credentials are configured
+- stores `MerchantRequestID` and `CheckoutRequestID` in the payment session
+- updates payment session status from callback payloads
+- allows order placement only after required payment completion
+
+Example initialize payment payload:
+
+```json
+{
+  "method": "mpesa",
+  "payer_email": "buyer@example.com",
+  "phone_number": "+254700000011"
+}
+```
+
+### Card sandbox
+Dedicated card endpoint:
+- `POST /api/v1/checkout/payments/cards/initiate/`
+
+Supported card methods:
+- `credit_card`
+- `debit_card`
+
+Behavior:
+- does not store raw PAN/card number
+- accepts a sandbox payment token from the frontend/payment widget
+- stores masked metadata such as `last4`, brand, expiry month/year, holder name
+- authorizes the payment session for order placement
+
+Required env vars:
+- `CARD_SANDBOX_ENABLED`
+- `CARD_PROVIDER_NAME`
+
+Example payload:
+
+```json
+{
+  "method": "credit_card",
+  "payer_email": "buyer@example.com",
+  "payment_token": "tok_test_visa",
+  "card_brand": "visa",
+  "last4": "4242",
+  "expiry_month": 12,
+  "expiry_year": 2030,
+  "holder_name": "Card Buyer"
+}
+```
+
+### Airtel Money sandbox
+Dedicated Airtel Money endpoints:
+- `POST /api/v1/checkout/payments/airtel-money/initiate/`
+- `GET /api/v1/checkout/payments/airtel-money/<reference>/status/`
+- `POST /api/v1/payments/airtel-money/callback/`
+
+Behavior:
+- keeps Airtel Money flow separate from M-Pesa and card
+- creates a pending Airtel Money collection session
+- stores provider reference for callback reconciliation
+- updates payment session to `paid` after successful callback
+- allows order placement only after required payment completion
+
+Required env vars:
+- `AIRTEL_MONEY_SANDBOX_ENABLED`
+- `AIRTEL_MONEY_PROVIDER_NAME`
+
+Example payload:
+
+```json
+{
+  "phone_number": "+254700000011",
+  "payer_email": "buyer@example.com"
+}
+```
+
+## 9) Image Embedding Settings
 Environment variables:
 - `IMAGE_EMBEDDING_BACKEND=clip` (`hash` is available fallback)
 - `CLIP_MODEL_NAME=openai/clip-vit-base-patch32`
@@ -124,7 +265,7 @@ Behavior:
 - If CLIP backend fails to initialize, service falls back to hash embedding and logs the error.
 - First CLIP usage downloads model weights and can be slower.
 
-## 8) What Is Implemented vs Placeholder
+## 10) What Is Implemented vs Placeholder
 Implemented:
 - API wiring and service structure.
 - Database fallback logic for all three features.
@@ -136,7 +277,7 @@ Placeholder:
 - Better ranking rules and offline evaluation for recommendations.
 - Full product ingestion pipeline with industrial attributes normalization.
 
-## 9) Performance-first Next Tasks
+## 11) Performance-first Next Tasks
 1. Add query profiling and response-time metrics (p95 targets).
 2. Add aggressive Redis caching for common search and recommendation queries.
 3. Use exact part-number analyzers in OpenSearch and synonyms for industrial terms.

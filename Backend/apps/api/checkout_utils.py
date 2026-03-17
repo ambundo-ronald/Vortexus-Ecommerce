@@ -101,6 +101,13 @@ def basket_subtotal(basket) -> Decimal:
     return _money(total)
 
 
+def basket_subtotal_excl_tax(basket) -> Decimal:
+    total = getattr(basket, 'total_excl_tax', None)
+    if total is None:
+        total = getattr(basket, 'total_incl_tax', None)
+    return _money(total)
+
+
 def shipping_charge_for_method(method, basket) -> Decimal:
     if not method:
         return ZERO
@@ -298,7 +305,7 @@ def build_checkout_payload(request) -> dict:
     display_currency = resolve_display_currency(request, country_code=country_code)
     methods = get_shipping_methods(request, basket, shipping_address=shipping_address)
     selected_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
-    subtotal = basket_subtotal(basket)
+    subtotal = basket_subtotal_excl_tax(basket)
     shipping_total = shipping_charge_for_method(selected_method, basket)
     taxes = calculate_checkout_taxes(subtotal, shipping_total, country_code)
     tax_total = _money(taxes['total_tax'])

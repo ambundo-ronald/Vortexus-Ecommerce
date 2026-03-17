@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.marketplace',
     'apps.notifications',
+    'apps.payments',
     'apps.search',
     'apps.image_search',
     'apps.recommendations',
@@ -193,4 +194,26 @@ SALES_NOTIFICATION_RECIPIENTS = [
     for recipient in env('SALES_NOTIFICATION_RECIPIENTS', default='sales@vortexus.local').split(',')
     if recipient.strip()
 ]
+
+PAYMENT_METHODS = [
+    {'code': 'mpesa', 'name': 'M-Pesa', 'provider': 'mpesa', 'requires_phone': True, 'requires_prepayment': True},
+    {'code': 'airtel_money', 'name': 'Airtel Money', 'provider': 'airtel_money', 'requires_phone': True, 'requires_prepayment': True},
+    {'code': 'credit_card', 'name': 'Credit Card', 'provider': 'card', 'requires_phone': False, 'requires_prepayment': True},
+    {'code': 'debit_card', 'name': 'Debit Card', 'provider': 'card', 'requires_phone': False, 'requires_prepayment': True},
+    {'code': 'bank_transfer', 'name': 'Bank Transfer', 'provider': 'bank_transfer', 'requires_phone': False, 'requires_prepayment': False},
+    {'code': 'cash_on_delivery', 'name': 'Cash on Delivery', 'provider': 'cash_on_delivery', 'requires_phone': False, 'requires_prepayment': False},
+]
+
+MPESA_BASE_URL = env('MPESA_BASE_URL', default='https://sandbox.safaricom.co.ke')
+MPESA_CONSUMER_KEY = env('MPESA_CONSUMER_KEY', default='')
+MPESA_CONSUMER_SECRET = env('MPESA_CONSUMER_SECRET', default='')
+MPESA_SHORTCODE = env('MPESA_SHORTCODE', default='')
+MPESA_PASSKEY = env('MPESA_PASSKEY', default='')
+MPESA_CALLBACK_URL = env('MPESA_CALLBACK_URL', default='')
+MPESA_TRANSACTION_TYPE = env('MPESA_TRANSACTION_TYPE', default='CustomerPayBillOnline')
+MPESA_TIMEOUT_SECONDS = env.int('MPESA_TIMEOUT_SECONDS', default=30)
+AIRTEL_MONEY_SANDBOX_ENABLED = env.bool('AIRTEL_MONEY_SANDBOX_ENABLED', default=True)
+AIRTEL_MONEY_PROVIDER_NAME = env('AIRTEL_MONEY_PROVIDER_NAME', default='sandbox_airtel_money')
+CARD_SANDBOX_ENABLED = env.bool('CARD_SANDBOX_ENABLED', default=True)
+CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
 

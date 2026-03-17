@@ -12,9 +12,23 @@ from .checkout_views import (
     BasketAPIView,
     BasketItemCollectionAPIView,
     BasketLineDetailAPIView,
+    OrderPlacementAPIView,
     ShippingAddressAPIView,
     ShippingMethodSelectionAPIView,
     ShippingStateAPIView,
+)
+from .payment_views import (
+    AirtelMoneyCallbackAPIView,
+    AirtelMoneyInitializationAPIView,
+    AirtelMoneyStatusAPIView,
+    CardInitializationAPIView,
+    MpesaCallbackAPIView,
+    MpesaInitializationAPIView,
+    MpesaStatusAPIView,
+    PaymentConfirmationAPIView,
+    PaymentInitializationAPIView,
+    PaymentMethodCollectionAPIView,
+    PaymentSessionDetailAPIView,
 )
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
 from .supplier_views import (
@@ -56,6 +70,18 @@ urlpatterns = [
     path('checkout/shipping/', ShippingStateAPIView.as_view(), name='checkout-shipping-state'),
     path('checkout/shipping/address/', ShippingAddressAPIView.as_view(), name='checkout-shipping-address'),
     path('checkout/shipping/select/', ShippingMethodSelectionAPIView.as_view(), name='checkout-shipping-select'),
+    path('checkout/payments/methods/', PaymentMethodCollectionAPIView.as_view(), name='checkout-payment-methods'),
+    path('checkout/payments/', PaymentInitializationAPIView.as_view(), name='checkout-payments'),
+    path('checkout/payments/<str:reference>/', PaymentSessionDetailAPIView.as_view(), name='checkout-payment-detail'),
+    path('checkout/payments/<str:reference>/confirm/', PaymentConfirmationAPIView.as_view(), name='checkout-payment-confirm'),
+    path('checkout/payments/airtel-money/initiate/', AirtelMoneyInitializationAPIView.as_view(), name='checkout-payment-airtel-initiate'),
+    path('checkout/payments/airtel-money/<str:reference>/status/', AirtelMoneyStatusAPIView.as_view(), name='checkout-payment-airtel-status'),
+    path('checkout/payments/cards/initiate/', CardInitializationAPIView.as_view(), name='checkout-payment-card-initiate'),
+    path('checkout/payments/mpesa/initiate/', MpesaInitializationAPIView.as_view(), name='checkout-payment-mpesa-initiate'),
+    path('checkout/payments/mpesa/<str:reference>/status/', MpesaStatusAPIView.as_view(), name='checkout-payment-mpesa-status'),
+    path('payments/airtel-money/callback/', AirtelMoneyCallbackAPIView.as_view(), name='payment-airtel-callback'),
+    path('payments/mpesa/callback/', MpesaCallbackAPIView.as_view(), name='payment-mpesa-callback'),
+    path('checkout/orders/', OrderPlacementAPIView.as_view(), name='checkout-orders'),
     path('account/wishlist/', DefaultWishListAPIView.as_view(), name='account-wishlist-default'),
     path('account/wishlist/items/', DefaultWishListItemCollectionAPIView.as_view(), name='account-wishlist-items-default'),
     path(
