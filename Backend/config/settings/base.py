@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 from oscar import INSTALLED_APPS as OSCAR_CORE_APPS
 from oscar.defaults import *  # noqa: F401,F403
 
@@ -24,6 +25,7 @@ INSTALLED_APPS = [
     *OSCAR_CORE_APPS,
     'rest_framework',
     'django_filters',
+    'apps.auditlog',
     'apps.accounts',
     'apps.inventory',
     'apps.marketplace',
@@ -39,6 +41,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'apps.api.middleware.ApiRequestLoggingMiddleware',
     'apps.api.middleware.ApiExceptionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -97,7 +100,20 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(env('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
+FILE_UPLOAD_MAX_MEMORY_SIZE = env.int('FILE_UPLOAD_MAX_MEMORY_SIZE', default=5 * 1024 * 1024)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int('DATA_UPLOAD_MAX_MEMORY_SIZE', default=15 * 1024 * 1024)
+MAX_IMAGE_UPLOAD_BYTES = env.int('MAX_IMAGE_UPLOAD_BYTES', default=5 * 1024 * 1024)
+MAX_PRODUCT_IMAGE_BYTES = env.int('MAX_PRODUCT_IMAGE_BYTES', default=10 * 1024 * 1024)
+MAX_IMAGE_DIMENSION = env.int('MAX_IMAGE_DIMENSION', default=1600)
+MAX_PRODUCT_IMAGE_DIMENSION = env.int('MAX_PRODUCT_IMAGE_DIMENSION', default=2400)
+NORMALIZED_IMAGE_FORMAT = env('NORMALIZED_IMAGE_FORMAT', default='WEBP').upper()
+NORMALIZED_IMAGE_QUALITY = env.int('NORMALIZED_IMAGE_QUALITY', default=82)
+ALLOWED_IMAGE_EXTENSIONS = tuple(
+    ext.strip().lower()
+    for ext in env('ALLOWED_IMAGE_EXTENSIONS', default='.jpg,.jpeg,.png,.webp').split(',')
+    if ext.strip()
+)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -106,6 +122,27 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'EXCEPTION_HANDLER': 'apps.api.exceptions.api_exception_handler',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/hour',
+        'user': '1200/hour',
+        'account_csrf': '60/hour',
+        'account_register': '5/hour',
+        'account_register_identity': '3/hour',
+        'account_login': '20/hour',
+        'account_login_identity': '8/hour',
+        'account_password': '10/hour',
+        'quote_request': '8/hour',
+        'public_search': '120/hour',
+        'image_search': '20/hour',
+        'recommendations': '180/hour',
+        'supplier_apply': '4/day',
+        'payment_init': '20/hour',
+    },
     'PAGE_SIZE': 24,
 }
 
@@ -130,6 +167,15 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_ALWAYS_EAGER = env.bool('CELERY_TASK_ALWAYS_EAGER', default=False)
+CELERY_TASK_EAGER_PROPAGATES = env.bool('CELERY_TASK_EAGER_PROPAGATES', default=True)
+CELERY_BEAT_SCHEDULE = {
+    'refresh-trending-recommendations-hourly': {
+        'task': 'apps.recommendations.tasks.refresh_trending_recommendations',
+        'schedule': crontab(minute=0),
+        'args': (24,),
+    },
+}
 
 OPENSEARCH = {
     'HOST': env('OPENSEARCH_HOST', default='http://127.0.0.1:9200'),

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ docs.title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #f4f7fb;
+            --surface: #ffffff;
+            --ink: #14233b;
+            --muted: #5c6b84;
+            --line: #d8e0eb;
+            --accent: #0f5cc0;
+            --accent-soft: #e8f0fd;
+        }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+        }
+        .wrap {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+        .hero, .card {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(20, 35, 59, 0.06);
+        }
+        .hero {
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .hero h1 {
+            margin: 0 0 8px;
+            font-size: 32px;
+        }
+        .hero p {
+            margin: 0 0 16px;
+            color: var(--muted);
+            max-width: 760px;
+            line-height: 1.5;
+        }
+        .pill-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pill {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .card {
+            padding: 20px;
+        }
+        h2 {
+            margin: 0 0 14px;
+            font-size: 22px;
+        }
+        h3 {
+            margin: 0 0 12px;
+            font-size: 18px;
+        }
+        p, li {
+            line-height: 1.5;
+        }
+        ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .endpoint {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+        .endpoint-head {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .method {
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-weight: 700;
+            font-size: 13px;
+            color: white;
+            background: #1c7c54;
+        }
+        .method.post, .method.patch, .method.put, .method.delete {
+            background: #0f5cc0;
+        }
+        code, pre {
+            font-family: Consolas, "Courier New", monospace;
+        }
+        pre {
+            background: #0f1c2f;
+            color: #dce7ff;
+            border-radius: 12px;
+            padding: 14px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        .meta {
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .full {
+            margin-bottom: 24px;
+        }
+        a {
+            color: var(--accent);
+        }
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <section class="hero">
+            <h1>{{ docs.title }}</h1>
+            <p>{{ docs.summary }}</p>
+            <div class="pill-row">
+                <span class="pill">Base URL: {{ docs.base_url }}</span>
+                <span class="pill">Version: {{ docs.version }}</span>
+                <span class="pill">Default Currency: {{ docs.environment.default_currency }}</span>
+                <span class="pill">Async Enabled: {{ docs.environment.async_enabled }}</span>
+            </div>
+        </section>
+
+        <div class="grid">
+            <section class="card">
+                <h2>Authentication</h2>
+                <p class="meta">Session-authenticated API with CSRF protection on state-changing requests.</p>
+                <ul>
+                    {% for step in docs.authentication.flow %}
+                    <li>{{ step }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+            <section class="card">
+                <h2>Reference Formats</h2>
+                <p class="meta">Machine-readable docs are also available at <a href="/api/v1/docs.json">/api/v1/docs.json</a>.</p>
+                <h3>Error Response</h3>
+                <pre>{{ docs.response_contracts.errors.shape|pprint }}</pre>
+                <h3>Throttled Response</h3>
+                <pre>{{ docs.response_contracts.throttled.shape|pprint }}</pre>
+            </section>
+        </div>
+
+        {% for section in docs.sections %}
+        <section class="card full">
+            <h2>{{ section.name }}</h2>
+            {% for endpoint in section.endpoints %}
+            <div class="endpoint">
+                <div class="endpoint-head">
+                    <span class="method {{ endpoint.method|lower }}">{{ endpoint.method }}</span>
+                    <code>{{ endpoint.path }}</code>
+                </div>
+                <p>{{ endpoint.description }}</p>
+                <p class="meta">Auth: {{ endpoint.auth }}</p>
+                {% if endpoint.query_params %}
+                <p class="meta">Query Params: {{ endpoint.query_params|join:", " }}</p>
+                {% endif %}
+                {% if endpoint.form_fields %}
+                <p class="meta">Form Fields: {{ endpoint.form_fields|join:", " }}</p>
+                {% endif %}
+                {% if endpoint.content_type %}
+                <p class="meta">Content-Type: {{ endpoint.content_type }}</p>
+                {% endif %}
+                {% if endpoint.request_example %}
+                <h3>Request Example</h3>
+                <pre>{{ endpoint.request_example|pprint }}</pre>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endfor %}
+    </div>
+</body>
+</html>

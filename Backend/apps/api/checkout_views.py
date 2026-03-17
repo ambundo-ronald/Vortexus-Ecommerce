@@ -9,7 +9,8 @@ from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.notifications.services import send_order_confirmation_email
+from apps.auditlog.services import record_audit_event
+from apps.notifications.services import queue_order_confirmation_email
 from apps.inventory.services import (
     InventoryReservationError,
     prepare_basket_for_order_submission,
@@ -220,8 +221,21 @@ class OrderPlacementAPIView(APIView):
         basket.submit()
         checkout_session.flush()
 
-        send_order_confirmation_email(order)
+        queue_order_confirmation_email(order)
         logger.info('Order placed successfully: number=%s user=%s', order.number, getattr(request.user, 'id', None))
+        record_audit_event(
+            event_type='orders.placed',
+            request=request,
+            actor=request.user if request.user.is_authenticated else None,
+            target=order,
+            message='Order placed successfully.',
+            metadata={
+                'order_number': order.number,
+                'payment_reference': payment_session.reference,
+                'payment_method': payment_session.method,
+                'guest_checkout': bool(guest_email and not request.user.is_authenticated),
+            },
+        )
 
         return Response(
             {

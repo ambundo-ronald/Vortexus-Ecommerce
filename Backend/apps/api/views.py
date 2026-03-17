@@ -6,11 +6,13 @@ from django.db.models import Min, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.auditlog.services import record_audit_event
 from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
-from apps.notifications.services import send_quote_request_notifications
+from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
 from .serializers import ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
@@ -199,6 +201,13 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
         display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_created',
+            request=request,
+            target=product,
+            message='Catalog product created by staff.',
+            metadata={'upc': product.upc, 'title': product.title},
+        )
         return Response({"product": _build_product_detail(product, display_currency=display_currency)}, status=status.HTTP_201_CREATED)
 
 
@@ -220,29 +229,55 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
 
     def put(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        previous_title = product.title
         serializer = ProductWriteSerializer(instance=product, data=request.data, partial=False)
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
         display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_updated',
+            request=request,
+            target=product,
+            message='Catalog product fully updated by staff.',
+            metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'put'},
+        )
         return Response({"product": _build_product_detail(product, display_currency=display_currency)})
 
     def patch(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        previous_title = product.title
         serializer = ProductWriteSerializer(instance=product, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
         display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_updated',
+            request=request,
+            target=product,
+            message='Catalog product partially updated by staff.',
+            metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'patch'},
+        )
         return Response({"product": _build_product_detail(product, display_currency=display_currency)})
 
     def delete(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        metadata = {'upc': product.upc, 'title': product.title}
         product.delete()
+        record_audit_event(
+            event_type='catalog.product_deleted',
+            request=request,
+            message='Catalog product deleted by staff.',
+            metadata=metadata,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class QuoteRequestAPIView(APIView):
+    throttle_scope = 'quote_request'
+    throttle_classes = [ScopedRateThrottle]
+
     def post(self, request):
         serializer = QuoteRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -254,12 +289,23 @@ class QuoteRequestAPIView(APIView):
             product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
 
         logger.info("Quote request received: %s", payload)
-        notification_result = send_quote_request_notifications(payload, product=product)
+        queue_quote_request_notifications(payload, product=product)
+        record_audit_event(
+            event_type='quotes.requested',
+            request=request,
+            target=product,
+            message='Quote request submitted.',
+            metadata={
+                'email': payload.get('email', ''),
+                'company': payload.get('company', ''),
+                'product_id': product.id if product else None,
+            },
+        )
         return Response(
             {
                 "detail": "Quote request received. Our team will contact you shortly.",
                 "received": payload,
-                "notifications": notification_result,
+                "notifications": {"queued": True},
             },
             status=status.HTTP_201_CREATED,
         )

@@ -2,6 +2,7 @@ from django.apps import apps
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.payments.mpesa import (
@@ -50,6 +51,8 @@ class PaymentMethodCollectionAPIView(APIView):
 
 class PaymentInitializationAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
 
     def post(self, request):
         serializer = PaymentInitializationSerializer(data=request.data, context={'request': request})
@@ -101,6 +104,8 @@ class PaymentConfirmationAPIView(APIView):
 
 class MpesaInitializationAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
 
     def post(self, request):
         if not mpesa_is_configured():
@@ -199,6 +204,8 @@ class MpesaCallbackAPIView(APIView):
 
 class CardInitializationAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
 
     def post(self, request):
         serializer = CardInitializationSerializer(data=request.data, context={'request': request})
@@ -248,6 +255,8 @@ class CardInitializationAPIView(APIView):
 
 class AirtelMoneyInitializationAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
 
     def post(self, request):
         if not airtel_money_is_configured():

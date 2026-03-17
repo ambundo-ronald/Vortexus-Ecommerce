@@ -4,9 +4,11 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from apps.notifications.services import send_shipping_update_email
+from apps.auditlog.services import record_audit_event
+from apps.notifications.services import queue_shipping_update_email
 
 from .supplier_order_serializers import (
     SupplierOrderDetailSerializer,
@@ -125,6 +127,12 @@ def _recompute_supplier_group_status(order, partner_id: int):
 class SupplierProfileAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_throttles(self):
+        if self.request.method == 'POST':
+            self.throttle_scope = 'supplier_apply'
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
+
     def get(self, request):
         supplier_profile = getattr(request.user, 'supplier_profile', None)
         if supplier_profile is None:
@@ -146,6 +154,14 @@ class SupplierProfileAPIView(APIView):
         serializer = SupplierProfileWriteSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         supplier_profile = serializer.save()
+        record_audit_event(
+            event_type='supplier.profile_created',
+            request=request,
+            actor=request.user,
+            target=supplier_profile,
+            message='Supplier profile application created.',
+            metadata={'company_name': supplier_profile.company_name, 'status': supplier_profile.status},
+        )
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data}, status=status.HTTP_201_CREATED)
 
     def patch(self, request):
@@ -163,7 +179,16 @@ class SupplierProfileAPIView(APIView):
             )
         serializer = SupplierProfileWriteSerializer(data=request.data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
+        previous_status = supplier_profile.status
         supplier_profile = serializer.save()
+        record_audit_event(
+            event_type='supplier.profile_updated',
+            request=request,
+            actor=request.user,
+            target=supplier_profile,
+            message='Supplier profile updated.',
+            metadata={'previous_status': previous_status, 'current_status': supplier_profile.status},
+        )
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
 
 
@@ -223,6 +248,14 @@ class SupplierProductCollectionAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product.id)
+        record_audit_event(
+            event_type='supplier.product_created',
+            request=request,
+            actor=request.user,
+            target=product,
+            message='Supplier created a product offer.',
+            metadata={'partner_id': supplier_profile.partner_id, 'partner_name': supplier_profile.partner.name},
+        )
         return Response({'product': _build_supplier_product_detail(product, supplier_profile)}, status=status.HTTP_201_CREATED)
 
 
@@ -237,6 +270,7 @@ class SupplierProductDetailAPIView(APIView):
     def patch(self, request, product_id: int):
         supplier_profile = request.user.supplier_profile
         product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product_id)
+        previous_title = product.title
         serializer = SupplierProductWriteSerializer(
             instance=product,
             data=request.data,
@@ -246,6 +280,18 @@ class SupplierProductDetailAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         product = serializer.save()
         product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product.id)
+        record_audit_event(
+            event_type='supplier.product_updated',
+            request=request,
+            actor=request.user,
+            target=product,
+            message='Supplier updated a product offer.',
+            metadata={
+                'partner_id': supplier_profile.partner_id,
+                'previous_title': previous_title,
+                'current_title': product.title,
+            },
+        )
         return Response({'product': _build_supplier_product_detail(product, supplier_profile)})
 
     @transaction.atomic
@@ -253,6 +299,13 @@ class SupplierProductDetailAPIView(APIView):
         supplier_profile = request.user.supplier_profile
         StockRecord = apps.get_model('partner', 'StockRecord')
         product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product_id)
+        metadata = {
+            'partner_id': supplier_profile.partner_id,
+            'partner_name': supplier_profile.partner.name,
+            'product_id': product.id,
+            'title': product.title,
+            'upc': product.upc,
+        }
         stockrecords = product.stockrecords.filter(partner=supplier_profile.partner)
         deleted_offers = stockrecords.count()
         stockrecords.delete()
@@ -262,6 +315,14 @@ class SupplierProductDetailAPIView(APIView):
             product_deleted = True
         else:
             product_deleted = False
+        metadata.update({'deleted_offers': deleted_offers, 'product_deleted': product_deleted})
+        record_audit_event(
+            event_type='supplier.product_deleted',
+            request=request,
+            actor=request.user,
+            message='Supplier removed a product offer.',
+            metadata=metadata,
+        )
 
         return Response(
             {
@@ -290,9 +351,18 @@ class SupplierAdminDetailAPIView(APIView):
     def patch(self, request, supplier_id: int):
         SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
         supplier_profile = get_object_or_404(SupplierProfile.objects.select_related('user', 'partner'), id=supplier_id)
+        previous_status = supplier_profile.status
         serializer = SupplierAdminStatusSerializer(instance=supplier_profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         supplier_profile = serializer.save()
+        record_audit_event(
+            event_type='supplier.status_changed',
+            request=request,
+            actor=request.user,
+            target=supplier_profile,
+            message='Supplier status updated by staff.',
+            metadata={'previous_status': previous_status, 'current_status': supplier_profile.status},
+        )
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
 
 
@@ -400,16 +470,40 @@ class SupplierOrderLineStatusAPIView(APIView):
         new_order_status = _recompute_order_status(order)
         if (order.status or '') != new_order_status:
             OrderStatusChange.objects.create(order=order, old_status=order.status or '', new_status=new_order_status)
+            previous_order_status = order.status or ''
             order.status = new_order_status
             order.save(update_fields=['status'])
+            record_audit_event(
+                event_type='orders.status_changed',
+                request=request,
+                actor=request.user,
+                target=order,
+                message='Order status updated after supplier fulfillment change.',
+                metadata={'order_number': order.number, 'previous_status': previous_order_status, 'current_status': new_order_status},
+            )
 
         if new_line_status in {'shipped', 'delivered'}:
-            send_shipping_update_email(
+            queue_shipping_update_email(
                 order,
                 status_label=new_line_status.replace('_', ' ').title(),
                 tracking_reference=tracking_reference,
                 note=note or f'Updated by supplier {supplier_profile.company_name}.',
             )
+        record_audit_event(
+            event_type='orders.line_status_changed',
+            request=request,
+            actor=request.user,
+            target=line,
+            message='Supplier updated an order line status.',
+            metadata={
+                'order_number': order.number,
+                'line_id': line.id,
+                'supplier_group_id': group.id,
+                'previous_status': old_line_status,
+                'current_status': new_line_status,
+                'tracking_reference': tracking_reference,
+            },
+        )
 
         return Response(
             {

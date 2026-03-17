@@ -7,6 +7,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from apps.common.async_utils import dispatch_background_task
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,8 +17,19 @@ class NotificationService:
     def model(self):
         return apps.get_model('notifications', 'EmailNotification')
 
-    def send(self, *, event_type: str, to_email: str, subject_template: str, body_template: str, context: dict,
-             related_object_type: str = '', related_object_id: str = '', metadata: dict | None = None) -> bool:
+    def send(
+        self,
+        *,
+        event_type: str,
+        to_email: str,
+        subject_template: str,
+        body_template: str,
+        context: dict,
+        related_object_type: str = '',
+        related_object_id: str = '',
+        metadata: dict | None = None,
+        raise_on_failure: bool = False,
+    ) -> bool:
         if not to_email:
             return self._log_skip(
                 event_type=event_type,
@@ -55,6 +68,8 @@ class NotificationService:
             log.error_message = str(exc)
             log.save(update_fields=['status', 'error_message', 'updated_at'])
             logger.exception('Failed to send %s email to %s', event_type, to_email)
+            if raise_on_failure:
+                raise
             return False
 
         log.status = 'sent'
@@ -94,7 +109,7 @@ def _display_name_for_user(user) -> str:
     return full_name or user.username or user.email
 
 
-def send_account_registration_email(user) -> bool:
+def send_account_registration_email(user, *, raise_on_failure: bool = False) -> bool:
     context = {
         'shop_name': settings.OSCAR_SHOP_NAME,
         'user': user,
@@ -109,10 +124,17 @@ def send_account_registration_email(user) -> bool:
         related_object_type='user',
         related_object_id=str(user.id),
         metadata={'email': user.email},
+        raise_on_failure=raise_on_failure,
     )
 
 
-def send_password_changed_email(user) -> bool:
+def queue_account_registration_email(user) -> None:
+    from .tasks import send_account_registration_email_task
+
+    dispatch_background_task(send_account_registration_email_task, run_kwargs={'user_id': user.id})
+
+
+def send_password_changed_email(user, *, raise_on_failure: bool = False) -> bool:
     context = {
         'shop_name': settings.OSCAR_SHOP_NAME,
         'user': user,
@@ -127,10 +149,17 @@ def send_password_changed_email(user) -> bool:
         related_object_type='user',
         related_object_id=str(user.id),
         metadata={'email': user.email},
+        raise_on_failure=raise_on_failure,
     )
 
 
-def send_quote_request_notifications(payload: dict, product=None) -> dict:
+def queue_password_changed_email(user) -> None:
+    from .tasks import send_password_changed_email_task
+
+    dispatch_background_task(send_password_changed_email_task, run_kwargs={'user_id': user.id})
+
+
+def send_quote_request_notifications(payload: dict, product=None, *, raise_on_failure: bool = False) -> dict:
     customer_context = {
         'shop_name': settings.OSCAR_SHOP_NAME,
         'name': payload.get('name', '').strip() or 'Customer',
@@ -157,6 +186,7 @@ def send_quote_request_notifications(payload: dict, product=None) -> dict:
             related_object_type='product' if product else '',
             related_object_id=str(product.id) if product else '',
             metadata={k: v for k, v in payload.items() if k != 'message'},
+            raise_on_failure=raise_on_failure,
         )
 
     internal_results = []
@@ -170,6 +200,7 @@ def send_quote_request_notifications(payload: dict, product=None) -> dict:
             related_object_type='product' if product else '',
             related_object_id=str(product.id) if product else '',
             metadata={k: v for k, v in payload.items() if k != 'message'},
+            raise_on_failure=raise_on_failure,
         )
         internal_results.append({'recipient': recipient, 'sent': sent})
 
@@ -179,7 +210,16 @@ def send_quote_request_notifications(payload: dict, product=None) -> dict:
     }
 
 
-def send_order_confirmation_email(order) -> bool:
+def queue_quote_request_notifications(payload: dict, product=None) -> None:
+    from .tasks import send_quote_request_notifications_task
+
+    dispatch_background_task(
+        send_quote_request_notifications_task,
+        run_kwargs={'payload': payload, 'product_id': product.id if product else None},
+    )
+
+
+def send_order_confirmation_email(order, *, raise_on_failure: bool = False) -> bool:
     recipient = order.user.email if getattr(order, 'user_id', None) and getattr(order.user, 'email', '') else order.guest_email
     context = {
         'shop_name': settings.OSCAR_SHOP_NAME,
@@ -197,10 +237,24 @@ def send_order_confirmation_email(order) -> bool:
         related_object_type='order',
         related_object_id=str(order.number),
         metadata={'order_number': order.number, 'status': order.status},
+        raise_on_failure=raise_on_failure,
     )
 
 
-def send_shipping_update_email(order, *, status_label: str, tracking_reference: str = '', note: str = '') -> bool:
+def queue_order_confirmation_email(order) -> None:
+    from .tasks import send_order_confirmation_email_task
+
+    dispatch_background_task(send_order_confirmation_email_task, run_kwargs={'order_number': order.number})
+
+
+def send_shipping_update_email(
+    order,
+    *,
+    status_label: str,
+    tracking_reference: str = '',
+    note: str = '',
+    raise_on_failure: bool = False,
+) -> bool:
     recipient = order.user.email if getattr(order, 'user_id', None) and getattr(order.user, 'email', '') else order.guest_email
     context = {
         'shop_name': settings.OSCAR_SHOP_NAME,
@@ -223,6 +277,21 @@ def send_shipping_update_email(order, *, status_label: str, tracking_reference: 
             'status': order.status,
             'shipping_status': status_label,
             'tracking_reference': tracking_reference,
+        },
+        raise_on_failure=raise_on_failure,
+    )
+
+
+def queue_shipping_update_email(order, *, status_label: str, tracking_reference: str = '', note: str = '') -> None:
+    from .tasks import send_shipping_update_email_task
+
+    dispatch_background_task(
+        send_shipping_update_email_task,
+        run_kwargs={
+            'order_number': order.number,
+            'status_label': status_label,
+            'tracking_reference': tracking_reference,
+            'note': note,
         },
     )
 

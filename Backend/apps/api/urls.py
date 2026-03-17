@@ -8,6 +8,9 @@ from .account_views import (
     AccountRegisterAPIView,
     CsrfTokenAPIView,
 )
+from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView
+from .health_views import LivenessAPIView, ReadinessAPIView
+from .audit_views import AuditLogCollectionAPIView, AuditLogDetailAPIView
 from .checkout_views import (
     BasketAPIView,
     BasketItemCollectionAPIView,
@@ -61,6 +64,10 @@ from .wishlist_views import (
 from .views import CategoryListAPIView, ProductDetailAPIView, ProductListAPIView, QuoteRequestAPIView
 
 urlpatterns = [
+    path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
+    path('docs.json', ApiDocsJsonAPIView.as_view(), name='api-docs-json'),
+    path('health/live/', LivenessAPIView.as_view(), name='health-live'),
+    path('health/ready/', ReadinessAPIView.as_view(), name='health-ready'),
     path('account/csrf/', CsrfTokenAPIView.as_view(), name='account-csrf'),
     path('account/register/', AccountRegisterAPIView.as_view(), name='account-register'),
     path('account/login/', AccountLoginAPIView.as_view(), name='account-login'),
@@ -80,6 +87,8 @@ urlpatterns = [
     path('supplier/products/<int:product_id>/', SupplierProductDetailAPIView.as_view(), name='supplier-product-detail'),
     path('admin/suppliers/', SupplierAdminCollectionAPIView.as_view(), name='admin-suppliers'),
     path('admin/suppliers/<int:supplier_id>/', SupplierAdminDetailAPIView.as_view(), name='admin-supplier-detail'),
+    path('admin/audit-logs/', AuditLogCollectionAPIView.as_view(), name='admin-audit-logs'),
+    path('admin/audit-logs/<int:audit_log_id>/', AuditLogDetailAPIView.as_view(), name='admin-audit-log-detail'),
     path('checkout/basket/', BasketAPIView.as_view(), name='checkout-basket'),
     path('checkout/basket/items/', BasketItemCollectionAPIView.as_view(), name='checkout-basket-items'),
     path('checkout/basket/items/<int:line_id>/', BasketLineDetailAPIView.as_view(), name='checkout-basket-line'),

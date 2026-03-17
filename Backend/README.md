@@ -389,6 +389,233 @@ Current shipping tax profile resolution:
   - `express`
   - `project`
 
+## 14) Rate Limiting And Abuse Protection
+Implemented:
+- default API throttling for anonymous and authenticated traffic
+- tighter scoped throttles for abuse-prone endpoints:
+  - account CSRF bootstrap
+  - account registration
+  - account login
+  - password change
+  - quote requests
+  - product search
+  - image search
+  - recommendations
+  - supplier application creation
+  - payment session initialization
+- identity-aware throttling for:
+  - login attempts by submitted email/username
+  - registration attempts by submitted email
+- throttled API responses now include `retry_after_seconds`
+
+Current throttle policy:
+- anonymous API traffic: `120/hour`
+- authenticated API traffic: `1200/hour`
+- registration: `5/hour` plus `3/hour` per submitted email
+- login: `20/hour` plus `8/hour` per submitted email/username
+- quote requests: `8/hour`
+- image search: `20/hour`
+- supplier applications: `4/day`
+- payment initialization: `20/hour`
+
+Throttled response shape:
+
+```json
+{
+  "error": {
+    "code": "throttled",
+    "detail": "Request was throttled. Expected available in 3600 seconds.",
+    "status": 429,
+    "retry_after_seconds": 3599
+  }
+}
+```
+
+## 15) Audit Logging
+Implemented:
+- persistent audit log records for backend-sensitive actions
+- request context capture on each audit entry:
+  - actor
+  - actor email
+  - actor role
+  - request path/method
+  - IP address
+  - user agent
+- target model tracking with:
+  - target type
+  - target id
+  - target representation
+- staff query surfaces:
+  - Django admin `Audit Log`
+  - `GET /api/v1/admin/audit-logs/`
+  - `GET /api/v1/admin/audit-logs/<id>/`
+
+Currently audited backend events include:
+- account registration success/failure
+- account login success/failure
+- account logout
+- account password change
+- account profile update
+- catalog product create/update/delete
+- supplier profile create/update
+- supplier status change by staff
+- supplier product create/update/delete
+- order placement
+- customer reorder actions
+- supplier line status changes
+- order status rollups triggered by supplier fulfillment updates
+
+Useful audit log filters:
+- `event_type`
+- `actor_email`
+- `target_type`
+- `status`
+
+## 16) Background Job Production Wiring
+Implemented:
+- shared background task dispatch helper that respects `ENABLE_ASYNC_TASKS`
+- asynchronous production wiring for:
+  - account registration emails
+  - password change emails
+  - quote request notifications
+  - order confirmation emails
+  - shipping update emails
+  - product search indexing
+  - image embedding/index refresh
+  - recommendation refresh
+- Celery retry behavior for:
+  - search indexing tasks
+  - image indexing tasks
+  - recommendation refresh tasks
+  - queued email tasks
+- periodic Celery beat schedule for trending recommendation refresh
+
+Current production task model:
+- local/dev:
+  - keep `ENABLE_ASYNC_TASKS=False`
+  - tasks run inline using the same task entry points
+- production:
+  - set `ENABLE_ASYNC_TASKS=True`
+  - run Celery worker
+  - run Celery beat
+
+Relevant environment flags:
+- `ENABLE_ASYNC_TASKS`
+- `CELERY_BROKER_URL` via `REDIS_URL`
+- `CELERY_RESULT_BACKEND` via `REDIS_URL`
+- `CELERY_TASK_ALWAYS_EAGER`
+- `CELERY_TASK_EAGER_PROPAGATES`
+
+Production process examples:
+
+```powershell
+celery -A config worker -l info
+celery -A config beat -l info
+```
+
+Recurring jobs:
+- `apps.recommendations.tasks.refresh_trending_recommendations` runs hourly via Celery beat
+
+## 17) Health Checks And Monitoring
+Implemented:
+- liveness endpoint:
+  - `GET /api/v1/health/live/`
+- readiness/dependency endpoint:
+  - `GET /api/v1/health/ready/`
+- structured API request logging middleware for all `/api/` traffic
+
+Readiness checks currently cover:
+- database
+- cache
+- OpenSearch
+- Celery async mode configuration
+
+Readiness status meanings:
+- `healthy`
+  - required dependencies are working
+  - optional dependencies are also available
+- `degraded`
+  - required dependencies are working
+  - optional dependencies such as OpenSearch are unavailable
+- `unhealthy`
+  - required dependencies such as database or cache are failing
+
+Operational note:
+- in your current local setup, `health/ready` may report `degraded` if OpenSearch is still offline
+- that is expected and useful because it reflects the real search/vector capability state without declaring the whole backend down
+
+Structured API request logs include:
+- HTTP method
+- path
+- response status
+- duration in milliseconds
+- user id when authenticated
+
+## 18) API Documentation
+Implemented:
+- human-readable backend docs page:
+  - `GET /api/v1/docs/`
+- machine-readable backend docs payload:
+  - `GET /api/v1/docs.json`
+
+The docs cover:
+- authentication and CSRF flow
+- standard error and throttling response contracts
+- health endpoints
+- account endpoints
+- catalog and search endpoints
+- checkout and payment endpoints
+- customer order endpoints
+- wishlist and review endpoints
+- supplier marketplace endpoints
+- admin operational endpoints
+- quote request endpoint
+
+This is a first-party backend contract document generated from backend-owned documentation data, so it is safe to keep evolving as the API grows.
+
+## 19) Media And Storage Production Setup
+Implemented:
+- configurable media root via `MEDIA_ROOT`
+- upload size limits for incoming requests:
+  - `FILE_UPLOAD_MAX_MEMORY_SIZE`
+  - `DATA_UPLOAD_MAX_MEMORY_SIZE`
+- backend image validation rules:
+  - allowed file extensions
+  - max image byte size
+  - image integrity verification using Pillow
+- backend image normalization/compression rules:
+  - oversized uploads can be downscaled automatically
+  - normalized images can be re-encoded to a standard format
+  - quality is configurable
+- validation applied to:
+  - image search uploads
+  - CSV-imported product images
+- media storage health check added to readiness endpoint
+
+Current media configuration env vars:
+- `MEDIA_ROOT`
+- `FILE_UPLOAD_MAX_MEMORY_SIZE`
+- `DATA_UPLOAD_MAX_MEMORY_SIZE`
+- `MAX_IMAGE_UPLOAD_BYTES`
+- `MAX_PRODUCT_IMAGE_BYTES`
+- `MAX_IMAGE_DIMENSION`
+- `MAX_PRODUCT_IMAGE_DIMENSION`
+- `NORMALIZED_IMAGE_FORMAT`
+- `NORMALIZED_IMAGE_QUALITY`
+- `ALLOWED_IMAGE_EXTENSIONS`
+
+Operational behavior:
+- local/dev still serves media from Django when `DEBUG=True`
+- readiness now checks that media storage is writable
+- invalid image files are rejected before indexing/importing
+- oversized valid images can be normalized automatically before use
+
+Current supported image extensions:
+- `.jpg`
+- `.jpeg`
+- `.png`
+- `.webp`
+
 ## 10) Image Embedding Settings
 Environment variables:
 - `IMAGE_EMBEDDING_BACKEND=clip` (`hash` is available fallback)

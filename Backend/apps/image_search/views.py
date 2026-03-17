@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
@@ -12,6 +13,8 @@ from .services import ImageSearchService
 class ImageSearchAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     service = ImageSearchService()
+    throttle_scope = 'image_search'
+    throttle_classes = [ScopedRateThrottle]
 
     def post(self, request):
         serializer = ImageSearchRequestSerializer(data=request.data)

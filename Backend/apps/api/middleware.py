@@ -1,10 +1,34 @@
 import logging
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger(__name__)
+
+
+class ApiRequestLoggingMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        if request.path.startswith('/api/'):
+            request._api_request_started_at = time.perf_counter()
+        return None
+
+    def process_response(self, request, response):
+        if not request.path.startswith('/api/'):
+            return response
+
+        started_at = getattr(request, '_api_request_started_at', None)
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2) if started_at else None
+        logger.info(
+            'api_request method=%s path=%s status=%s duration_ms=%s user_id=%s',
+            request.method,
+            request.get_full_path(),
+            response.status_code,
+            duration_ms,
+            getattr(getattr(request, 'user', None), 'id', None),
+        )
+        return response
 
 
 class ApiExceptionMiddleware(MiddlewareMixin):

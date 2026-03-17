@@ -4,6 +4,7 @@ from celery import shared_task
 from django.apps import apps
 from django.conf import settings
 from opensearchpy import NotFoundError
+from opensearchpy.exceptions import OpenSearchException
 from opensearchpy.helpers import bulk
 
 from apps.common.clients import get_opensearch_client
@@ -46,8 +47,8 @@ def _build_product_document(product: Any) -> dict[str, Any]:
     }
 
 
-@shared_task
-def index_product_for_search(product_id: int) -> bool:
+@shared_task(bind=True, autoretry_for=(OpenSearchException,), retry_backoff=True, retry_kwargs={'max_retries': 5})
+def index_product_for_search(self, product_id: int) -> bool:
     Product = apps.get_model('catalogue', 'Product')
     product = (
         Product.objects.filter(id=product_id, is_public=True)
@@ -64,8 +65,8 @@ def index_product_for_search(product_id: int) -> bool:
     return True
 
 
-@shared_task
-def delete_product_from_search(product_id: int) -> bool:
+@shared_task(bind=True, autoretry_for=(OpenSearchException,), retry_backoff=True, retry_kwargs={'max_retries': 5})
+def delete_product_from_search(self, product_id: int) -> bool:
     client = get_opensearch_client()
     try:
         client.delete(index=settings.SEARCH_INDEX_PRODUCTS, id=product_id, refresh=False)
@@ -74,8 +75,8 @@ def delete_product_from_search(product_id: int) -> bool:
     return True
 
 
-@shared_task
-def reindex_all_products(batch_size: int = 500) -> int:
+@shared_task(bind=True, autoretry_for=(OpenSearchException,), retry_backoff=True, retry_kwargs={'max_retries': 5})
+def reindex_all_products(self, batch_size: int = 500) -> int:
     Product = apps.get_model('catalogue', 'Product')
     count = 0
     client = get_opensearch_client()

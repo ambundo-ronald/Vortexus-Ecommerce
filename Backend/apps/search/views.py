@@ -1,4 +1,5 @@
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
@@ -9,6 +10,8 @@ from .services import ProductSearchService
 
 class ProductSearchAPIView(APIView):
     service = ProductSearchService()
+    throttle_scope = 'public_search'
+    throttle_classes = [ScopedRateThrottle]
 
     def get(self, request):
         serializer = SearchQuerySerializer(data=request.query_params)

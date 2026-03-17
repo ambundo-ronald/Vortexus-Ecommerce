@@ -7,6 +7,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.auditlog.services import record_audit_event
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 
 from .order_serializers import OrderListSerializer, OrderStatusSerializer, OrderSummarySerializer
@@ -98,6 +99,14 @@ class CustomerOrderReorderAPIView(APIView):
 
         request.basket._lines = None
         request.basket.reset_offer_applications()
+        record_audit_event(
+            event_type='orders.reordered',
+            request=request,
+            actor=request.user,
+            target=order,
+            message='Customer reordered items from a previous order.',
+            metadata={'order_number': order.number, 'added_count': len(added), 'skipped_count': len(skipped)},
+        )
 
         return Response(
             {

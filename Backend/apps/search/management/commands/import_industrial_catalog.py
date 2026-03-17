@@ -10,6 +10,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.template.defaultfilters import slugify
 
+from apps.common.media import normalize_local_image_bytes, validate_local_image_path
+
 
 class Command(BaseCommand):
     help = (
@@ -302,7 +304,7 @@ class Command(BaseCommand):
         created = 0
 
         for source_path, caption in entries:
-            image_bytes = source_path.read_bytes()
+            normalized_name, image_bytes = normalize_local_image_bytes(source_path)
             image_hash = self._sha256_bytes(image_bytes)
 
             if image_hash in existing_hashes:
@@ -313,7 +315,7 @@ class Command(BaseCommand):
                 caption=caption,
                 display_order=current_display_order,
             )
-            product_image.original.save(source_path.name, ContentFile(image_bytes), save=False)
+            product_image.original.save(normalized_name, ContentFile(image_bytes), save=False)
             product_image.save()
 
             existing_hashes.add(image_hash)
@@ -365,6 +367,10 @@ class Command(BaseCommand):
 
         if not candidate.exists() or not candidate.is_file():
             raise CommandError(f'Image file not found: {candidate}')
+        try:
+            validate_local_image_path(candidate)
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
 
         return candidate
 

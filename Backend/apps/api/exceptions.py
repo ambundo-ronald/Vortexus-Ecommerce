@@ -67,6 +67,9 @@ def api_exception_handler(exc, context):
             'status': response.status_code,
         }
     }
+    retry_after = getattr(exc, 'wait', None)
+    if retry_after is not None:
+        payload['error']['retry_after_seconds'] = max(int(retry_after), 0)
     if errors is not None:
         payload['error']['errors'] = errors
 

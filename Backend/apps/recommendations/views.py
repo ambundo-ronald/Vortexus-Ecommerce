@@ -1,4 +1,5 @@
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
@@ -9,6 +10,8 @@ from .services import RecommendationService
 
 class RecommendationAPIView(APIView):
     service = RecommendationService()
+    throttle_scope = 'recommendations'
+    throttle_classes = [ScopedRateThrottle]
 
     def get(self, request):
         serializer = RecommendationQuerySerializer(data=request.query_params)
