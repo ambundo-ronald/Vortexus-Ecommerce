@@ -2,6 +2,9 @@
 
 This folder is backend-only. Frontend lives in `../Frontend`.
 
+Frontend integration handoff:
+- [FRONTEND_HANDOFF.md](C:/Users/user/Desktop/vortexus/Backend/FRONTEND_HANDOFF.md)
+
 Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast APIs for:
 - text search
 - image search
