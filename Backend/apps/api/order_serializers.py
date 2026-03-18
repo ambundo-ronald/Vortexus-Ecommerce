@@ -115,7 +115,7 @@ class OrderSummarySerializer(serializers.Serializer):
                 'shipping_incl_tax': float(order.shipping_incl_tax or Decimal('0.00')),
                 'tax': float((order.total_incl_tax or Decimal('0.00')) - (order.total_excl_tax or Decimal('0.00'))),
             },
-            'tax_code': order.tax_code or '',
+            'tax_code': getattr(order, 'tax_code', '') or '',
             'shipping_address': {
                 'first_name': getattr(shipping_address, 'first_name', '') or '',
                 'last_name': getattr(shipping_address, 'last_name', '') or '',
