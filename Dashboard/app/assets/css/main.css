@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+html, body, #__nuxt {
+  height: 100%;
+  letter-spacing: -0.2px;
+}
+
+html {
+  font-size: 16px;
+}
+
+:root {
+  --ui-primary: black;
+  --ui-text: black;
+
+  /* Component: Steps */
+  --steps-bg: var(--colors-green-100);
+  --steps-bg-complete: transparent;
+  --steps-border: var(--color-neutral-200);
+  --steps-border-complete: var(--color-success);
+  --steps-text-complete: var(--color-success);
+  --steps-icon: var(--ui-text);
+  --steps-icon-complete: var(--ui-text-inverted);
+  --steps-bg: var(--color-neutral-100);
+  --steps-bg-complete: var(--color-success);
+  
+  /* Chart colors */
+  --vis-axis-grid-color: rgba(255, 255, 255, 0.2) !important;
+  --vis-tooltip-background-color: #121212 !important;
+  --vis-tooltip-border-color: none !important;
+  --vis-tooltip-text-color: rgba(255, 255, 255, 0.5) !important;
+
+  --vis-legend-label-color: var(--ui-text-muted) !important;
+  --vis-axis-tick-label-color: var(--ui-text-muted) !important;
+}
+
+.dark {
+  --ui-primary: white;
+  --ui-text: white;
+
+  --steps-border: var(--color-neutral-800);
+  --steps-border-complete: var(--color-success);
+  --steps-icon: var(--ui-text-inverted);
+  --steps-icon-complete: var(--ui-text-inverted);
+
+}
