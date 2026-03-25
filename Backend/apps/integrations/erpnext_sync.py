@@ -1,4 +1,5 @@
 import json
+import hashlib
 from collections import defaultdict
 from decimal import Decimal
 
@@ -110,6 +111,15 @@ def _parse_decimal(value, default='0'):
         return Decimal(str(default))
 
 
+def _make_safe_identifier(value: str, max_length: int) -> str:
+    normalized = (value or '').strip()
+    if len(normalized) <= max_length:
+        return normalized
+    digest = hashlib.sha1(normalized.encode('utf-8')).hexdigest()[:10]
+    prefix_length = max_length - len(digest) - 1
+    return f'{normalized[:prefix_length]}-{digest}'
+
+
 class ERPNextSyncService:
     def __init__(self, connection: IntegrationConnection):
         self.connection = connection
@@ -201,6 +211,15 @@ class ERPNextSyncService:
             groups_by_name = {group.get('name'): group for group in groups if group.get('name')}
             Product = apps.get_model('catalogue', 'Product')
             StockRecord = apps.get_model('partner', 'StockRecord')
+            product_upc_max_length = Product._meta.get_field('upc').max_length or 64
+            partner_sku_max_length = StockRecord._meta.get_field('partner_sku').max_length or 128
+            existing_product_mappings = {
+                mapping.external_id: mapping
+                for mapping in IntegrationMapping.objects.filter(
+                    connection=self.connection,
+                    entity_type=IntegrationMapping.ENTITY_PRODUCT,
+                )
+            }
 
             with transaction.atomic():
                 for item in items:
@@ -224,16 +243,26 @@ class ERPNextSyncService:
                                 {'path': segments},
                             )
 
+                    mapping = existing_product_mappings.get(item_code)
+                    safe_upc = _make_safe_identifier(item_code, product_upc_max_length)
                     product_defaults = {
+                        'upc': safe_upc,
                         'title': (item.get('item_name') or item_code).strip(),
                         'description': (item.get('description') or '').strip(),
                         'is_public': not bool(item.get('disabled')),
                         'product_class': self.product_class,
                         'structure': getattr(Product, 'STANDALONE', 'standalone'),
                     }
-                    product, created = Product.objects.get_or_create(upc=item_code, defaults=product_defaults)
-                    if created:
-                        summary['products_created'] += 1
+                    created = False
+                    if mapping:
+                        product = Product.objects.filter(id=mapping.internal_id).first()
+                        if product is None:
+                            mapping = None
+                            existing_product_mappings.pop(item_code, None)
+                    if mapping is None:
+                        product, created = Product.objects.get_or_create(upc=safe_upc, defaults=product_defaults)
+                        if created:
+                            summary['products_created'] += 1
                     else:
                         dirty = []
                         title = (item.get('item_name') or item_code).strip()
@@ -251,6 +280,9 @@ class ERPNextSyncService:
                         if product.product_class_id != self.product_class.id:
                             product.product_class = self.product_class
                             dirty.append('product_class')
+                        if product.upc != safe_upc:
+                            product.upc = safe_upc
+                            dirty.append('upc')
                         if dirty:
                             product.save(update_fields=dirty)
                             summary['products_updated'] += 1
@@ -264,7 +296,14 @@ class ERPNextSyncService:
                         item_code,
                         'catalogue.Product',
                         str(product.id),
-                        {'item_group': item_group, 'category_id': category.id if category else None},
+                        {'item_group': item_group, 'category_id': category.id if category else None, 'safe_upc': safe_upc},
+                    )
+                    existing_product_mappings[item_code] = IntegrationMapping(
+                        connection=self.connection,
+                        entity_type=IntegrationMapping.ENTITY_PRODUCT,
+                        external_id=item_code,
+                        internal_model='catalogue.Product',
+                        internal_id=str(product.id),
                     )
 
                     stockrecord = product.stockrecords.filter(partner=self.partner).first()
@@ -273,7 +312,7 @@ class ERPNextSyncService:
                         stockrecord = StockRecord(product=product, partner=self.partner)
 
                     price = price_map.get(item_code)
-                    stockrecord.partner_sku = item_code
+                    stockrecord.partner_sku = _make_safe_identifier(item_code, partner_sku_max_length)
                     stockrecord.price_currency = (price or {}).get('currency') or self.default_currency
                     stockrecord.price = _parse_decimal((price or {}).get('price_list_rate'), default='0')
                     if include_stock and created_stock:
@@ -349,17 +388,28 @@ class ERPNextSyncService:
 
             Product = apps.get_model('catalogue', 'Product')
             StockRecord = apps.get_model('partner', 'StockRecord')
-            products = Product.objects.filter(upc__in=list(stock_by_item.keys())).prefetch_related('stockrecords')
+            mappings = IntegrationMapping.objects.filter(
+                connection=self.connection,
+                entity_type=IntegrationMapping.ENTITY_PRODUCT,
+                external_id__in=list(stock_by_item.keys()),
+            )
+            mapped_product_ids = [mapping.internal_id for mapping in mappings]
+            mapping_by_external_id = {mapping.external_id: mapping for mapping in mappings}
+            products = Product.objects.filter(id__in=mapped_product_ids).prefetch_related('stockrecords')
+            products_by_id = {str(product.id): product for product in products}
 
             with transaction.atomic():
-                for product in products:
-                    qty = int(stock_by_item.get(product.upc, Decimal('0')))
+                for external_id, mapping in mapping_by_external_id.items():
+                    product = products_by_id.get(str(mapping.internal_id))
+                    if product is None:
+                        continue
+                    qty = int(stock_by_item.get(external_id, Decimal('0')))
                     stockrecord = product.stockrecords.filter(partner=self.partner).first()
                     if stockrecord is None:
                         stockrecord = StockRecord.objects.create(
                             product=product,
                             partner=self.partner,
-                            partner_sku=product.upc,
+                            partner_sku=_make_safe_identifier(external_id, StockRecord._meta.get_field('partner_sku').max_length or 128),
                             price_currency=self.default_currency,
                             price=Decimal('0'),
                             num_in_stock=qty,
@@ -372,7 +422,7 @@ class ERPNextSyncService:
                         job,
                         entity_type='stock',
                         status=SyncEventLog.STATUS_PROCESSED,
-                        external_reference=product.upc,
+                        external_reference=external_id,
                         payload_excerpt={'num_in_stock': qty},
                     )
 
