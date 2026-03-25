@@ -5,7 +5,7 @@ from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.auditlog.services import record_audit_event
+from apps.auditlog.services import record_audit_event, sanitize_metadata
 from apps.integrations.erpnext_sync import ERPNextSyncService
 from apps.integrations.models import IntegrationConnection, SyncEventLog, SyncJob
 from apps.integrations.services import ERPNextIntegrationError, build_erpnext_client
@@ -105,7 +105,7 @@ class ERPNextConnectionTestAPIView(APIView):
                 entity_type='connection_test',
                 status=SyncEventLog.STATUS_FAILED,
                 error_message=str(exc),
-                payload_excerpt={'base_url': connection.base_url},
+                payload_excerpt=sanitize_metadata({'base_url': connection.base_url}),
             )
             raise serializers.ValidationError({'connection': str(exc)}) from exc
 
@@ -122,7 +122,7 @@ class ERPNextConnectionTestAPIView(APIView):
             direction=SyncJob.DIRECTION_INBOUND,
             entity_type='connection_test',
             status=SyncEventLog.STATUS_PROCESSED,
-            payload_excerpt=result,
+            payload_excerpt=sanitize_metadata(result),
         )
         record_audit_event(
             event_type='integrations.erpnext_tested',

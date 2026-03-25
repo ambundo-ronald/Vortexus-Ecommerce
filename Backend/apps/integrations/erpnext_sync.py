@@ -8,6 +8,8 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 
+from apps.auditlog.services import sanitize_metadata
+
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextIntegrationError, build_erpnext_client
 
@@ -125,7 +127,7 @@ class ERPNextSyncService:
             entity_type=entity_type,
             external_reference=external_reference,
             status=status,
-            payload_excerpt=payload_excerpt or {},
+            payload_excerpt=sanitize_metadata(payload_excerpt or {}),
             error_message=error_message,
         )
 

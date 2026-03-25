@@ -1,13 +1,97 @@
+from django import forms
 from django.contrib import admin
 
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 
 
+class IntegrationConnectionAdminForm(forms.ModelForm):
+    api_key = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text='Leave blank to keep the existing API key.',
+    )
+    api_secret = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text='Leave blank to keep the existing API secret.',
+    )
+
+    class Meta:
+        model = IntegrationConnection
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['api_key'].initial = ''
+        self.fields['api_secret'].initial = ''
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        api_key = self.cleaned_data.get('api_key')
+        api_secret = self.cleaned_data.get('api_secret')
+
+        if api_key:
+            instance.api_key = api_key
+        if api_secret:
+            instance.api_secret = api_secret
+
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
+
 @admin.register(IntegrationConnection)
 class IntegrationConnectionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'connection_type', 'partner', 'status', 'is_active', 'last_successful_sync_at')
+    form = IntegrationConnectionAdminForm
+    list_display = ('name', 'connection_type', 'partner', 'status', 'is_active', 'has_api_key', 'has_api_secret', 'last_successful_sync_at')
     list_filter = ('connection_type', 'status', 'is_active')
     search_fields = ('name', 'base_url', 'partner__name')
+    readonly_fields = ('has_api_key', 'has_api_secret', 'last_successful_sync_at', 'last_failed_sync_at', 'created_at', 'updated_at')
+    fieldsets = (
+        (
+            'Connection',
+            {
+                'fields': (
+                    'name',
+                    'partner',
+                    'connection_type',
+                    'base_url',
+                    'auth_type',
+                    'status',
+                    'is_active',
+                    'poll_interval_minutes',
+                )
+            },
+        ),
+        (
+            'Credentials',
+            {
+                'fields': ('api_key', 'api_secret', 'has_api_key', 'has_api_secret'),
+                'description': 'Stored credentials are never shown. Enter new values only when rotating credentials.',
+            },
+        ),
+        (
+            'Defaults',
+            {
+                'fields': ('default_company', 'default_warehouse', 'metadata'),
+            },
+        ),
+        (
+            'Sync Status',
+            {
+                'fields': ('last_successful_sync_at', 'last_failed_sync_at', 'created_at', 'updated_at'),
+            },
+        ),
+    )
+
+    @admin.display(boolean=True, description='API key set')
+    def has_api_key(self, obj):
+        return bool(obj.api_key)
+
+    @admin.display(boolean=True, description='API secret set')
+    def has_api_secret(self, obj):
+        return bool(obj.api_secret)
 
 
 @admin.register(IntegrationMapping)

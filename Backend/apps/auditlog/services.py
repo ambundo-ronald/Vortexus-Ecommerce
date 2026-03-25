@@ -4,6 +4,15 @@ from typing import Any
 
 from .models import AuditLog
 
+SENSITIVE_METADATA_KEYS = (
+    'api_key',
+    'api_secret',
+    'secret',
+    'password',
+    'token',
+    'authorization',
+)
+
 
 def _actor_role(user) -> str:
     if not user or not getattr(user, 'is_authenticated', False):
@@ -36,6 +45,23 @@ def _target_details(target) -> dict[str, str]:
     return {'target_type': target_type, 'target_id': target_id, 'target_repr': target_repr}
 
 
+def sanitize_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            key_str = str(key).lower()
+            if any(sensitive in key_str for sensitive in SENSITIVE_METADATA_KEYS):
+                sanitized[key] = '[REDACTED]'
+            else:
+                sanitized[key] = sanitize_metadata(item)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_metadata(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_metadata(item) for item in value]
+    return value
+
+
 def record_audit_event(
     *,
     event_type: str,
@@ -66,5 +92,5 @@ def record_audit_event(
         target_id=target_details['target_id'],
         target_repr=target_details['target_repr'],
         message=message[:255],
-        metadata=metadata or {},
+        metadata=sanitize_metadata(metadata or {}),
     )
