@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'apps.auditlog',
     'apps.accounts',
     'apps.inventory',
+    'apps.integrations',
     'apps.marketplace',
     'apps.notifications',
     'apps.payments',
@@ -174,6 +175,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.recommendations.tasks.refresh_trending_recommendations',
         'schedule': crontab(minute=0),
         'args': (24,),
+    },
+    'sync-active-erpnext-stock-every-20-minutes': {
+        'task': 'apps.integrations.tasks.sync_all_active_erpnext_stock',
+        'schedule': crontab(minute='*/20'),
     },
 }
 
@@ -416,4 +421,7 @@ AIRTEL_MONEY_SANDBOX_ENABLED = env.bool('AIRTEL_MONEY_SANDBOX_ENABLED', default=
 AIRTEL_MONEY_PROVIDER_NAME = env('AIRTEL_MONEY_PROVIDER_NAME', default='sandbox_airtel_money')
 CARD_SANDBOX_ENABLED = env.bool('CARD_SANDBOX_ENABLED', default=True)
 CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
+ERP_SYNC_TIMEOUT_SECONDS = env.int('ERP_SYNC_TIMEOUT_SECONDS', default=30)
+ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
+ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
 

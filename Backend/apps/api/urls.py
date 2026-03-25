@@ -10,6 +10,15 @@ from .account_views import (
 )
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView
 from .health_views import LivenessAPIView, ReadinessAPIView
+from .integration_views import (
+    ERPNextCatalogImportAPIView,
+    ERPNextConnectionTestAPIView,
+    ERPNextPreviewAPIView,
+    ERPNextStockSyncAPIView,
+    IntegrationConnectionCollectionAPIView,
+    IntegrationConnectionDetailAPIView,
+    IntegrationLogCollectionAPIView,
+)
 from .audit_views import AuditLogCollectionAPIView, AuditLogDetailAPIView
 from .checkout_views import (
     BasketAPIView,
@@ -89,6 +98,13 @@ urlpatterns = [
     path('admin/suppliers/<int:supplier_id>/', SupplierAdminDetailAPIView.as_view(), name='admin-supplier-detail'),
     path('admin/audit-logs/', AuditLogCollectionAPIView.as_view(), name='admin-audit-logs'),
     path('admin/audit-logs/<int:audit_log_id>/', AuditLogDetailAPIView.as_view(), name='admin-audit-log-detail'),
+    path('admin/integrations/', IntegrationConnectionCollectionAPIView.as_view(), name='admin-integrations'),
+    path('admin/integrations/<int:connection_id>/', IntegrationConnectionDetailAPIView.as_view(), name='admin-integration-detail'),
+    path('admin/integrations/<int:connection_id>/logs/', IntegrationLogCollectionAPIView.as_view(), name='admin-integration-logs'),
+    path('admin/integrations/<int:connection_id>/erpnext/test/', ERPNextConnectionTestAPIView.as_view(), name='admin-integration-erpnext-test'),
+    path('admin/integrations/<int:connection_id>/erpnext/preview/', ERPNextPreviewAPIView.as_view(), name='admin-integration-erpnext-preview'),
+    path('admin/integrations/<int:connection_id>/erpnext/import/', ERPNextCatalogImportAPIView.as_view(), name='admin-integration-erpnext-import'),
+    path('admin/integrations/<int:connection_id>/erpnext/stock-sync/', ERPNextStockSyncAPIView.as_view(), name='admin-integration-erpnext-stock-sync'),
     path('checkout/basket/', BasketAPIView.as_view(), name='checkout-basket'),
     path('checkout/basket/items/', BasketItemCollectionAPIView.as_view(), name='checkout-basket-items'),
     path('checkout/basket/items/<int:line_id>/', BasketLineDetailAPIView.as_view(), name='checkout-basket-line'),

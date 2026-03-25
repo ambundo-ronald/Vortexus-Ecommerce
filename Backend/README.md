@@ -5,10 +5,45 @@ This folder is backend-only. Frontend lives in `../Frontend`.
 Frontend integration handoff:
 - [FRONTEND_HANDOFF.md](C:/Users/user/Desktop/vortexus/Backend/FRONTEND_HANDOFF.md)
 
+ERP integration architecture:
+- [ERP_INTEGRATION_ARCHITECTURE.md](C:/Users/user/Desktop/vortexus/Backend/ERP_INTEGRATION_ARCHITECTURE.md)
+
 Backend scaffold for an industrial ecommerce MVP using Django Oscar with fast APIs for:
 - text search
 - image search
 - product recommendations
+- ERPNext and supplier ERP integrations
+
+## ERPNext Integration Foundation
+- connection management for ERP/integration endpoints
+- ERPNext token-auth connection testing
+- ERPNext preview endpoints for:
+  - items
+  - stock bins
+  - prices
+- ERPNext item group import into categories
+- ERPNext item import into catalog products
+- ERPNext stock balance sync into stock records
+- scheduled ERPNext stock sync every 20 minutes
+- integration sync job and event log persistence
+
+Admin ERP endpoints:
+- `GET /api/v1/admin/integrations/`
+- `POST /api/v1/admin/integrations/`
+- `GET /api/v1/admin/integrations/<connection_id>/`
+- `PATCH /api/v1/admin/integrations/<connection_id>/`
+- `GET /api/v1/admin/integrations/<connection_id>/logs/`
+- `POST /api/v1/admin/integrations/<connection_id>/erpnext/test/`
+- `GET /api/v1/admin/integrations/<connection_id>/erpnext/preview/?resource=items`
+- `GET /api/v1/admin/integrations/<connection_id>/erpnext/preview/?resource=stock`
+- `GET /api/v1/admin/integrations/<connection_id>/erpnext/preview/?resource=prices`
+- `POST /api/v1/admin/integrations/<connection_id>/erpnext/import/`
+- `POST /api/v1/admin/integrations/<connection_id>/erpnext/stock-sync/`
+
+Current scope:
+- ERPNext catalog import is implemented
+- ERPNext stock sync is implemented
+- order export to ERPNext is not implemented yet
 
 ## 1) Stack
 - Django + Django Oscar
