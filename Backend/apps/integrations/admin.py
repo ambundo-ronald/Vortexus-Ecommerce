@@ -24,6 +24,15 @@ class IntegrationConnectionAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['api_key'].initial = ''
         self.fields['api_secret'].initial = ''
+        self.fields['secret_env_prefix'].help_text = 'Used when credential source is Environment Variables. Example: ERPNEXT_NORWA'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        credential_source = cleaned_data.get('credential_source')
+        secret_env_prefix = (cleaned_data.get('secret_env_prefix') or '').strip()
+        if credential_source == IntegrationConnection.CREDENTIAL_SOURCE_ENV and not secret_env_prefix:
+            self.add_error('secret_env_prefix', 'This field is required when using environment-backed credentials.')
+        return cleaned_data
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -67,8 +76,8 @@ class IntegrationConnectionAdmin(admin.ModelAdmin):
         (
             'Credentials',
             {
-                'fields': ('api_key', 'api_secret', 'has_api_key', 'has_api_secret'),
-                'description': 'Stored credentials are never shown. Enter new values only when rotating credentials.',
+                'fields': ('credential_source', 'secret_env_prefix', 'api_key', 'api_secret', 'has_api_key', 'has_api_secret'),
+                'description': 'Database-backed credentials are masked. For stronger security, prefer Environment Variables and provide only a prefix such as ERPNEXT_NORWA.',
             },
         ),
         (
@@ -87,11 +96,11 @@ class IntegrationConnectionAdmin(admin.ModelAdmin):
 
     @admin.display(boolean=True, description='API key set')
     def has_api_key(self, obj):
-        return bool(obj.api_key)
+        return obj.has_resolved_api_key()
 
     @admin.display(boolean=True, description='API secret set')
     def has_api_secret(self, obj):
-        return bool(obj.api_secret)
+        return obj.has_resolved_api_secret()
 
 
 @admin.register(IntegrationMapping)

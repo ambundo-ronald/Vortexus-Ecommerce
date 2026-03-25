@@ -45,6 +45,16 @@ Current scope:
 - ERPNext stock sync is implemented
 - order export to ERPNext is not implemented yet
 
+### ERP credential storage
+- Existing integrations can continue using database-backed credentials.
+- For stronger production security, set `credential_source=env` on the integration connection and provide `secret_env_prefix`.
+- With `secret_env_prefix=ERPNEXT_NORWA`, the backend resolves:
+  - `ERPNEXT_NORWA_API_KEY`
+  - `ERPNEXT_NORWA_API_SECRET`
+- API and admin screens never echo raw secrets back.
+- Audit logs and integration event logs defensively redact sensitive fields such as `api_key`, `api_secret`, `token`, and `password`.
+- Full external secret-manager/encrypted-secret backend is still a future hardening step; the current implementation provides an env-backed path without breaking existing DB-backed integrations.
+
 ## 1) Stack
 - Django + Django Oscar
 - PostgreSQL

@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.db import models
 
@@ -27,11 +29,21 @@ class IntegrationConnection(models.Model):
         (AUTH_TOKEN, 'Token'),
     ]
 
+    CREDENTIAL_SOURCE_DB = 'db'
+    CREDENTIAL_SOURCE_ENV = 'env'
+
+    CREDENTIAL_SOURCE_CHOICES = [
+        (CREDENTIAL_SOURCE_DB, 'Database'),
+        (CREDENTIAL_SOURCE_ENV, 'Environment Variables'),
+    ]
+
     name = models.CharField(max_length=255)
     partner = models.ForeignKey('partner.Partner', on_delete=models.SET_NULL, null=True, blank=True, related_name='integration_connections')
     connection_type = models.CharField(max_length=32, choices=TYPE_CHOICES, default=TYPE_ERPNEXT)
     base_url = models.URLField()
     auth_type = models.CharField(max_length=16, choices=AUTH_CHOICES, default=AUTH_TOKEN)
+    credential_source = models.CharField(max_length=16, choices=CREDENTIAL_SOURCE_CHOICES, default=CREDENTIAL_SOURCE_DB)
+    secret_env_prefix = models.CharField(max_length=100, blank=True)
     api_key = models.CharField(max_length=255, blank=True)
     api_secret = models.CharField(max_length=255, blank=True)
     default_company = models.CharField(max_length=255, blank=True)
@@ -50,6 +62,26 @@ class IntegrationConnection(models.Model):
 
     def __str__(self) -> str:
         return f'{self.name} ({self.connection_type})'
+
+    def resolve_api_key(self) -> str:
+        if self.credential_source == self.CREDENTIAL_SOURCE_ENV:
+            return os.environ.get(self._env_setting_name('API_KEY'), '') or ''
+        return self.api_key or ''
+
+    def resolve_api_secret(self) -> str:
+        if self.credential_source == self.CREDENTIAL_SOURCE_ENV:
+            return os.environ.get(self._env_setting_name('API_SECRET'), '') or ''
+        return self.api_secret or ''
+
+    def has_resolved_api_key(self) -> bool:
+        return bool(self.resolve_api_key())
+
+    def has_resolved_api_secret(self) -> bool:
+        return bool(self.resolve_api_secret())
+
+    def _env_setting_name(self, suffix: str) -> str:
+        prefix = (self.secret_env_prefix or '').strip().upper()
+        return f'{prefix}_{suffix}' if prefix else ''
 
 
 class IntegrationMapping(models.Model):

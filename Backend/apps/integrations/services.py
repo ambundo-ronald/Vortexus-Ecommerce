@@ -28,7 +28,9 @@ class ERPNextClient:
             raise ERPNextIntegrationError('Connection is not configured for ERPNext.')
         if not connection.base_url:
             raise ERPNextIntegrationError('ERPNext base URL is required.')
-        if not connection.api_key or not connection.api_secret:
+        self.api_key = connection.resolve_api_key()
+        self.api_secret = connection.resolve_api_secret()
+        if not self.api_key or not self.api_secret:
             raise ERPNextIntegrationError('ERPNext API key and secret are required.')
 
         self.connection = connection
@@ -38,7 +40,7 @@ class ERPNextClient:
     def _headers(self) -> dict[str, str]:
         return {
             'Accept': 'application/json',
-            'Authorization': f'token {self.connection.api_key}:{self.connection.api_secret}',
+            'Authorization': f'token {self.api_key}:{self.api_secret}',
         }
 
     def _request(self, path: str, query: dict[str, Any] | None = None) -> dict[str, Any]:

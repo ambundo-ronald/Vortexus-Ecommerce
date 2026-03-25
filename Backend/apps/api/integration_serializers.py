@@ -20,6 +20,8 @@ class IntegrationConnectionSerializer(serializers.ModelSerializer):
             'connection_type',
             'base_url',
             'auth_type',
+            'credential_source',
+            'secret_env_prefix',
             'api_key',
             'api_secret',
             'has_api_key',
@@ -38,10 +40,21 @@ class IntegrationConnectionSerializer(serializers.ModelSerializer):
         read_only_fields = ['last_successful_sync_at', 'last_failed_sync_at', 'created_at', 'updated_at']
 
     def get_has_api_key(self, obj):
-        return bool(obj.api_key)
+        return obj.has_resolved_api_key()
 
     def get_has_api_secret(self, obj):
-        return bool(obj.api_secret)
+        return obj.has_resolved_api_secret()
+
+    def validate(self, attrs):
+        credential_source = attrs.get('credential_source')
+        secret_env_prefix = attrs.get('secret_env_prefix')
+        instance = getattr(self, 'instance', None)
+        effective_source = credential_source or getattr(instance, 'credential_source', IntegrationConnection.CREDENTIAL_SOURCE_DB)
+        effective_prefix = secret_env_prefix if secret_env_prefix is not None else getattr(instance, 'secret_env_prefix', '')
+
+        if effective_source == IntegrationConnection.CREDENTIAL_SOURCE_ENV and not (effective_prefix or '').strip():
+            raise serializers.ValidationError({'secret_env_prefix': 'This field is required when using environment-backed credentials.'})
+        return attrs
 
     def create(self, validated_data):
         return IntegrationConnection.objects.create(**validated_data)
