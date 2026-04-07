@@ -4,13 +4,29 @@ import type { FormSubmitEvent } from "@nuxt/ui";
 import ProductForm, {
   type ProductFormSchema,
 } from "~/components/Forms/ProductForm.vue";
+import type { ProductImageItem } from "~/types/ProductImage";
 import type { ProductStockData } from "~/types/ProductTableRow";
 
-const { getProduct } = useProduct();
+const { deleteProduct, getProduct, getCategoryOptions, syncProductImages, updateProduct } = useProduct();
 
 const route = useRoute();
 
-const { data: product } = await getProduct(route.params.id as string);
+const product = ref<any>(null)
+const categories = ref<{ label: string; value: string }[]>([])
+const originalImages = ref<ProductImageItem[]>([])
+
+onMounted(async () => {
+  const [productResult, categoryResult] = await Promise.all([
+    getProduct(route.params.id as string),
+    getCategoryOptions(),
+  ])
+
+  if (productResult.success)
+    product.value = productResult.data
+
+  if (categoryResult.success)
+    categories.value = categoryResult.data
+})
 
 const pageTitle = computed(() => "Edit Product");
 
@@ -18,14 +34,56 @@ function discardChanges() {
   navigateTo("/products");
 }
 async function submit(event: FormSubmitEvent<ProductFormSchema>) {
+  const result = await updateProduct(route.params.id as string, event.data)
   const toast = useToast();
+  if (result.success) {
+    const imageResult = await syncProductImages(route.params.id as string, images.value, originalImages.value)
+    if (!imageResult.success) {
+      toast.add({
+        title: "Product updated with image issues",
+        description: imageResult.error || "The product was updated, but some image changes failed.",
+        color: "warning",
+      });
+      return
+    }
+    images.value = imageResult.data || images.value
+    originalImages.value = [...images.value]
+    toast.add({
+      title: "Success!",
+      description: "Product updated.",
+      color: "success",
+    });
+    navigateTo("/products");
+  } else {
+    toast.add({
+      title: "Update failed",
+      description: result.error || 'Could not update product.',
+      color: "error",
+    });
+  }
+}
+
+async function removeProduct() {
+  const confirmed = window.confirm("Delete this product? This action cannot be undone.")
+  if (!confirmed)
+    return
+
+  const toast = useToast()
+  const result = await deleteProduct(route.params.id as string)
+  if (result.success) {
+    toast.add({
+      title: "Product deleted",
+      description: "The product was removed successfully.",
+      color: "success",
+    })
+    return navigateTo("/products")
+  }
+
   toast.add({
-    title: "Success!",
-    description: "New product saved.",
-    color: "success",
-  });
-  navigateTo("/products");
-  console.log(event);
+    title: "Delete failed",
+    description: result.error || "Could not delete product.",
+    color: "error",
+  })
 }
 
 const statusOptions = [
@@ -48,13 +106,6 @@ const statusOptions = [
     color: "error",
   },
 ];
-const categories = [
-  { label: "Electronics", value: "electronics" },
-  { label: "Clothing", value: "clothing" },
-  { label: "Home & Garden", value: "home-garden" },
-  { label: "Books", value: "books" },
-];
-
 const stockChartData = ref<ProductStockData[]>(
   Array.from({ length: 30 }, (_, i) => {
     const date = new Date();
@@ -78,7 +129,12 @@ function formatDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", options).format(date);
 }
 
-const images = ref(product?.images || []);
+const images = ref<ProductImageItem[]>([]);
+
+watch(product, (value) => {
+  images.value = value?.images || []
+  originalImages.value = [...images.value]
+}, { immediate: true })
 </script>
 
 <template>
@@ -113,6 +169,10 @@ const images = ref(product?.images || []);
                 variant="outline"
                 @click="discardChanges"
               />
+              <UButton color="error" variant="outline" @click="removeProduct">
+                Delete
+                <UIcon name="i-lucide-trash-2" />
+              </UButton>
               <UButton color="primary" variant="solid" @click="submit">
                 Save
                 <UIcon name="i-lucide-save" />

@@ -19,20 +19,34 @@ const columns = getProductTableColumns({
 const currentPage = ref(1);
 const pageSize = ref(10);
 const searchQuery = ref("");
+const { getProducts } = useProduct()
 
-const { data } = await useFetch("/api/products", {
-  key: `products`,
-  params: computed(() => ({
+const productData = ref([])
+const totalItems = ref(0)
+const isLoading = ref(false)
+
+async function loadProducts() {
+  isLoading.value = true
+  const result = await getProducts({
     page: currentPage.value,
     pageSize: pageSize.value,
     search: searchQuery.value,
     sortBy: sortBy.value,
     sortDir: sortDir.value,
-  })),
-});
+  })
 
-const productData = computed(() => data.value?.data ?? []);
-const totalItems = computed(() => data.value?.totalItems ?? 0);
+  if (result.success) {
+    productData.value = result.data?.results ?? []
+    totalItems.value = result.data?.pagination?.total ?? 0
+  }
+  else {
+    productData.value = []
+    totalItems.value = 0
+  }
+  isLoading.value = false
+}
+
+watch([currentPage, pageSize, searchQuery, sortBy, sortDir], loadProducts, { immediate: true })
 </script>
 
 <template>
@@ -66,6 +80,7 @@ const totalItems = computed(() => data.value?.totalItems ?? 0);
         class="cursor-pointer"
         :data="productData"
         :columns="columns"
+        :loading="isLoading"
         @select="(product) => navigateTo(`/products/${product.id}/edit`)"
       />
       <div class="flex justify-end pt-4">

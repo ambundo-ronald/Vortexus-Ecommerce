@@ -3,6 +3,8 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
 
+from apps.common.media import normalize_uploaded_image
+
 
 class ProductListQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True, default="")
@@ -32,6 +34,17 @@ class QuoteRequestSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True, max_length=40)
     company = serializers.CharField(required=False, allow_blank=True, max_length=120)
     message = serializers.CharField(max_length=1500)
+
+
+class ProductImageUploadSerializer(serializers.Serializer):
+    image = serializers.ImageField()
+    alt = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+    def validate_image(self, value):
+        try:
+            return normalize_uploaded_image(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
 
 class ProductWriteSerializer(serializers.Serializer):

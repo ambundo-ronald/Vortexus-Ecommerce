@@ -70,7 +70,16 @@ from .wishlist_views import (
     WishListItemDetailAPIView,
     WishListItemStatusAPIView,
 )
-from .views import CategoryListAPIView, ProductDetailAPIView, ProductListAPIView, QuoteRequestAPIView
+from .views import (
+    AdminProductCollectionAPIView,
+    AdminProductDetailAPIView,
+    AdminProductImageCollectionAPIView,
+    AdminProductImageDetailAPIView,
+    CategoryListAPIView,
+    ProductDetailAPIView,
+    ProductListAPIView,
+    QuoteRequestAPIView,
+)
 
 urlpatterns = [
     path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
@@ -105,6 +114,10 @@ urlpatterns = [
     path('admin/integrations/<int:connection_id>/erpnext/preview/', ERPNextPreviewAPIView.as_view(), name='admin-integration-erpnext-preview'),
     path('admin/integrations/<int:connection_id>/erpnext/import/', ERPNextCatalogImportAPIView.as_view(), name='admin-integration-erpnext-import'),
     path('admin/integrations/<int:connection_id>/erpnext/stock-sync/', ERPNextStockSyncAPIView.as_view(), name='admin-integration-erpnext-stock-sync'),
+    path('admin/products/', AdminProductCollectionAPIView.as_view(), name='admin-products'),
+    path('admin/products/<int:product_id>/', AdminProductDetailAPIView.as_view(), name='admin-product-detail'),
+    path('admin/products/<int:product_id>/images/', AdminProductImageCollectionAPIView.as_view(), name='admin-product-images'),
+    path('admin/products/<int:product_id>/images/<int:image_id>/', AdminProductImageDetailAPIView.as_view(), name='admin-product-image-detail'),
     path('checkout/basket/', BasketAPIView.as_view(), name='checkout-basket'),
     path('checkout/basket/items/', BasketItemCollectionAPIView.as_view(), name='checkout-basket-items'),
     path('checkout/basket/items/<int:line_id>/', BasketLineDetailAPIView.as_view(), name='checkout-basket-line'),

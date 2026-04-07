@@ -75,8 +75,8 @@ export function getProductTableColumns({
       cell: ({ row }) => {
         const statusMap: Record<string, string> = {
           Active: "success",
-          Inactive: "warning",
-          Discontinued: "danger",
+          Draft: "warning",
+          Archived: "danger",
         };
         const color = statusMap[row.original.status] || "neutral";
         return h(UBadge as any, {

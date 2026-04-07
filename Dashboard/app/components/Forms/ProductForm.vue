@@ -80,6 +80,31 @@ const localFormState = reactive<ProductFormSchema>({
   ...props.values,
 }) as ProductFormSchema;
 
+watch(
+  () => props.values,
+  (values) => {
+    if (!values) return
+    Object.assign(localFormState, {
+      name: "",
+      description: "",
+      images: [],
+      price: 0,
+      originalPrice: undefined,
+      chargeTax: true,
+      sku: "",
+      stock: 0,
+      weight: null,
+      dimensions: "",
+      status: "draft",
+      category: "",
+      brand: "",
+      tags: "",
+      ...values,
+    })
+  },
+  { immediate: true, deep: true },
+)
+
 function generateSKU() {
   localFormState.sku = `SKU-${Math.random()
     .toString(36)

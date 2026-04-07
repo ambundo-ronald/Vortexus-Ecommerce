@@ -1,10 +1,13 @@
 import logging
 
 from django.apps import apps
+from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
 from django.db.models import Min, Q
 from django.shortcuts import get_object_or_404
+from django.utils.text import slugify
 from rest_framework import permissions, status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -15,7 +18,7 @@ from apps.common.products import serialize_product_card
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
-from .serializers import ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
+from .serializers import ProductImageUploadSerializer, ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,85 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         "specifications": specs,
         "updated_at": product.date_updated,
         "is_public": product.is_public,
+    }
+
+
+def _serialize_product_image(image, fallback_alt: str = '') -> dict:
+    alt = (getattr(image, 'caption', '') or fallback_alt or '').strip()
+    src = ''
+    if getattr(image, 'original', None):
+        src = image.original.url or ''
+    return {
+        'id': image.id,
+        'src': src,
+        'alt': alt,
+        'displayOrder': getattr(image, 'display_order', 0),
+    }
+
+
+def _stockrecord_for_product(product):
+    return product.stockrecords.first() if hasattr(product, 'stockrecords') else None
+
+
+def _attribute_value_map(product) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for attribute_value in product.attribute_values.all():
+        attribute = getattr(attribute_value, 'attribute', None)
+        if not attribute:
+            continue
+        raw_value = getattr(attribute_value, 'value', None)
+        if raw_value in (None, ''):
+            raw_value = str(attribute_value)
+        values[attribute.code] = str(raw_value)
+    return values
+
+
+def _serialize_admin_product_row(product, display_currency: str | None = None) -> dict:
+    card = serialize_product_card(product=product, display_currency=display_currency)
+    stockrecord = _stockrecord_for_product(product)
+    category = product.categories.first()
+    return {
+        'id': product.id,
+        'name': product.title,
+        'sku': product.upc,
+        'price': card.get('price'),
+        'currency': card.get('currency'),
+        'status': 'Active' if product.is_public else 'Draft',
+        'category': category.name if category else 'Uncategorized',
+        'categorySlug': category.slug if category else '',
+        'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'imageUrl': card.get('thumbnail', ''),
+        'isPublic': product.is_public,
+        'updatedAt': product.date_updated,
+    }
+
+
+def _build_admin_product_detail(product, display_currency: str | None = None) -> dict:
+    detail = _build_product_detail(product=product, display_currency=display_currency)
+    stockrecord = _stockrecord_for_product(product)
+    attributes = _attribute_value_map(product)
+    return {
+        'id': product.id,
+        'name': product.title,
+        'sku': product.upc,
+        'price': detail.get('price'),
+        'currency': detail.get('currency'),
+        'status': 'active' if product.is_public else 'draft',
+        'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'description': product.description or '',
+        'imageUrl': detail.get('primary_image', ''),
+        'images': [_serialize_product_image(image, fallback_alt=product.title) for image in product.images.all()],
+        'category': str(detail['categories'][0]['id']) if detail.get('categories') else '',
+        'categoryIds': [category['id'] for category in detail.get('categories', [])],
+        'categories': detail.get('categories', []),
+        'brand': attributes.get('brand', ''),
+        'tags': attributes.get('tags', ''),
+        'dimensions': attributes.get('dimensions', ''),
+        'weight': float(attributes['weight_grams']) if attributes.get('weight_grams') not in (None, '') and str(attributes.get('weight_grams')).replace('.', '', 1).isdigit() else None,
+        'chargeTax': True,
+        'specifications': detail.get('specifications', []),
+        'updatedAt': detail.get('updated_at'),
+        'isPublic': product.is_public,
     }
 
 
@@ -269,6 +351,142 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
             event_type='catalog.product_deleted',
             request=request,
             message='Catalog product deleted by staff.',
+            metadata=metadata,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminProductCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        serializer = ProductListQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+        display_currency = resolve_display_currency(request)
+
+        queryset = (
+            _product_queryset(include_hidden=True)
+            .annotate(list_price=Min('stockrecords__price'))
+            .order_by('title')
+        )
+
+        query = params.get('q', '').strip()
+        if query:
+            queryset = queryset.filter(
+                Q(title__icontains=query) | Q(upc__icontains=query) | Q(description__icontains=query)
+            )
+
+        category = params.get('category')
+        if category:
+            queryset = queryset.filter(categories__slug=category)
+
+        in_stock = params.get('in_stock')
+        if in_stock is True:
+            queryset = queryset.filter(stockrecords__num_in_stock__gt=0)
+
+        min_price = params.get('min_price')
+        if min_price is not None:
+            queryset = queryset.filter(list_price__gte=min_price)
+
+        max_price = params.get('max_price')
+        if max_price is not None:
+            queryset = queryset.filter(list_price__lte=max_price)
+
+        sort_by = params.get('sort_by', 'relevance')
+        if sort_by == 'newest':
+            queryset = queryset.order_by('-date_updated', 'title')
+        elif sort_by == 'price_asc':
+            queryset = queryset.order_by('list_price', 'title')
+        elif sort_by == 'price_desc':
+            queryset = queryset.order_by('-list_price', 'title')
+        else:
+            queryset = queryset.order_by('title')
+
+        page = params.get('page', 1)
+        page_size = params.get('page_size', 24)
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+
+        return Response(
+            {
+                'results': [
+                    _serialize_admin_product_row(product=item, display_currency=display_currency)
+                    for item in page_obj.object_list
+                ],
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+
+class AdminProductDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        display_currency = resolve_display_currency(request)
+        return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
+
+
+class AdminProductImageCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, product_id: int):
+        ProductImage = apps.get_model('catalogue', 'ProductImage')
+
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        serializer = ProductImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        uploaded_file = serializer.validated_data['image']
+        alt = (serializer.validated_data.get('alt') or product.title or '').strip()
+        filename_root = slugify(product.title or product.upc or f'product-{product.id}') or f'product-{product.id}'
+        upload_name = getattr(uploaded_file, 'name', '') or f'{filename_root}.webp'
+        final_name = upload_name if '.' in upload_name else f'{filename_root}.webp'
+
+        product_image = ProductImage(
+            product=product,
+            caption=alt,
+            display_order=product.images.count(),
+        )
+        product_image.original.save(final_name, ContentFile(uploaded_file.read()), save=False)
+        product_image.save()
+
+        record_audit_event(
+            event_type='catalog.product_image_uploaded',
+            request=request,
+            target=product,
+            message='Catalog product image uploaded by staff.',
+            metadata={'image_id': product_image.id, 'product_id': product.id, 'filename': final_name},
+        )
+
+        return Response({'image': _serialize_product_image(product_image, fallback_alt=product.title)}, status=status.HTTP_201_CREATED)
+
+
+class AdminProductImageDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def delete(self, request, product_id: int, image_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        image = get_object_or_404(product.images.all(), id=image_id)
+        metadata = {
+            'image_id': image.id,
+            'product_id': product.id,
+            'filename': getattr(getattr(image, 'original', None), 'name', ''),
+        }
+        image.delete()
+        record_audit_event(
+            event_type='catalog.product_image_deleted',
+            request=request,
+            target=product,
+            message='Catalog product image deleted by staff.',
             metadata=metadata,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)

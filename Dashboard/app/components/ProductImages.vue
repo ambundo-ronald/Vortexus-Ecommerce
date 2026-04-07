@@ -60,18 +60,17 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { ProductImageItem } from '~/types/ProductImage'
 
-interface ProductImage {
-  src: string
-  alt: string
-}
-
-const model = defineModel<ProductImage[]>({ default: [] });
+const model = defineModel<ProductImageItem[]>({ default: [] });
 
 const isPreviewOpen = ref(false);
 const previewSrc = ref('');
 
 function removeImage(idx: number) {
+  const image = model.value[idx]
+  if (image?.file && image.src.startsWith('blob:'))
+    URL.revokeObjectURL(image.src)
   model.value.splice(idx, 1)
 }
 
@@ -86,11 +85,12 @@ function onFilesSelected(e: Event) {
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/')) continue
     if (file.size > 500 * 1024) continue
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      model.value.push({ src: ev.target?.result as string, alt: file.name })
-    }
-    reader.readAsDataURL(file)
+    model.value.push({
+      src: URL.createObjectURL(file),
+      alt: file.name,
+      file,
+    })
   }
+  ;(e.target as HTMLInputElement).value = ''
 }
 </script>

@@ -1,22 +1,39 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from "@nuxt/ui";
 import ProductForm, { type ProductFormSchema } from "~/components/Forms/ProductForm.vue";
+import type { ProductImageItem } from "~/types/ProductImage";
 import type { ProductStockData } from '~/types/ProductTableRow'
 
 const pageTitle = computed(() => "New Product");
-const { createProduct } = useProduct();
+const { createProduct, getCategoryOptions, syncProductImages } = useProduct();
 
 function discardChanges() {
   navigateTo("/products");
 }
 async function submit(event: FormSubmitEvent<ProductFormSchema>) {
+  const toast = useToast();
   const result = await createProduct(event.data);
   if (result.success) {
-    const toast = useToast();
+    const productId = result.data?.id
+    if (productId && images.value.length) {
+      const imageResult = await syncProductImages(productId, images.value, [])
+      if (!imageResult.success) {
+        toast.add({
+          title: "Product saved with image issues",
+          description: imageResult.error || "The product was created, but one or more images failed to upload.",
+          color: "warning",
+        });
+        return navigateTo(`/products/${productId}/edit`)
+      }
+    }
     toast.add({ title: "Success!", description: "New product saved.", color: "success" });
     navigateTo("/products");
   } else {
-    console.error(result.error);
+    toast.add({
+      title: "Create failed",
+      description: result.error || "Could not create product.",
+      color: "error",
+    });
   }
 }
 
@@ -40,12 +57,14 @@ const statusOptions = [
     color: "error",
   },
 ];
-const categories = [
-  { label: "Electronics", value: "electronics" },
-  { label: "Clothing", value: "clothing" },
-  { label: "Home & Garden", value: "home-garden" },
-  { label: "Books", value: "books" },
-];
+const categories = ref<{ label: string; value: string }[]>([]);
+
+onMounted(async () => {
+  const result = await getCategoryOptions()
+  if (result.success) {
+    categories.value = result.data
+  }
+})
 
 const stockChartData = ref<ProductStockData[]>(
   Array.from({ length: 30 }, (_, i) => {
@@ -70,7 +89,7 @@ function formatDate(date: Date) {
   return new Intl.DateTimeFormat('en-US', options).format(date)
 }
 
-const images = ref([]);
+const images = ref<ProductImageItem[]>([]);
 </script>
 
 <template>
