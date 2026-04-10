@@ -9,6 +9,7 @@ from apps.common.media import normalize_uploaded_image
 class ProductListQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True, default="")
     category = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.ChoiceField(required=False, choices=["active", "draft"], allow_blank=True)
     in_stock = serializers.BooleanField(required=False)
     min_price = serializers.DecimalField(required=False, max_digits=12, decimal_places=2, min_value=0)
     max_price = serializers.DecimalField(required=False, max_digits=12, decimal_places=2, min_value=0)

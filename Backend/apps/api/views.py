@@ -381,6 +381,12 @@ class AdminProductCollectionAPIView(APIView):
         if category:
             queryset = queryset.filter(categories__slug=category)
 
+        status_filter = params.get('status')
+        if status_filter == 'active':
+            queryset = queryset.filter(is_public=True)
+        elif status_filter == 'draft':
+            queryset = queryset.filter(is_public=False)
+
         in_stock = params.get('in_stock')
         if in_stock is True:
             queryset = queryset.filter(stockrecords__num_in_stock__gt=0)

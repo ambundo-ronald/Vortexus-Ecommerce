@@ -4,6 +4,7 @@ export interface ProductListParams {
   page?: number
   pageSize?: number
   search?: string
+  status?: 'active' | 'draft' | ''
   sortBy?: string
   sortDir?: 'asc' | 'desc'
 }
@@ -85,6 +86,7 @@ export function useProduct() {
           page: params.page || 1,
           page_size: params.pageSize || 10,
           q: params.search || '',
+          status: params.status || '',
           sort_by: mapSort(params.sortBy, params.sortDir || 'asc'),
         },
       })

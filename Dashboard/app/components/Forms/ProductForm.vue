@@ -49,7 +49,7 @@ const productSchema = z.object({
     .optional(),
   dimensions: z.string().optional(),
   status: z
-    .enum(["active", "draft", "archived"], {
+    .enum(["active", "draft"], {
       error: "Status is required",
     })
     .default("draft"),

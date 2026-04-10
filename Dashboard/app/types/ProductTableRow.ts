@@ -7,6 +7,7 @@ export interface ProductTableRow {
   category: string;
   stock: number;
   imageUrl?: string;
+  updatedAt?: string;
 }
 
 export interface ProductStockData {

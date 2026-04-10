@@ -14,6 +14,8 @@ const route = useRoute();
 const product = ref<any>(null)
 const categories = ref<{ label: string; value: string }[]>([])
 const originalImages = ref<ProductImageItem[]>([])
+const isDeleteModalOpen = ref(false)
+const isDeleting = ref(false)
 
 onMounted(async () => {
   const [productResult, categoryResult] = await Promise.all([
@@ -64,11 +66,8 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
 }
 
 async function removeProduct() {
-  const confirmed = window.confirm("Delete this product? This action cannot be undone.")
-  if (!confirmed)
-    return
-
   const toast = useToast()
+  isDeleting.value = true
   const result = await deleteProduct(route.params.id as string)
   if (result.success) {
     toast.add({
@@ -79,6 +78,7 @@ async function removeProduct() {
     return navigateTo("/products")
   }
 
+  isDeleting.value = false
   toast.add({
     title: "Delete failed",
     description: result.error || "Could not delete product.",
@@ -98,12 +98,6 @@ const statusOptions = [
     value: "draft",
     icon: "i-lucide-file-text",
     color: "neutral",
-  },
-  {
-    label: "Archived",
-    value: "archived",
-    icon: "i-lucide-archive",
-    color: "error",
   },
 ];
 const stockChartData = ref<ProductStockData[]>(
@@ -169,7 +163,7 @@ watch(product, (value) => {
                 variant="outline"
                 @click="discardChanges"
               />
-              <UButton color="error" variant="outline" @click="removeProduct">
+              <UButton color="error" variant="outline" @click="isDeleteModalOpen = true">
                 Delete
                 <UIcon name="i-lucide-trash-2" />
               </UButton>
@@ -191,5 +185,51 @@ watch(product, (value) => {
         />
       </template>
     </ProductForm>
+
+    <div
+      v-if="isDeleteModalOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+    >
+      <UCard class="w-full max-w-md">
+        <template #header>
+          <div class="flex items-center gap-3">
+            <div class="rounded-full bg-error/10 p-2 text-error">
+              <UIcon name="i-lucide-trash-2" />
+            </div>
+            <div>
+              <h3 class="font-semibold text-default">Delete product</h3>
+              <p class="text-sm text-dimmed">This action cannot be undone.</p>
+            </div>
+          </div>
+        </template>
+
+        <p class="text-sm text-default">
+          Delete
+          <span class="font-semibold">{{ product?.name || "this product" }}</span>
+          from the catalogue?
+        </p>
+
+        <template #footer>
+          <div class="flex justify-end gap-3">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :disabled="isDeleting"
+              @click="isDeleteModalOpen = false"
+            >
+              Cancel
+            </UButton>
+            <UButton
+              color="error"
+              variant="solid"
+              :loading="isDeleting"
+              @click="removeProduct"
+            >
+              Delete product
+            </UButton>
+          </div>
+        </template>
+      </UCard>
+    </div>
   </div>
 </template>

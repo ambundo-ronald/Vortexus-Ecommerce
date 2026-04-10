@@ -50,12 +50,6 @@ const statusOptions = [
     icon: "i-lucide-file-text",
     color: "neutral",
   },
-  {
-    label: "Archived",
-    value: "archived",
-    icon: "i-lucide-archive",
-    color: "error",
-  },
 ];
 const categories = ref<{ label: string; value: string }[]>([]);
 

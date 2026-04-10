@@ -4,10 +4,14 @@ import { useSortableHeader } from "~/composables/useSortableHeader";
 import type { SortBy, SortDir } from "~/types/Table";
 
 export function getProductTableColumns({
+  onDelete,
+  onEdit,
   sortBy,
   sortDir,
   components,
 }: {
+  onDelete: (product: ProductTableRow, event?: Event) => void;
+  onEdit: (product: ProductTableRow, event?: Event) => void;
   sortBy: Ref<SortBy>;
   sortDir: Ref<SortDir>;
   components: unknown[];
@@ -76,7 +80,6 @@ export function getProductTableColumns({
         const statusMap: Record<string, string> = {
           Active: "success",
           Draft: "warning",
-          Archived: "danger",
         };
         const color = statusMap[row.original.status] || "neutral";
         return h(UBadge as any, {
@@ -104,6 +107,35 @@ export function getProductTableColumns({
       accessorKey: "price",
       header: ({ column }) => renderSortableHeader("Price", column),
       cell: ({ row }) => `$${Number(row.getValue("price") ?? 0).toFixed(2)}`,
+    },
+    {
+      id: "actions",
+      header: () => h("span", { class: "sr-only" }, "Actions"),
+      cell: ({ row }) =>
+        h("div", { class: "flex items-center justify-end gap-2" }, [
+          h(UButton as Component, {
+            icon: "i-lucide-pencil",
+            color: "neutral",
+            variant: "ghost",
+            size: "xs",
+            "aria-label": `Edit ${row.original.name}`,
+            onClick: (event: Event) => {
+              event.stopPropagation();
+              onEdit(row.original, event);
+            },
+          }),
+          h(UButton as Component, {
+            icon: "i-lucide-trash-2",
+            color: "error",
+            variant: "ghost",
+            size: "xs",
+            "aria-label": `Delete ${row.original.name}`,
+            onClick: (event: Event) => {
+              event.stopPropagation();
+              onDelete(row.original, event);
+            },
+          }),
+        ]),
     },
   ];
 }
