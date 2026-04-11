@@ -4,10 +4,12 @@ import { useSortableHeader } from "~/composables/useSortableHeader";
 import type { SortBy, SortDir } from "~/types/Table";
 
 export function getOrderTableColumns({
+  onView,
   sortBy,
   sortDir,
   components,
 }: {
+  onView: (order: OrderTableRow, event?: Event) => void;
   sortBy: Ref<SortBy>;
   sortDir: Ref<SortDir>;
   components: Component[];
@@ -35,9 +37,9 @@ export function getOrderTableColumns({
         }),
     },
     {
-      accessorKey: "id",
+      accessorKey: "orderNo",
       header: ({ column }) => renderSortableHeader("Order #", column),
-      cell: ({ row }) => h("span", { class: "font-mono" }, `#${row.original.id}`),
+      cell: ({ row }) => h("span", { class: "font-mono" }, row.original.orderNo),
     },
     {
       accessorKey: "companyName",
@@ -56,6 +58,11 @@ export function getOrderTableColumns({
         const statusMap: Record<string, string> = {
           Paid: "success",
           Pending: "warning",
+          Processing: "warning",
+          Packed: "info",
+          Shipped: "info",
+          Delivered: "success",
+          Cancelled: "error",
           Failed: "danger",
         };
         const color = statusMap[row.original.status] || "neutral";
@@ -112,6 +119,24 @@ export function getOrderTableColumns({
       header: ({ column }) => renderSortableHeader("Date", column),
       cell: ({ row }) =>
         new Date(row.getValue("createdDate")).toLocaleDateString(),
+    },
+    {
+      id: "actions",
+      header: () => h("span", { class: "sr-only" }, "Actions"),
+      cell: ({ row }) =>
+        h("div", { class: "flex items-center justify-end gap-2" }, [
+          h(UButton as Component, {
+            icon: "i-lucide-eye",
+            color: "neutral",
+            variant: "ghost",
+            size: "xs",
+            "aria-label": `View ${row.original.orderNo}`,
+            onClick: (event: Event) => {
+              event.stopPropagation();
+              onView(row.original, event);
+            },
+          }),
+        ]),
     },
   ];
 }

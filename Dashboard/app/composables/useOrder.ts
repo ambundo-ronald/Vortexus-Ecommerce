@@ -1,55 +1,91 @@
-import { orders } from '~/data/orderData'
+import type { OrderTableRow } from "~/types/OrderTableRow";
+
+export interface OrderListParams {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: string
+  sortBy?: string
+  sortDir?: 'asc' | 'desc'
+}
+
+export interface UpdateOrderStatusPayload {
+  status: string
+  note?: string
+  tracking_reference?: string
+}
+
+function mapOrderSort(sortBy?: string, sortDir: 'asc' | 'desc' = 'asc') {
+  if (sortBy === 'orderTotal')
+    return sortDir === 'desc' ? 'total_desc' : 'total_asc'
+  if (sortBy === 'status')
+    return 'status'
+  return 'newest'
+}
+
 export function useOrder() {
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const { request } = useBackendApi()
 
-  async function getOrder(id: number) {
+  async function getOrders(params: OrderListParams = {}) {
     loading.value = true
     error.value = null
     try {
-      // const result = await $fetch(`/api/orders/${id}`)
-      // return { success: true, data: result }
-      const order = orders.find((o: { id: number }) => o.id === Number(id))
-      if (!order) throw new Error('Order not found')
-      return { success: true, data: order }
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Unknown error'
+      const result = await request<{ results: OrderTableRow[], pagination: any, summary: any }>('/admin/orders/', {
+        method: 'GET',
+        query: {
+          page: params.page || 1,
+          page_size: params.pageSize || 10,
+          q: params.search || '',
+          status: params.status || '',
+          sort_by: mapOrderSort(params.sortBy, params.sortDir || 'asc'),
+        },
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
       return { success: false, error: error.value }
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
 
-  async function createOrder(data: Record<string, unknown>) {
+  async function getOrder(id: number | string) {
     loading.value = true
     error.value = null
     try {
-      // const result = await $fetch('/api/orders', {
-      //   method: 'POST',
-      //   body: data,
-      // })
-      // return { success: true, data: result }
-      // For now, just return a fake order
-      const fakeOrder = {
-        id: 101,
-        userId: 1,
-        status: "pending",
-        total: 199.99,
-        createdAt: new Date().toISOString(),
-        items: [
-          {
-            productId: 1,
-            name: "Sample Product",
-            quantity: 2,
-            price: 99.99,
-          },
-        ],
-      }
-      return { success: true, data: fakeOrder }
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Unknown error'
+      const result = await request<{ order: any }>(`/admin/orders/${id}/`, {
+        method: 'GET',
+      })
+      return { success: true, data: result.order }
+    }
+    catch (err: any) {
+      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
       return { success: false, error: error.value }
-    } finally {
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function updateOrderStatus(id: number | string, payload: UpdateOrderStatusPayload) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, order: any }>(`/admin/orders/${id}/status/`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      return { success: true, data: result.order, detail: result.detail }
+    }
+    catch (err: any) {
+      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
+      return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
+    }
+    finally {
       loading.value = false
     }
   }
@@ -57,7 +93,8 @@ export function useOrder() {
   return {
     loading,
     error,
-    createOrder,
-    getOrder
+    getOrder,
+    getOrders,
+    updateOrderStatus,
   }
 }

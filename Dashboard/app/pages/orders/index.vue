@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, watch } from "vue";
 import { getOrderTableColumns } from "../../config/orderTableColumns";
+import type { OrderTableRow } from "~/types/OrderTableRow";
 import type { SortBy, SortDir } from "~/types/Table";
 
 const UBadge = resolveComponent("UBadge");
@@ -11,52 +12,85 @@ const UCheckbox = resolveComponent("UCheckbox");
 
 const sortBy = ref<SortBy>();
 const sortDir = ref<SortDir>("asc");
+const currentPage = ref(1);
+const pageSize = ref(10);
+const searchQuery = ref("");
+const statusFilter = ref("");
 
 const columns = getOrderTableColumns({
+  onView: (order) => {
+    navigateTo(`/orders/${order.id}`);
+  },
   sortBy,
   sortDir,
   components: [UButton, UBadge, UCheckbox, UIcon],
 });
 
-const currentPage = ref(1);
-const pageSize = ref(10);
-const searchQuery = ref("");
+const { getOrders } = useOrder();
+const toast = useToast();
 
-const { data, pending: isLoading } = await useFetch("/api/orders", {
-  key: `orders`,
-  params: computed(() => ({
+const orderData = ref<OrderTableRow[]>([]);
+const totalItems = ref(0);
+const isLoading = ref(false);
+const summary = ref({
+  total: 0,
+  pending: 0,
+  completed: 0,
+  failed: 0,
+});
+
+const statusOptions = [
+  { label: "All statuses", value: "" },
+  { label: "Pending", value: "Pending" },
+  { label: "Processing", value: "Processing" },
+  { label: "Packed", value: "Packed" },
+  { label: "Paid", value: "Paid" },
+  { label: "Shipped", value: "Shipped" },
+  { label: "Delivered", value: "Delivered" },
+  { label: "Cancelled", value: "Cancelled" },
+];
+
+async function loadOrders() {
+  isLoading.value = true;
+  const result = await getOrders({
     page: currentPage.value,
     pageSize: pageSize.value,
     search: searchQuery.value,
+    status: statusFilter.value,
     sortBy: sortBy.value,
     sortDir: sortDir.value,
-  })),
+  });
+
+  if (result.success) {
+    orderData.value = result.data?.results ?? [];
+    totalItems.value = result.data?.pagination?.total ?? 0;
+    summary.value = result.data?.summary ?? summary.value;
+  }
+  else {
+    orderData.value = [];
+    totalItems.value = 0;
+    summary.value = { total: 0, pending: 0, completed: 0, failed: 0 };
+    toast.add({
+      title: "Could not load orders",
+      description: result.error || "Please try again.",
+      color: "error",
+    });
+  }
+
+  isLoading.value = false;
+}
+
+watch([currentPage, pageSize, searchQuery, sortBy, sortDir, statusFilter], loadOrders, { immediate: true });
+watch([searchQuery, statusFilter, pageSize], () => {
+  currentPage.value = 1;
 });
-
-const orderData = computed(() => data.value?.data ?? []);
-const totalItems = computed(() => data.value?.totalItems ?? 0);
-
-/**
- * These KPI computed properties will now safely operate on an empty array
- * during load time instead of `undefined`, returning 0.
- */
-const totalOrders = computed(() => orderData.value.length);
-const pendingOrders = computed(
-  () => orderData.value.filter((order) => order.status === "Pending").length
-);
-const completedOrders = computed(
-  () => orderData.value.filter((order) => order.status === "Paid").length
-);
-const failedOrders = computed(
-  () => orderData.value.filter((order) => order.status === "Failed").length
-);
 </script>
 
 <template>
   <div>
-    <div class="flex justify-between items-center p-8 mb-4 pb-4">
+    <div class="mb-4 flex items-center justify-between p-8 pb-4">
       <h1 class="text-xl font-semibold">Orders</h1>
-      <div class="flex items-center justify-end gap-2 w-full">
+      <div class="flex w-full items-center justify-end gap-2">
         <UInput
           v-model="searchQuery"
           class="max-w-sm"
@@ -65,21 +99,25 @@ const failedOrders = computed(
           placeholder="Search orders..."
           :ui="{ leadingIcon: 'size-4' }"
         />
-        <UButton variant="outline">
-          <UIcon name="i-lucide-settings" />
-          Settings
-        </UButton>
-        <UButton color="primary" variant="solid">
-          <UIcon name="i-lucide-plus" />
-          New Order
+        <USelect
+          v-model="statusFilter"
+          :items="statusOptions"
+          value-attribute="value"
+          option-attribute="label"
+          class="min-w-44"
+          size="lg"
+        />
+        <UButton variant="outline" :loading="isLoading" @click="loadOrders">
+          <UIcon name="i-lucide-refresh-cw" />
+          Refresh
         </UButton>
       </div>
     </div>
 
-    <div class="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 px-8">
+    <div class="mb-8 grid grid-cols-1 gap-8 px-8 sm:grid-cols-2 lg:grid-cols-4">
       <CardsKpiCard2
         name="Total Orders"
-        :value="totalOrders"
+        :value="summary.total"
         :budget="totalItems"
         color="var(--color-info)"
         icon="i-lucide-shopping-cart"
@@ -87,24 +125,24 @@ const failedOrders = computed(
       />
       <CardsKpiCard2
         name="Pending Orders"
-        :value="pendingOrders"
-        :budget="totalItems"
+        :value="summary.pending"
+        :budget="summary.total"
         color="var(--color-warning)"
         icon="i-lucide-clock"
         :loading="isLoading"
       />
       <CardsKpiCard2
         name="Completed Orders"
-        :value="completedOrders"
-        :budget="totalItems"
+        :value="summary.completed"
+        :budget="summary.total"
         color="var(--color-success)"
         icon="i-lucide-check-circle"
         :loading="isLoading"
       />
       <CardsKpiCard2
         name="Failed Orders"
-        :value="failedOrders"
-        :budget="totalItems"
+        :value="summary.failed"
+        :budget="summary.total"
         color="var(--color-error)"
         icon="i-lucide-x-circle"
         :loading="isLoading"
@@ -113,8 +151,10 @@ const failedOrders = computed(
 
     <div class="px-8">
       <UTable
+        class="cursor-pointer"
         :data="orderData"
         :columns="columns"
+        :loading="isLoading"
         @select="(order) => navigateTo(`/orders/${order.id}`)"
       />
       <div class="flex justify-end pt-4">
