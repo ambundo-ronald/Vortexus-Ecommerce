@@ -39,6 +39,7 @@ from .order_views import (
     CustomerOrderStatusAPIView,
 )
 from .media_views import AdminMediaCollectionAPIView, AdminMediaDetailAPIView
+from .settings_views import AdminSettingsAPIView
 from .payment_views import (
     AirtelMoneyCallbackAPIView,
     AirtelMoneyInitializationAPIView,
@@ -116,6 +117,7 @@ urlpatterns = [
     path('admin/users/<int:user_id>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
     path('admin/media/', AdminMediaCollectionAPIView.as_view(), name='admin-media'),
     path('admin/media/<int:image_id>/', AdminMediaDetailAPIView.as_view(), name='admin-media-detail'),
+    path('admin/settings/', AdminSettingsAPIView.as_view(), name='admin-settings'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),
     path('admin/orders/<int:order_id>/status/', AdminOrderStatusAPIView.as_view(), name='admin-order-status'),
