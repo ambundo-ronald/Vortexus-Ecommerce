@@ -1,5 +1,28 @@
 <script setup lang="ts">
 const searchQuery = ref();
+const route = useRoute();
+const { checked, fetchCurrentUser, isAuthenticated, loading, logout, user } = useAdminAuth();
+
+const isLoginRoute = computed(() => route.path === "/login");
+
+onMounted(async () => {
+  if (!isLoginRoute.value && !checked.value)
+    await fetchCurrentUser();
+  if (!isLoginRoute.value && !isAuthenticated.value)
+    await navigateTo("/login");
+});
+
+watch(
+  () => route.path,
+  async (path) => {
+    if (path === "/login")
+      return;
+    if (!checked.value)
+      await fetchCurrentUser();
+    if (!isAuthenticated.value)
+      await navigateTo("/login");
+  },
+);
 </script>
 
 <template>
@@ -9,7 +32,16 @@ const searchQuery = ref();
         position: 'bottom-right',
       }"
     >
-      <div class="h-auto min-h-full flex bg-elevated dark:bg-default">
+      <NuxtPage v-if="isLoginRoute" />
+
+      <div v-else-if="!checked || loading" class="flex min-h-screen items-center justify-center bg-elevated">
+        <div class="flex items-center gap-3 text-(--ui-text-muted)">
+          <UIcon name="i-lucide-loader-circle" class="animate-spin" />
+          Checking dashboard session...
+        </div>
+      </div>
+
+      <div v-else class="h-auto min-h-full flex bg-elevated dark:bg-default">
         <LayoutSidebar />
 
         <div class="w-full">
@@ -27,7 +59,7 @@ const searchQuery = ref();
                 <h1
                   class="text-lg tracking-tight font-semibold text-inverted dark:text-default"
                 >
-                  Nuxt Charts
+                  Vortexus Admin
                 </h1>
               </NuxtLink>
 
@@ -45,6 +77,18 @@ const searchQuery = ref();
             />
             <div class="mx-4">
               <UButton icon="i-lucide-bell" class="text-inverted dark:text-default" variant="ghost" />
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="hidden text-sm text-inverted dark:text-default lg:inline">
+                {{ user?.full_name || user?.email }}
+              </span>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-log-out"
+                class="text-inverted dark:text-default"
+                @click="logout"
+              />
             </div>
           </div>
           <div class="min-h-full h-auto pt-13.5 pb-8 pl-64">

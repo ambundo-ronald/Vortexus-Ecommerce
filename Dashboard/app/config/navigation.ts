@@ -20,7 +20,7 @@ export const mainNav = [
     to: "/users",
   },
   {
-    label: "Analyze",
+    label: "Analytics",
     icon: "i-lucide-activity",
     to: "/analytics",
   },
@@ -43,10 +43,6 @@ export const supportNav = [
     to: "/support",
     highlight: true,
   },
-  {
-    label: "Visual labels",
-    icon: "i-lucide-tag",
-  },
 ];
 
 export const settingsNav = [
@@ -54,9 +50,5 @@ export const settingsNav = [
     label: "Settings",
     icon: "i-lucide-settings",
     to: "/settings",
-  },
-  {
-    label: "Support",
-    icon: "i-lucide-life-buoy",
   },
 ];

@@ -32,3 +32,4 @@ yarn-error.log*
 Backend/media/
 Backend/staticfiles/
 Database/postgres/
+.data

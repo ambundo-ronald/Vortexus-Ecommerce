@@ -22,7 +22,7 @@ const isLinkActive = (item: { to?: string }) => {
         class="flex items-center justify-between cursor-pointer"
         @click="collapsed = !collapsed"
       >
-        <div class="text-xs font-bold text-muted">NUXTCHARTS.COM</div>
+        <div class="text-xs font-bold text-muted">VORTEXUS ADMIN</div>
         <UIcon
           :name="collapsed ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
           class="text-muted"
@@ -59,7 +59,7 @@ const isLinkActive = (item: { to?: string }) => {
     </nav>
     <div class="mt-auto">
       <h3 class="text-xs font-semibold mb-2 uppercase text-dimmed">
-        All charts
+        Operations
       </h3>
       <template v-for="item in supportNav" :key="item.label">
         <NuxtLink :to="item.to">
@@ -98,15 +98,6 @@ const isLinkActive = (item: { to?: string }) => {
           </NuxtLink>
         </template>
       </div>
-      <UButton
-        color="neutral"
-        variant="soft"
-        class="w-full flex items-center justify-center mt-4"
-        icon="i-lucide-plus"
-        icon-class="h-4 w-4"
-      >
-        <span>New dashboard</span>
-      </UButton>
     </div>
   </div>
 </template>

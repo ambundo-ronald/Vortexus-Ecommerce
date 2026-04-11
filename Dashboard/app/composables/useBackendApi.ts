@@ -22,12 +22,22 @@ export function useBackendApi() {
       headers['X-CSRFToken'] = await ensureCsrfToken()
     }
 
-    return $fetch<T>(`${apiBase}${path}`, {
-      credentials: 'include',
-      ...options,
-      method,
-      headers,
-    })
+    try {
+      return await $fetch<T>(`${apiBase}${path}`, {
+        credentials: 'include',
+        ...options,
+        method,
+        headers,
+      })
+    }
+    catch (err: any) {
+      if (import.meta.client && [401, 403].includes(Number(err?.status || err?.statusCode))) {
+        const route = useRoute()
+        if (route.path !== '/login')
+          await navigateTo('/login')
+      }
+      throw err
+    }
   }
 
   return {
