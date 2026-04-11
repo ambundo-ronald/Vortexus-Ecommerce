@@ -4,10 +4,12 @@ import { useSortableHeader } from "~/composables/useSortableHeader";
 import type { SortBy, SortDir } from "~/types/Table";
 
 export function getUserTableColumns({
+  onEdit,
   sortBy,
   sortDir,
   components,
 }: {
+  onEdit: (user: UserTableRow, event?: Event) => void;
   sortBy: Ref<SortBy>;
   sortDir: Ref<SortDir>;
   components: Component[];
@@ -68,8 +70,7 @@ export function getUserTableColumns({
       cell: ({ row }) => {
         const statusMap: Record<string, string> = {
           Active: "success",
-          Invited: "neutral",
-          Suspended: "warning",
+          Suspended: "error",
         };
         const color =
           statusMap[row.original.status as keyof typeof statusMap] || "neutral";
@@ -84,6 +85,24 @@ export function getUserTableColumns({
       accessorKey: "joined",
       header: ({ column }) => renderSortableHeader("Joined", column),
       cell: ({ row }) => row.original.joined,
+    },
+    {
+      id: "actions",
+      header: () => h("span", { class: "sr-only" }, "Actions"),
+      cell: ({ row }) =>
+        h("div", { class: "flex items-center justify-end gap-2" }, [
+          h(UButton as Component, {
+            icon: "i-lucide-pencil",
+            color: "neutral",
+            variant: "ghost",
+            size: "xs",
+            "aria-label": `Edit ${row.original.name}`,
+            onClick: (event: Event) => {
+              event.stopPropagation();
+              onEdit(row.original, event);
+            },
+          }),
+        ]),
     },
   ];
 }

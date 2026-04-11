@@ -83,6 +83,7 @@ from .views import (
     ProductListAPIView,
     QuoteRequestAPIView,
 )
+from .user_views import AdminUserCollectionAPIView, AdminUserDetailAPIView
 
 urlpatterns = [
     path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
@@ -110,6 +111,8 @@ urlpatterns = [
     path('admin/suppliers/<int:supplier_id>/', SupplierAdminDetailAPIView.as_view(), name='admin-supplier-detail'),
     path('admin/audit-logs/', AuditLogCollectionAPIView.as_view(), name='admin-audit-logs'),
     path('admin/audit-logs/<int:audit_log_id>/', AuditLogDetailAPIView.as_view(), name='admin-audit-log-detail'),
+    path('admin/users/', AdminUserCollectionAPIView.as_view(), name='admin-users'),
+    path('admin/users/<int:user_id>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),
     path('admin/orders/<int:order_id>/status/', AdminOrderStatusAPIView.as_view(), name='admin-order-status'),
