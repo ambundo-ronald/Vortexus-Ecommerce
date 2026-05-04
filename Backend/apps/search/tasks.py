@@ -3,6 +3,7 @@ from typing import Any
 from celery import shared_task
 from django.apps import apps
 from django.conf import settings
+from django.db.models import Avg, Count
 from opensearchpy import NotFoundError
 from opensearchpy.exceptions import OpenSearchException
 from opensearchpy.helpers import bulk
@@ -13,6 +14,11 @@ from apps.common.products import stockrecord_currency, stockrecord_price
 
 def _build_product_document(product: Any) -> dict[str, Any]:
     stockrecord = product.stockrecords.first()
+    Review = apps.get_model('reviews', 'ProductReview')
+    review_stats = Review.objects.filter(product=product, status=Review.APPROVED).aggregate(
+        rating=Avg('score'),
+        review_count=Count('id'),
+    )
 
     image_url = ''
     try:
@@ -43,6 +49,9 @@ def _build_product_document(product: Any) -> dict[str, Any]:
         'currency': stockrecord_currency(stockrecord),
         'thumbnail': image_url,
         'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
+        'rating': float(review_stats['rating']) if review_stats['rating'] is not None else None,
+        'review_count': review_stats['review_count'] or 0,
+        'date_updated': product.date_updated.isoformat() if getattr(product, 'date_updated', None) else None,
         'attributes_text': attributes_text,
     }
 

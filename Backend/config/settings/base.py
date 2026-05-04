@@ -363,7 +363,7 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in env(
         'CORS_ALLOWED_ORIGINS',
-        default='http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000',
+        default='http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,http://127.0.0.1:3000,http://localhost:3000',
     ).split(',')
     if origin.strip()
 ]
@@ -373,7 +373,7 @@ CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in env(
         'CSRF_TRUSTED_ORIGINS',
-        default='http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000',
+        default='http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174,http://127.0.0.1:3000,http://localhost:3000',
     ).split(',')
     if origin.strip()
 ]
@@ -424,4 +424,3 @@ CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
 ERP_SYNC_TIMEOUT_SECONDS = env.int('ERP_SYNC_TIMEOUT_SECONDS', default=30)
 ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
 ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
-
