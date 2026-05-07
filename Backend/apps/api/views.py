@@ -439,6 +439,52 @@ class AdminProductDetailAPIView(APIView):
         display_currency = resolve_display_currency(request)
         return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
 
+    def put(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        previous_title = product.title
+        serializer = ProductWriteSerializer(instance=product, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_updated',
+            request=request,
+            target=product,
+            message='Admin product fully updated.',
+            metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'admin_put'},
+        )
+        return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
+
+    def patch(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        previous_title = product.title
+        serializer = ProductWriteSerializer(instance=product, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_updated',
+            request=request,
+            target=product,
+            message='Admin product partially updated.',
+            metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'admin_patch'},
+        )
+        return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
+
+    def delete(self, request, product_id: int):
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        metadata = {'upc': product.upc, 'title': product.title}
+        product.delete()
+        record_audit_event(
+            event_type='catalog.product_deleted',
+            request=request,
+            message='Admin product deleted.',
+            metadata=metadata,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class AdminProductImageCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]

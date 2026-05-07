@@ -1,33 +1,48 @@
 <script setup lang="ts">
 interface KpiCategory {
   name: string;
-  value: number;
-  budget: number;
+  value: number | string;
+  budget: number | string;
   color: string;
   format?: "number" | "currency";
+  currency?: string;
   trend?: number;
 }
 
 const props = withDefaults(defineProps<KpiCategory>(), {
   format: "number",
+  currency: "USD",
 });
 
-const formatValue = (value: number) => {
+const numericValue = computed(() => {
+  const value = Number(props.value);
+  return Number.isFinite(value) ? value : 0;
+});
+
+const numericBudget = computed(() => {
+  const value = Number(props.budget);
+  return Number.isFinite(value) ? value : 0;
+});
+
+const formatValue = (value: number | string) => {
+  if (typeof value === "string")
+    return value;
+
   if (props.format === "number")
     return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value || 0);
 
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: props.currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value || 0);
 };
 
 const percentOfTotal = computed(() => {
-  if (!props.budget)
+  if (!numericBudget.value)
     return 0;
-  return Math.min(Math.round((props.value / props.budget) * 100), 100);
+  return Math.min(Math.round((numericValue.value / numericBudget.value) * 100), 100);
 });
 </script>
 
