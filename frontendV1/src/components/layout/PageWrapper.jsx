@@ -3,7 +3,10 @@ import { useEffect } from "react";
 
 import Footer from "./Footer.jsx";
 import Navbar from "./Navbar.jsx";
+import CartDrawer from "../cart/CartDrawer.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import ToastViewport from "../ui/Toast.jsx";
+import WishlistDrawer from "../wishlist/WishlistDrawer.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
 
@@ -27,6 +30,9 @@ export default function PageWrapper({ children }) {
       <Navbar />
       <main className="app-main">{children}</main>
       <Footer />
+      <CartDrawer />
+      <WishlistDrawer />
+      <ToastViewport />
 
       <nav className="bottom-nav" aria-label="Mobile primary">
         {bottomItems.map((item) => (

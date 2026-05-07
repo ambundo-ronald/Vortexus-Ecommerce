@@ -34,7 +34,16 @@ export function useMedia() {
           product_id: params.productId || '',
         },
       })
-      return { success: true, data: result }
+      return {
+        success: true,
+        data: {
+          ...result,
+          results: (result.results || []).map(item => ({
+            ...item,
+            url: mediaUrl(item.url),
+          })),
+        },
+      }
     }
     catch (err: any) {
       error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
@@ -55,7 +64,7 @@ export function useMedia() {
         method: 'POST',
         body: formData,
       })
-      return { success: true, data: result.media }
+      return { success: true, data: { ...result.media, url: mediaUrl(result.media.url) } }
     }
     catch (err: any) {
       return { success: false, error: err?.data?.error?.detail || err?.message || 'Unknown error' }

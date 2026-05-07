@@ -32,6 +32,7 @@ export function useBackendApi() {
 
   return {
     apiBase,
+    csrfToken,
     ensureCsrfToken,
     request,
   }

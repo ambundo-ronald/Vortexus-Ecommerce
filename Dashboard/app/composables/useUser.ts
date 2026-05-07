@@ -20,6 +20,25 @@ export interface UserFormPayload {
   password?: string
 }
 
+function extractApiError(err: any) {
+  const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
+  const errors = err?.data?.error?.errors || err?.data
+
+  if (errors && typeof errors === 'object') {
+    return Object.entries(errors)
+      .map(([field, messages]) => {
+        const text = Array.isArray(messages) ? messages.join(' ') : String(messages)
+        return `${field}: ${text}`
+      })
+      .join(' ')
+  }
+
+  if (typeof detail === 'string')
+    return detail
+
+  return 'Unknown error'
+}
+
 function mapUserSort(sortBy?: string) {
   if (sortBy === 'email')
     return 'email'
@@ -35,9 +54,11 @@ function mapUserSort(sortBy?: string) {
 function mapUserDetailToForm(user: any) {
   return {
     id: user.id,
+    username: user.username || '',
     email: user.email || '',
     first_name: user.first_name || '',
     last_name: user.last_name || '',
+    name: user.name || '',
     phone: user.phone || '',
     company: user.company || '',
     role: user.role?.toLowerCase() === 'admin'
@@ -46,8 +67,18 @@ function mapUserDetailToForm(user: any) {
         ? 'staff'
         : 'customer',
     status: user.is_active ? 'active' : 'suspended',
+    isActive: !!user.is_active,
+    isStaff: !!user.is_staff,
+    isSuperuser: !!user.is_superuser,
+    dateJoined: user.date_joined || '',
+    lastLogin: user.last_login || '',
+    countryCode: user.country_code || '',
+    preferredCurrency: user.preferred_currency || '',
+    receiveOrderUpdates: !!user.receive_order_updates,
+    receiveMarketingEmails: !!user.receive_marketing_emails,
     isSupplier: user.supplier?.is_supplier || false,
     supplierStatus: user.supplier?.status || '',
+    supplierCompanyName: user.supplier?.company_name || '',
   }
 }
 
@@ -74,7 +105,7 @@ export function useUser() {
       return { success: true, data: result }
     }
     catch (err: any) {
-      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
+      error.value = extractApiError(err)
       return { success: false, error: error.value }
     }
     finally {
@@ -92,7 +123,7 @@ export function useUser() {
       return { success: true, data: mapUserDetailToForm(result.user), raw: result.user }
     }
     catch (err: any) {
-      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
+      error.value = extractApiError(err)
       return { success: false, error: error.value }
     }
     finally {
@@ -111,7 +142,7 @@ export function useUser() {
       return { success: true, data: mapUserDetailToForm(result.user), raw: result.user }
     }
     catch (err: any) {
-      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
+      error.value = extractApiError(err)
       return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
     }
     finally {
@@ -130,7 +161,7 @@ export function useUser() {
       return { success: true, data: mapUserDetailToForm(result.user), raw: result.user }
     }
     catch (err: any) {
-      error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
+      error.value = extractApiError(err)
       return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
     }
     finally {

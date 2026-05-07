@@ -15,7 +15,8 @@ const sortDir = ref<SortDir>("asc");
 const currentPage = ref(1);
 const pageSize = ref(10);
 const searchQuery = ref("");
-const statusFilter = ref("");
+const ALL_STATUSES = "__all__";
+const statusFilter = ref(ALL_STATUSES);
 
 const columns = getOrderTableColumns({
   onView: (order) => {
@@ -39,8 +40,10 @@ const summary = ref({
   failed: 0,
 });
 
+const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize.value)));
+
 const statusOptions = [
-  { label: "All statuses", value: "" },
+  { label: "All statuses", value: ALL_STATUSES },
   { label: "Pending", value: "Pending" },
   { label: "Processing", value: "Processing" },
   { label: "Packed", value: "Packed" },
@@ -56,7 +59,7 @@ async function loadOrders() {
     page: currentPage.value,
     pageSize: pageSize.value,
     search: searchQuery.value,
-    status: statusFilter.value,
+    status: statusFilter.value === ALL_STATUSES ? "" : statusFilter.value,
     sortBy: sortBy.value,
     sortDir: sortDir.value,
   });
@@ -84,19 +87,34 @@ watch([currentPage, pageSize, searchQuery, sortBy, sortDir, statusFilter], loadO
 watch([searchQuery, statusFilter, pageSize], () => {
   currentPage.value = 1;
 });
+
+function openOrder(row: any) {
+  const order = row?.original || row;
+  if (order?.id)
+    navigateTo(`/orders/${order.id}`);
+}
 </script>
 
 <template>
-  <div>
-    <div class="mb-4 flex items-center justify-between p-8 pb-4">
-      <h1 class="text-xl font-semibold">Orders</h1>
-      <div class="flex w-full items-center justify-end gap-2">
+  <div class="px-4 py-8 sm:px-6 lg:px-10">
+    <div class="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <h1 class="text-3xl font-black tracking-tight text-slate-950">
+          Orders
+        </h1>
+        <p class="mt-2 max-w-2xl text-sm text-slate-600">
+          Track customer orders, payment progress, fulfilment status, and shipping updates from one workspace.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <UInput
           v-model="searchQuery"
-          class="max-w-sm"
+          class="w-full sm:w-72"
           size="lg"
+          variant="outline"
           icon="i-lucide-search"
-          placeholder="Search orders..."
+          placeholder="Search order, email, customer..."
           :ui="{ leadingIcon: 'size-4' }"
         />
         <USelect
@@ -104,19 +122,20 @@ watch([searchQuery, statusFilter, pageSize], () => {
           :items="statusOptions"
           value-attribute="value"
           option-attribute="label"
-          class="min-w-44"
+          class="w-full sm:w-44"
           size="lg"
+          variant="outline"
         />
-        <UButton variant="outline" :loading="isLoading" @click="loadOrders">
+        <UButton variant="outline" size="lg" :loading="isLoading" @click="loadOrders">
           <UIcon name="i-lucide-refresh-cw" />
           Refresh
         </UButton>
       </div>
     </div>
 
-    <div class="mb-8 grid grid-cols-1 gap-8 px-8 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <CardsKpiCard2
-        name="Total Orders"
+        name="Total orders"
         :value="summary.total"
         :budget="totalItems"
         color="var(--color-info)"
@@ -124,7 +143,7 @@ watch([searchQuery, statusFilter, pageSize], () => {
         :loading="isLoading"
       />
       <CardsKpiCard2
-        name="Pending Orders"
+        name="Pending"
         :value="summary.pending"
         :budget="summary.total"
         color="var(--color-warning)"
@@ -132,7 +151,7 @@ watch([searchQuery, statusFilter, pageSize], () => {
         :loading="isLoading"
       />
       <CardsKpiCard2
-        name="Completed Orders"
+        name="Completed"
         :value="summary.completed"
         :budget="summary.total"
         color="var(--color-success)"
@@ -140,7 +159,7 @@ watch([searchQuery, statusFilter, pageSize], () => {
         :loading="isLoading"
       />
       <CardsKpiCard2
-        name="Failed Orders"
+        name="Failed"
         :value="summary.failed"
         :budget="summary.total"
         color="var(--color-error)"
@@ -149,15 +168,34 @@ watch([searchQuery, statusFilter, pageSize], () => {
       />
     </div>
 
-    <div class="px-8">
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <UTable
         class="cursor-pointer"
         :data="orderData"
         :columns="columns"
         :loading="isLoading"
-        @select="(order) => navigateTo(`/orders/${order.id}`)"
+        @select="openOrder"
       />
-      <div class="flex justify-end pt-4">
+
+      <div
+        v-if="!isLoading && !orderData.length"
+        class="border-t border-slate-200 px-6 py-16 text-center"
+      >
+        <div class="mx-auto flex size-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+          <UIcon name="i-lucide-receipt-text" class="size-7" />
+        </div>
+        <h2 class="mt-5 text-xl font-black text-slate-950">
+          No orders found
+        </h2>
+        <p class="mx-auto mt-2 max-w-md text-sm text-slate-600">
+          Try another search term, clear the status filter, or wait for new storefront orders.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-slate-500">
+          Page {{ currentPage }} of {{ totalPages }} · {{ totalItems }} orders
+        </p>
         <UPagination
           :page="currentPage"
           :page-count="pageSize"

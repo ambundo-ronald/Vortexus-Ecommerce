@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
 import { formatDate } from "../../utils/formatDate";
-import { productPlaceholderImage } from "../../utils/productImages";
+import { productInitials } from "../../utils/productDisplay";
+import { productImageUrl } from "../../utils/productImages";
 
 export default function OrderDetailCard({ order, saving = false, onReorder }) {
   if (!order) return null;
@@ -60,7 +61,11 @@ export default function OrderDetailCard({ order, saving = false, onReorder }) {
         <div className="order-line-list">
           {(order.lines || []).map((line, index) => (
             <Link className="order-line-card" to={line.product_id ? `/products/${line.product_id}` : "/catalog"} key={line.id || index}>
-              <img src={productPlaceholderImage(index)} alt={line.title || "Product"} />
+              {productImageUrl(line) ? (
+                <img src={productImageUrl(line)} alt={line.title || "Product"} />
+              ) : (
+                <span className="order-line-card__image-fallback">{productInitials(line.title || line.product_title)}</span>
+              )}
               <span>
                 <strong>{line.title || line.product_title || "Product"}</strong>
                 <small>Qty {line.quantity}</small>

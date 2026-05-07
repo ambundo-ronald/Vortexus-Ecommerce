@@ -5,7 +5,6 @@ import ProductForm, {
   type ProductFormSchema,
 } from "~/components/Forms/ProductForm.vue";
 import type { ProductImageItem } from "~/types/ProductImage";
-import type { ProductStockData } from "~/types/ProductTableRow";
 
 const { deleteProduct, getProduct, getCategoryOptions, syncProductImages, updateProduct } = useProduct();
 
@@ -16,8 +15,12 @@ const categories = ref<{ label: string; value: string }[]>([])
 const originalImages = ref<ProductImageItem[]>([])
 const isDeleteModalOpen = ref(false)
 const isDeleting = ref(false)
+const isSaving = ref(false)
+const isLoadingProduct = ref(true)
+const loadError = ref("")
 
 onMounted(async () => {
+  isLoadingProduct.value = true
   const [productResult, categoryResult] = await Promise.all([
     getProduct(route.params.id as string),
     getCategoryOptions(),
@@ -25,9 +28,13 @@ onMounted(async () => {
 
   if (productResult.success)
     product.value = productResult.data
+  else
+    loadError.value = productResult.error || "Could not load this product."
 
   if (categoryResult.success)
     categories.value = categoryResult.data
+
+  isLoadingProduct.value = false
 })
 
 const pageTitle = computed(() => "Edit Product");
@@ -36,6 +43,10 @@ function discardChanges() {
   navigateTo("/products");
 }
 async function submit(event: FormSubmitEvent<ProductFormSchema>) {
+  if (isSaving.value)
+    return
+
+  isSaving.value = true
   const result = await updateProduct(route.params.id as string, event.data)
   const toast = useToast();
   if (result.success) {
@@ -46,16 +57,17 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
         description: imageResult.error || "The product was updated, but some image changes failed.",
         color: "warning",
       });
+      isSaving.value = false
       return
     }
     images.value = imageResult.data || images.value
     originalImages.value = [...images.value]
     toast.add({
-      title: "Success!",
-      description: "Product updated.",
+      title: "Product updated",
+      description: "The storefront will reflect the saved product data.",
       color: "success",
     });
-    navigateTo("/products");
+    await navigateTo("/products");
   } else {
     toast.add({
       title: "Update failed",
@@ -63,6 +75,7 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
       color: "error",
     });
   }
+  isSaving.value = false
 }
 
 async function removeProduct() {
@@ -100,29 +113,6 @@ const statusOptions = [
     color: "neutral",
   },
 ];
-const stockChartData = ref<ProductStockData[]>(
-  Array.from({ length: 30 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (29 - i));
-    return {
-      date: formatDate(date),
-      stock: Math.floor(90 + Math.random() * 40),
-    };
-  })
-);
-
-const stockChartCategories = {
-  stock: { name: "Product Stock", color: "#3b82f6" },
-};
-
-function formatDate(date: Date) {
-  const options: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-  };
-  return new Intl.DateTimeFormat("en-US", options).format(date);
-}
-
 const images = ref<ProductImageItem[]>([]);
 
 watch(product, (value) => {
@@ -132,16 +122,36 @@ watch(product, (value) => {
 </script>
 
 <template>
-  <div class="w-full mt-8">
+  <div class="w-full">
+    <div v-if="isLoadingProduct" class="mx-auto max-w-screen-xl space-y-4 py-8">
+      <USkeleton class="h-10 w-64" />
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <USkeleton class="h-80 lg:col-span-2" />
+        <USkeleton class="h-80" />
+      </div>
+    </div>
+
+    <div v-else-if="loadError" class="mx-auto max-w-screen-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+        <UIcon name="i-lucide-triangle-alert" />
+      </div>
+      <h1 class="mt-4 text-xl font-black text-slate-950">Product unavailable</h1>
+      <p class="mt-2 text-sm text-slate-500">{{ loadError }}</p>
+      <UButton class="mt-6" color="primary" variant="solid" @click="discardChanges">
+        Back to products
+      </UButton>
+    </div>
+
     <ProductForm
+      v-else
       :values="product"
       :status-options="statusOptions"
       :categories="categories"
       @on-submit="submit"
     >
       <template #header="{ submit }">
-        <div class="max-w-screen-xl mx-auto py-4">
-          <div class="flex justify-between items-center">
+        <div class="mx-auto max-w-screen-xl py-4">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
               <UButton
                 icon="i-lucide-arrow-left"
@@ -152,7 +162,7 @@ watch(product, (value) => {
                 aria-label="Back to products"
                 @click="discardChanges"
               />
-              <h1 class="text-xl font-semibold text-default truncate">
+              <h1 class="truncate text-2xl font-black text-slate-950">
                 {{ pageTitle }}
               </h1>
             </div>
@@ -167,7 +177,7 @@ watch(product, (value) => {
                 Delete
                 <UIcon name="i-lucide-trash-2" />
               </UButton>
-              <UButton color="primary" variant="solid" @click="submit">
+              <UButton color="primary" variant="solid" :loading="isSaving" @click="submit">
                 Save
                 <UIcon name="i-lucide-save" />
               </UButton>
@@ -177,12 +187,6 @@ watch(product, (value) => {
       </template>
       <template #images>
         <ProductImages v-model="images" />
-      </template>
-      <template #stock>
-        <ChartsProductStock
-          :chart-data="stockChartData"
-          :categories="stockChartCategories"
-        />
       </template>
     </ProductForm>
 

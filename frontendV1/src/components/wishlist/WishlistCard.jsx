@@ -2,20 +2,23 @@ import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
-import { productPlaceholderImage } from "../../utils/productImages";
+import { productInitials } from "../../utils/productDisplay";
+import { productImageUrl } from "../../utils/productImages";
 
-export default function WishlistCard({ item, index = 0, saving = false, onRemove }) {
+export default function WishlistCard({ item, saving = false, onRemove }) {
   const product = item.product || {};
   const productId = item.product_id || product.id;
+  const image = productImageUrl({ ...product, thumbnail: item.thumbnail || product.thumbnail });
+  const title = item.title || product.title || "Product";
 
   return (
     <article className="wishlist-card">
       <Link className="wishlist-card__media" to={productId ? `/products/${productId}` : "/catalog"}>
-        <img src={productPlaceholderImage(index)} alt={item.title || product.title || "Product"} />
+        {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
       </Link>
       <div className="wishlist-card__body">
         <h3>
-          <Link to={productId ? `/products/${productId}` : "/catalog"}>{item.title || product.title || "Product"}</Link>
+          <Link to={productId ? `/products/${productId}` : "/catalog"}>{title}</Link>
         </h3>
         <strong>{formatCurrency(product.base_price ?? product.price, product.base_currency || product.currency)}</strong>
       </div>

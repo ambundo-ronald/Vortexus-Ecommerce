@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { wishlistApi } from "../api/wishlist.api";
+import { useUiStore } from "./ui.store";
 
 function messageFromError(error) {
   return error?.normalized?.message || error?.message || "Wishlist update failed.";
@@ -42,8 +43,15 @@ export const useWishlistStore = create((set, get) => ({
         statusByProductId: { ...state.statusByProductId, [id]: true },
         savingIds: { ...state.savingIds, [id]: false }
       }));
+      useUiStore.getState().notify({
+        title: "Saved",
+        message: "The product is in your wishlist.",
+        icon: "favorite"
+      });
     } catch (error) {
-      set((state) => ({ savingIds: { ...state.savingIds, [id]: false }, error: messageFromError(error) }));
+      const message = messageFromError(error);
+      set((state) => ({ savingIds: { ...state.savingIds, [id]: false }, error: message }));
+      useUiStore.getState().notify({ tone: "danger", title: "Could not save", message });
       throw error;
     }
   },
@@ -57,8 +65,15 @@ export const useWishlistStore = create((set, get) => ({
         statusByProductId: { ...state.statusByProductId, [id]: false },
         savingIds: { ...state.savingIds, [id]: false }
       }));
+      useUiStore.getState().notify({
+        title: "Removed",
+        message: "The product was removed from your wishlist.",
+        icon: "heart_minus"
+      });
     } catch (error) {
-      set((state) => ({ savingIds: { ...state.savingIds, [id]: false }, error: messageFromError(error) }));
+      const message = messageFromError(error);
+      set((state) => ({ savingIds: { ...state.savingIds, [id]: false }, error: message }));
+      useUiStore.getState().notify({ tone: "danger", title: "Wishlist update failed", message });
       throw error;
     }
   },

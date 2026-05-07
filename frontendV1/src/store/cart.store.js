@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { checkoutApi } from "../api/checkout.api";
+import { useUiStore } from "./ui.store";
 
 const emptyBasket = {
   lines: [],
@@ -37,28 +38,45 @@ export const useCartStore = create((set, get) => ({
     try {
       const payload = await checkoutApi.addItem({ product_id: productId, quantity });
       set({ basket: basketFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Added to cart",
+        message: "The product is ready in your cart.",
+        icon: "add_shopping_cart"
+      });
       return payload;
     } catch (error) {
-      set({ error: error.normalized?.message || error.message, loading: false });
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Could not add item", message });
       throw error;
     }
   },
 
-  updateLine: async (lineId, quantity) => {
+  updateLine: async (lineId, quantity, options = {}) => {
     set({ loading: true, error: null });
     try {
       const payload = await checkoutApi.updateLine(lineId, { quantity });
       set({ basket: basketFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: options.successTitle || "Cart updated",
+        message: options.successMessage || "Your cart has been updated.",
+        icon: quantity > 0 ? "shopping_cart" : "remove_shopping_cart"
+      });
       return payload;
     } catch (error) {
-      set({ error: error.normalized?.message || error.message, loading: false });
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Cart update failed", message });
       throw error;
     }
   },
 
   removeLine: async (lineId) => {
     const { updateLine } = get();
-    return updateLine(lineId, 0);
+    return updateLine(lineId, 0, {
+      successTitle: "Removed from cart",
+      successMessage: "The item was removed."
+    });
   },
 
   clearError: () => set({ error: null })

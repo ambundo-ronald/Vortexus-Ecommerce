@@ -3,6 +3,7 @@ export interface ProductTableRow {
   name: string;
   sku: string;
   price: number;
+  currency?: string;
   status: string;
   category: string;
   stock: number;

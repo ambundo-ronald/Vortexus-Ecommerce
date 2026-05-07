@@ -37,14 +37,17 @@ export default function CategoryNav({ categories = [], activeCategory = "", vari
   }, [categories.length]);
 
   function categoryUrl(category) {
+    if (category?.slug) {
+      const next = new URLSearchParams(currentParams);
+      next.delete("page");
+      next.delete("category");
+      const query = next.toString();
+      return `/catalog/category/${category.slug}${query ? `?${query}` : ""}`;
+    }
+
     const next = new URLSearchParams(currentParams);
     next.delete("page");
-
-    if (category?.slug) {
-      next.set("category", category.slug);
-    } else {
-      next.delete("category");
-    }
+    next.delete("category");
 
     const query = next.toString();
     return `/catalog${query ? `?${query}` : ""}`;

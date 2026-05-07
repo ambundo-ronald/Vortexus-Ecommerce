@@ -1,15 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { PRODUCT_PLACEHOLDER_IMAGES } from "../../utils/productImages";
+import { productImageList } from "../../utils/productImages";
 import { productInitials } from "../../utils/productDisplay";
 
 export default function ProductImageGallery({ product }) {
   const images = useMemo(() => {
-    return PRODUCT_PLACEHOLDER_IMAGES;
-  }, []);
+    return productImageList(product);
+  }, [product]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const activeImage = images[activeIndex];
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [product?.id]);
 
   function moveZoom(event) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -28,7 +32,7 @@ export default function ProductImageGallery({ product }) {
         )}
       </div>
       <div className="product-gallery-thumbs" aria-label="Product images">
-        {Array.from({ length: 4 }).map((_, index) => {
+        {Array.from({ length: Math.max(1, Math.min(4, images.length || 1)) }).map((_, index) => {
           const image = images[index];
           return (
             <button
@@ -37,9 +41,9 @@ export default function ProductImageGallery({ product }) {
               key={image || index}
               onClick={() => setActiveIndex(index)}
               disabled={!image}
-              aria-label={`View angle ${index + 1}`}
+              aria-label={`View product image ${index + 1}`}
             >
-              {image ? <img src={image} alt="" /> : <span>{index + 1}</span>}
+              {image ? <img src={image} alt="" /> : <span>{productInitials(product?.title)}</span>}
             </button>
           );
         })}
