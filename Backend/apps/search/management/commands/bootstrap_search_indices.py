@@ -29,6 +29,9 @@ class Command(BaseCommand):
                             'currency': {'type': 'keyword'},
                             'thumbnail': {'type': 'keyword'},
                             'in_stock': {'type': 'boolean'},
+                            'rating': {'type': 'float'},
+                            'review_count': {'type': 'integer'},
+                            'date_updated': {'type': 'date'},
                             'attributes_text': {'type': 'text'},
                         }
                     },

@@ -187,7 +187,14 @@ def build_api_docs() -> dict:
                         'path': f'{base_url}/search/',
                         'auth': 'public',
                         'description': 'Text search over products.',
-                        'query_params': ['q', 'category', 'in_stock', 'page', 'page_size'],
+                        'query_params': ['q', 'category', 'in_stock', 'min_price', 'max_price', 'sort_by', 'page', 'page_size'],
+                    },
+                    {
+                        'method': 'GET',
+                        'path': f'{base_url}/search/suggestions/',
+                        'auth': 'public',
+                        'description': 'Lightweight product search suggestions/autocomplete.',
+                        'query_params': ['q', 'category', 'limit'],
                     },
                     {
                         'method': 'POST',

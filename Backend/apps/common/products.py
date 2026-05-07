@@ -52,6 +52,8 @@ def serialize_product_card(
         'base_currency': base_currency,
         'thumbnail': image_url,
         'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
+        'rating': _product_rating(product),
+        'review_count': _product_review_count(product),
     }
 
     if score is not None:
@@ -60,3 +62,18 @@ def serialize_product_card(
         payload['reason'] = reason
 
     return convert_product_payload(payload, display_currency)
+
+
+def _product_rating(product: Any) -> float | None:
+    annotated_average = getattr(product, 'average_review_score', None)
+    if annotated_average is not None:
+        return float(annotated_average)
+    rating = getattr(product, 'rating', None)
+    return float(rating) if rating is not None else None
+
+
+def _product_review_count(product: Any) -> int:
+    annotated_count = getattr(product, 'review_count', None)
+    if annotated_count is not None:
+        return int(annotated_count or 0)
+    return 0
