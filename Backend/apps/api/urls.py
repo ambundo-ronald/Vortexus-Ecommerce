@@ -53,7 +53,7 @@ from .admin_extra_views import (
     AdminWeightBasedShippingDetailAPIView,
 )
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
-from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView
+from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .health_views import LivenessAPIView, ReadinessAPIView
 from .integration_views import (
     ERPNextCatalogImportAPIView,
@@ -178,6 +178,7 @@ from .views import (
 from .user_views import AdminUserCollectionAPIView, AdminUserDetailAPIView
 
 urlpatterns = [
+    path('', ApiRootAPIView.as_view(), name='api-root'),
     path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
     path('docs.json', ApiDocsJsonAPIView.as_view(), name='api-docs-json'),
     path('health/live/', LivenessAPIView.as_view(), name='health-live'),
