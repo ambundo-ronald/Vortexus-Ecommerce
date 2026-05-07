@@ -4,3 +4,4 @@ export { adminUsersApi } from "./adminUsers.api";
 export { adminMediaApi } from "./adminMedia.api";
 export { adminSettingsApi } from "./adminSettings.api";
 export { adminIntegrationsApi } from "./adminIntegrations.api";
+export { adminExtrasApi } from "./adminExtras.api";

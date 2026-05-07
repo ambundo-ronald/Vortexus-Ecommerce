@@ -1,0 +1,918 @@
+from decimal import Decimal
+
+from django.apps import apps
+from django.contrib.auth import get_user_model
+from django.contrib.sites.models import Site
+from django.db.models import Count, F, Q, Sum
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.text import slugify
+from oscar.core.loading import get_model
+from rest_framework import permissions, serializers, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .checkout_utils import serialize_shipping_address
+from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer
+
+
+def _decimal(value) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, Decimal):
+        return float(value)
+    return float(value or 0)
+
+
+def _page(request, queryset, serializer, default_page_size=50):
+    page = max(int(request.query_params.get('page', 1) or 1), 1)
+    page_size = min(max(int(request.query_params.get('page_size', default_page_size) or default_page_size), 1), 200)
+    total = queryset.count()
+    start = (page - 1) * page_size
+    rows = queryset[start : start + page_size]
+    return {
+        'results': [serializer(row) for row in rows],
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'num_pages': (total + page_size - 1) // page_size if page_size else 1,
+            'has_next': start + page_size < total,
+        },
+    }
+
+
+def _payload_fields(request, allowed):
+    return {field: request.data[field] for field in allowed if field in request.data}
+
+
+class AdminDashboardSummaryAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Order = get_model('order', 'Order')
+        Product = get_model('catalogue', 'Product')
+        StockRecord = get_model('partner', 'StockRecord')
+        User = get_user_model()
+
+        pending_statuses = ['Pending', 'Processing', 'Packed']
+        low_stock = StockRecord.objects.filter(num_in_stock__lte=F('low_stock_threshold'))
+        recent_orders = Order.objects.order_by('-date_placed')[:8]
+
+        return Response(
+            {
+                'summary': {
+                    'revenue': _decimal(Order.objects.aggregate(total=Sum('total_incl_tax'))['total']),
+                    'orders': Order.objects.count(),
+                    'customers': User.objects.filter(is_staff=False).count(),
+                    'products': Product.objects.count(),
+                    'low_stock': low_stock.count(),
+                    'pending_orders': Order.objects.filter(status__in=pending_statuses).count(),
+                },
+                'recent_activity': [
+                    {
+                        'type': 'order',
+                        'id': order.id,
+                        'label': order.number,
+                        'status': order.status,
+                        'total': _decimal(order.total_incl_tax),
+                        'created_at': order.date_placed,
+                    }
+                    for order in recent_orders
+                ],
+            }
+        )
+
+
+def _category_payload(category):
+    return {
+        'id': category.id,
+        'name': category.name,
+        'slug': category.slug,
+        'description': category.description or '',
+        'is_public': category.is_public,
+        'parent_id': category.get_parent().id if category.get_parent() else None,
+        'depth': category.depth,
+        'numchild': category.numchild,
+    }
+
+
+class AdminCategoryCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Category = get_model('catalogue', 'Category')
+        return Response(_page(request, Category.objects.order_by('path'), _category_payload))
+
+    def post(self, request):
+        Category = get_model('catalogue', 'Category')
+        parent_id = request.data.get('parent_id')
+        data = {
+            'name': request.data.get('name', ''),
+            'slug': request.data.get('slug') or slugify(request.data.get('name', '')),
+            'description': request.data.get('description', ''),
+            'is_public': bool(request.data.get('is_public', True)),
+        }
+        if parent_id:
+            parent = get_object_or_404(Category, id=parent_id)
+            category = parent.add_child(**data)
+        else:
+            category = Category.add_root(**data)
+        return Response({'category': _category_payload(category)}, status=status.HTTP_201_CREATED)
+
+
+class AdminCategoryDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, category_id: int):
+        return Response({'category': _category_payload(get_object_or_404(get_model('catalogue', 'Category'), id=category_id))})
+
+    def patch(self, request, category_id: int):
+        category = get_object_or_404(get_model('catalogue', 'Category'), id=category_id)
+        for field in ['name', 'slug', 'description', 'is_public']:
+            if field in request.data:
+                setattr(category, field, request.data[field])
+        category.save()
+        return Response({'category': _category_payload(category)})
+
+    def delete(self, request, category_id: int):
+        get_object_or_404(get_model('catalogue', 'Category'), id=category_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminCategoryChildrenAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, category_id: int):
+        parent = get_object_or_404(get_model('catalogue', 'Category'), id=category_id)
+        category = parent.add_child(
+            name=request.data.get('name', ''),
+            slug=request.data.get('slug') or slugify(request.data.get('name', '')),
+            description=request.data.get('description', ''),
+            is_public=bool(request.data.get('is_public', True)),
+        )
+        return Response({'category': _category_payload(category)}, status=status.HTTP_201_CREATED)
+
+
+def _product_class_payload(product_class):
+    return {
+        'id': product_class.id,
+        'name': product_class.name,
+        'slug': product_class.slug,
+        'requires_shipping': product_class.requires_shipping,
+        'track_stock': product_class.track_stock,
+    }
+
+
+class AdminProductTypeCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        ProductClass = get_model('catalogue', 'ProductClass')
+        return Response(_page(request, ProductClass.objects.order_by('name'), _product_class_payload))
+
+    def post(self, request):
+        ProductClass = get_model('catalogue', 'ProductClass')
+        product_class = ProductClass.objects.create(
+            name=request.data.get('name', ''),
+            slug=request.data.get('slug') or slugify(request.data.get('name', '')),
+            requires_shipping=bool(request.data.get('requires_shipping', True)),
+            track_stock=bool(request.data.get('track_stock', True)),
+        )
+        return Response({'product_type': _product_class_payload(product_class)}, status=status.HTTP_201_CREATED)
+
+
+class AdminProductTypeDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, product_type_id: int):
+        return Response({'product_type': _product_class_payload(get_object_or_404(get_model('catalogue', 'ProductClass'), id=product_type_id))})
+
+    def patch(self, request, product_type_id: int):
+        product_class = get_object_or_404(get_model('catalogue', 'ProductClass'), id=product_type_id)
+        for field in ['name', 'slug', 'requires_shipping', 'track_stock']:
+            if field in request.data:
+                setattr(product_class, field, request.data[field])
+        product_class.save()
+        return Response({'product_type': _product_class_payload(product_class)})
+
+    def delete(self, request, product_type_id: int):
+        get_object_or_404(get_model('catalogue', 'ProductClass'), id=product_type_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _attribute_payload(attribute):
+    return {
+        'id': attribute.id,
+        'product_class_id': attribute.product_class_id,
+        'name': attribute.name,
+        'code': attribute.code,
+        'type': attribute.type,
+        'required': attribute.required,
+        'option_group_id': attribute.option_group_id,
+    }
+
+
+class AdminAttributeCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        ProductAttribute = get_model('catalogue', 'ProductAttribute')
+        return Response(_page(request, ProductAttribute.objects.select_related('product_class').order_by('code'), _attribute_payload))
+
+    def post(self, request):
+        ProductAttribute = get_model('catalogue', 'ProductAttribute')
+        ProductClass = get_model('catalogue', 'ProductClass')
+        attribute = ProductAttribute.objects.create(
+            product_class=get_object_or_404(ProductClass, id=request.data.get('product_class_id')),
+            name=request.data.get('name', ''),
+            code=request.data.get('code') or slugify(request.data.get('name', '')).replace('-', '_'),
+            type=request.data.get('type', 'text'),
+            required=bool(request.data.get('required', False)),
+        )
+        return Response({'attribute': _attribute_payload(attribute)}, status=status.HTTP_201_CREATED)
+
+
+class AdminAttributeDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, attribute_id: int):
+        return Response({'attribute': _attribute_payload(get_object_or_404(get_model('catalogue', 'ProductAttribute'), id=attribute_id))})
+
+    def patch(self, request, attribute_id: int):
+        attribute = get_object_or_404(get_model('catalogue', 'ProductAttribute'), id=attribute_id)
+        for field in ['name', 'code', 'type', 'required']:
+            if field in request.data:
+                setattr(attribute, field, request.data[field])
+        attribute.save()
+        return Response({'attribute': _attribute_payload(attribute)})
+
+    def delete(self, request, attribute_id: int):
+        get_object_or_404(get_model('catalogue', 'ProductAttribute'), id=attribute_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _option_payload(option):
+    return {
+        'id': option.id,
+        'name': option.name,
+        'code': option.code,
+        'type': option.type,
+        'required': option.required,
+        'help_text': option.help_text,
+        'order': option.order,
+    }
+
+
+class AdminOptionCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Option = get_model('catalogue', 'Option')
+        return Response(_page(request, Option.objects.order_by('order', 'name'), _option_payload))
+
+    def post(self, request):
+        Option = get_model('catalogue', 'Option')
+        option = Option.objects.create(
+            name=request.data.get('name', ''),
+            code=request.data.get('code') or slugify(request.data.get('name', '')).replace('-', '_'),
+            type=request.data.get('type', 'text'),
+            required=bool(request.data.get('required', False)),
+            help_text=request.data.get('help_text', ''),
+            order=request.data.get('order') or 0,
+        )
+        return Response({'option': _option_payload(option)}, status=status.HTTP_201_CREATED)
+
+
+class AdminOptionDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, option_id: int):
+        return Response({'option': _option_payload(get_object_or_404(get_model('catalogue', 'Option'), id=option_id))})
+
+    def patch(self, request, option_id: int):
+        option = get_object_or_404(get_model('catalogue', 'Option'), id=option_id)
+        for field in ['name', 'code', 'type', 'required', 'help_text', 'order']:
+            if field in request.data:
+                setattr(option, field, request.data[field])
+        option.save()
+        return Response({'option': _option_payload(option)})
+
+    def delete(self, request, option_id: int):
+        get_object_or_404(get_model('catalogue', 'Option'), id=option_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _stock_alert_payload(alert):
+    return {
+        'id': alert.id,
+        'status': alert.status,
+        'threshold': alert.threshold,
+        'date_created': alert.date_created,
+        'date_closed': alert.date_closed,
+        'stockrecord': {
+            'id': alert.stockrecord_id,
+            'partner_sku': alert.stockrecord.partner_sku,
+            'num_in_stock': alert.stockrecord.num_in_stock,
+            'product_id': alert.stockrecord.product_id,
+            'product_title': alert.stockrecord.product.title if alert.stockrecord.product else '',
+        },
+    }
+
+
+class AdminStockAlertCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        StockAlert = get_model('partner', 'StockAlert')
+        return Response(_page(request, StockAlert.objects.select_related('stockrecord__product').order_by('-date_created'), _stock_alert_payload))
+
+
+class AdminStockAlertDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, alert_id: int):
+        alert = get_object_or_404(get_model('partner', 'StockAlert'), id=alert_id)
+        if 'status' in request.data:
+            alert.status = request.data['status']
+            if str(alert.status).lower() == 'closed':
+                alert.date_closed = timezone.now()
+            alert.save(update_fields=['status', 'date_closed'])
+        return Response({'stock_alert': _stock_alert_payload(alert)})
+
+
+class AdminLowStockAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        StockRecord = get_model('partner', 'StockRecord')
+        rows = StockRecord.objects.select_related('product', 'partner').filter(num_in_stock__lte=F('low_stock_threshold')).order_by('num_in_stock')
+        return Response(
+            _page(
+                request,
+                rows,
+                lambda row: {
+                    'stockrecord_id': row.id,
+                    'product_id': row.product_id,
+                    'product_title': row.product.title if row.product else '',
+                    'partner_id': row.partner_id,
+                    'partner_name': row.partner.name if row.partner else '',
+                    'partner_sku': row.partner_sku,
+                    'num_in_stock': row.num_in_stock,
+                    'low_stock_threshold': row.low_stock_threshold,
+                },
+            )
+        )
+
+
+def _voucher_payload(voucher):
+    return {
+        'id': voucher.id,
+        'name': voucher.name,
+        'code': voucher.code,
+        'usage': voucher.usage,
+        'start_datetime': voucher.start_datetime,
+        'end_datetime': voucher.end_datetime,
+        'num_basket_additions': voucher.num_basket_additions,
+        'num_orders': voucher.num_orders,
+        'total_discount': _decimal(voucher.total_discount),
+        'date_created': voucher.date_created,
+    }
+
+
+class AdminVoucherCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Voucher = get_model('voucher', 'Voucher')
+        return Response(_page(request, Voucher.objects.order_by('-date_created'), _voucher_payload))
+
+    def post(self, request):
+        Voucher = get_model('voucher', 'Voucher')
+        voucher = Voucher.objects.create(
+            name=request.data.get('name', ''),
+            code=request.data.get('code', ''),
+            usage=request.data.get('usage', 'Single use'),
+            start_datetime=request.data.get('start_datetime') or timezone.now(),
+            end_datetime=request.data.get('end_datetime') or timezone.now(),
+        )
+        return Response({'voucher': _voucher_payload(voucher)}, status=status.HTTP_201_CREATED)
+
+
+class AdminVoucherDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, voucher_id: int):
+        return Response({'voucher': _voucher_payload(get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id))})
+
+    def patch(self, request, voucher_id: int):
+        voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+        for field in ['name', 'code', 'usage', 'start_datetime', 'end_datetime']:
+            if field in request.data:
+                setattr(voucher, field, request.data[field])
+        voucher.save()
+        return Response({'voucher': _voucher_payload(voucher)})
+
+    def delete(self, request, voucher_id: int):
+        get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminVoucherStatsAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, voucher_id: int):
+        voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+        return Response({'stats': _voucher_payload(voucher)})
+
+
+def _offer_payload(offer):
+    return {
+        'id': offer.id,
+        'name': offer.name,
+        'slug': offer.slug,
+        'description': offer.description,
+        'offer_type': offer.offer_type,
+        'exclusive': offer.exclusive,
+        'status': offer.status,
+        'priority': offer.priority,
+        'start_datetime': offer.start_datetime,
+        'end_datetime': offer.end_datetime,
+        'num_applications': offer.num_applications,
+        'num_orders': offer.num_orders,
+        'total_discount': _decimal(offer.total_discount),
+    }
+
+
+class AdminOfferCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Offer = get_model('offer', 'ConditionalOffer')
+        return Response(_page(request, Offer.objects.order_by('priority', 'name'), _offer_payload))
+
+    def post(self, request):
+        Offer = get_model('offer', 'ConditionalOffer')
+        condition_id = request.data.get('condition_id')
+        benefit_id = request.data.get('benefit_id')
+        if not condition_id or not benefit_id:
+            raise serializers.ValidationError(
+                {
+                    'condition_id': 'Condition is required to create an offer.',
+                    'benefit_id': 'Benefit is required to create an offer.',
+                }
+            )
+        offer = Offer.objects.create(
+            name=request.data.get('name', ''),
+            slug=request.data.get('slug') or slugify(request.data.get('name', '')),
+            description=request.data.get('description', ''),
+            offer_type=request.data.get('offer_type', Offer.SITE),
+            status=request.data.get('status', Offer.OPEN),
+            condition_id=condition_id,
+            benefit_id=benefit_id,
+            priority=request.data.get('priority') or 0,
+        )
+        return Response({'offer': _offer_payload(offer)}, status=status.HTTP_201_CREATED)
+
+
+class AdminOfferDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, offer_id: int):
+        return Response({'offer': _offer_payload(get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id))})
+
+    def patch(self, request, offer_id: int):
+        offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id)
+        for field in ['name', 'slug', 'description', 'offer_type', 'exclusive', 'status', 'priority', 'start_datetime', 'end_datetime']:
+            if field in request.data:
+                setattr(offer, field, request.data[field])
+        offer.save()
+        return Response({'offer': _offer_payload(offer)})
+
+    def delete(self, request, offer_id: int):
+        get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminOfferStatusAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, offer_id: int):
+        offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id)
+        offer.status = request.data.get('status', offer.status)
+        offer.save(update_fields=['status'])
+        return Response({'offer': _offer_payload(offer)})
+
+
+def _range_payload(range_obj):
+    return {
+        'id': range_obj.id,
+        'name': range_obj.name,
+        'slug': range_obj.slug,
+        'description': range_obj.description,
+        'is_public': range_obj.is_public,
+        'includes_all_products': range_obj.includes_all_products,
+        'num_products': range_obj.num_products(),
+    }
+
+
+class AdminRangeCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Range = get_model('offer', 'Range')
+        return Response(_page(request, Range.objects.order_by('name'), _range_payload))
+
+    def post(self, request):
+        Range = get_model('offer', 'Range')
+        range_obj = Range.objects.create(
+            name=request.data.get('name', ''),
+            slug=request.data.get('slug') or slugify(request.data.get('name', '')),
+            description=request.data.get('description', ''),
+            is_public=bool(request.data.get('is_public', True)),
+            includes_all_products=bool(request.data.get('includes_all_products', False)),
+        )
+        return Response({'range': _range_payload(range_obj)}, status=status.HTTP_201_CREATED)
+
+
+class AdminRangeDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, range_id: int):
+        return Response({'range': _range_payload(get_object_or_404(get_model('offer', 'Range'), id=range_id))})
+
+    def patch(self, request, range_id: int):
+        range_obj = get_object_or_404(get_model('offer', 'Range'), id=range_id)
+        for field in ['name', 'slug', 'description', 'is_public', 'includes_all_products']:
+            if field in request.data:
+                setattr(range_obj, field, request.data[field])
+        range_obj.save()
+        return Response({'range': _range_payload(range_obj)})
+
+    def delete(self, request, range_id: int):
+        get_object_or_404(get_model('offer', 'Range'), id=range_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminRangeProductAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, range_id: int):
+        range_obj = get_object_or_404(get_model('offer', 'Range'), id=range_id)
+        products = range_obj.all_products().order_by('title')[:200]
+        return Response({'results': [{'id': product.id, 'title': product.title, 'upc': product.upc} for product in products]})
+
+    def post(self, request, range_id: int):
+        range_obj = get_object_or_404(get_model('offer', 'Range'), id=range_id)
+        product = get_object_or_404(get_model('catalogue', 'Product'), id=request.data.get('product_id'))
+        range_obj.add_product(product)
+        return Response({'range': _range_payload(range_obj)}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, range_id: int):
+        range_obj = get_object_or_404(get_model('offer', 'Range'), id=range_id)
+        product = get_object_or_404(get_model('catalogue', 'Product'), id=request.data.get('product_id'))
+        range_obj.remove_product(product)
+        return Response({'range': _range_payload(range_obj)})
+
+
+def _review_payload(review):
+    return {
+        'id': review.id,
+        'product_id': review.product_id,
+        'product_title': review.product.title if review.product else '',
+        'score': review.score,
+        'title': review.title,
+        'body': review.body,
+        'user_id': review.user_id,
+        'name': review.name,
+        'email': review.email,
+        'status': review.status,
+        'date_created': review.date_created,
+    }
+
+
+class AdminReviewCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Review = get_model('reviews', 'ProductReview')
+        return Response(_page(request, Review.objects.select_related('product', 'user').order_by('-date_created'), _review_payload))
+
+
+class AdminReviewDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, review_id: int):
+        return Response({'review': _review_payload(get_object_or_404(get_model('reviews', 'ProductReview'), id=review_id))})
+
+    def patch(self, request, review_id: int):
+        review = get_object_or_404(get_model('reviews', 'ProductReview'), id=review_id)
+        for field in ['status', 'title', 'body', 'score']:
+            if field in request.data:
+                setattr(review, field, request.data[field])
+        review.save()
+        return Response({'review': _review_payload(review)})
+
+    def delete(self, request, review_id: int):
+        get_object_or_404(get_model('reviews', 'ProductReview'), id=review_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminOrderStatisticsAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Order = get_model('order', 'Order')
+        return Response(
+            {
+                'statistics': {
+                    'orders': Order.objects.count(),
+                    'revenue': _decimal(Order.objects.aggregate(total=Sum('total_incl_tax'))['total']),
+                    'by_status': list(Order.objects.values('status').annotate(count=Count('id')).order_by('status')),
+                }
+            }
+        )
+
+
+class AdminOrderLineDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, order_number: str, line_id: int):
+        Line = get_model('order', 'Line')
+        line = get_object_or_404(Line.objects.select_related('order', 'product'), id=line_id, order__number=order_number)
+        return Response({'line': OrderLineSerializer(line).data})
+
+
+class AdminOrderShippingAddressAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, order_number: str):
+        order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        address = order.shipping_address
+        if address is None:
+            ShippingAddress = get_model('order', 'ShippingAddress')
+            address = ShippingAddress()
+            order.shipping_address = address
+        for field in ['first_name', 'last_name', 'line1', 'line2', 'line3', 'line4', 'state', 'postcode', 'phone_number', 'notes']:
+            if field in request.data:
+                setattr(address, field, request.data[field])
+        address.save()
+        order.shipping_address = address
+        order.save(update_fields=['shipping_address'])
+        return Response({'shipping_address': serialize_shipping_address(address)})
+
+
+class AdminOrderNoteAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, order_number: str):
+        order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        Note = get_model('order', 'OrderNote')
+        note = Note.objects.create(order=order, user=request.user, message=request.data.get('message', ''), note_type=request.data.get('note_type', 'Admin'))
+        return Response({'note': {'id': note.id, 'message': note.message, 'note_type': note.note_type, 'date_created': note.date_created}}, status=status.HTTP_201_CREATED)
+
+
+def _partner_payload(partner):
+    return {'id': partner.id, 'code': partner.code, 'name': partner.name, 'user_count': partner.users.count()}
+
+
+class AdminPartnerCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Partner = get_model('partner', 'Partner')
+        return Response(_page(request, Partner.objects.order_by('name'), _partner_payload))
+
+    def post(self, request):
+        Partner = get_model('partner', 'Partner')
+        partner = Partner.objects.create(name=request.data.get('name', ''), code=request.data.get('code') or slugify(request.data.get('name', '')))
+        return Response({'partner': _partner_payload(partner)}, status=status.HTTP_201_CREATED)
+
+
+class AdminPartnerDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, partner_id: int):
+        return Response({'partner': _partner_payload(get_object_or_404(get_model('partner', 'Partner'), id=partner_id))})
+
+    def patch(self, request, partner_id: int):
+        partner = get_object_or_404(get_model('partner', 'Partner'), id=partner_id)
+        for field in ['name', 'code']:
+            if field in request.data:
+                setattr(partner, field, request.data[field])
+        partner.save()
+        return Response({'partner': _partner_payload(partner)})
+
+    def delete(self, request, partner_id: int):
+        get_object_or_404(get_model('partner', 'Partner'), id=partner_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminPartnerUserCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, partner_id: int):
+        partner = get_object_or_404(get_model('partner', 'Partner'), id=partner_id)
+        return Response({'results': [{'id': user.id, 'email': user.email, 'username': user.username} for user in partner.users.all()]})
+
+    def post(self, request, partner_id: int):
+        partner = get_object_or_404(get_model('partner', 'Partner'), id=partner_id)
+        user = get_object_or_404(get_user_model(), id=request.data.get('user_id'))
+        partner.users.add(user)
+        return Response({'partner': _partner_payload(partner)}, status=status.HTTP_201_CREATED)
+
+
+class AdminPartnerUserLinkAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, partner_id: int, user_id: int):
+        partner = get_object_or_404(get_model('partner', 'Partner'), id=partner_id)
+        partner.users.add(get_object_or_404(get_user_model(), id=user_id))
+        return Response({'partner': _partner_payload(partner)})
+
+    def delete(self, request, partner_id: int, user_id: int):
+        partner = get_object_or_404(get_model('partner', 'Partner'), id=partner_id)
+        partner.users.remove(get_object_or_404(get_user_model(), id=user_id))
+        return Response({'partner': _partner_payload(partner)})
+
+
+def _weight_based_payload(method):
+    return {
+        'id': method.id,
+        'code': method.code,
+        'name': method.name,
+        'description': method.description,
+        'default_weight': _decimal(method.default_weight),
+        'bands': [{'id': band.id, 'upper_limit': _decimal(band.upper_limit), 'charge': _decimal(band.charge)} for band in method.bands.all()],
+    }
+
+
+class AdminWeightBasedShippingCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        WeightBased = get_model('shipping', 'WeightBased')
+        return Response(_page(request, WeightBased.objects.prefetch_related('bands').order_by('name'), _weight_based_payload))
+
+    def post(self, request):
+        WeightBased = get_model('shipping', 'WeightBased')
+        method = WeightBased.objects.create(
+            code=request.data.get('code') or slugify(request.data.get('name', '')),
+            name=request.data.get('name', ''),
+            description=request.data.get('description', ''),
+            default_weight=request.data.get('default_weight') or 0,
+        )
+        return Response({'method': _weight_based_payload(method)}, status=status.HTTP_201_CREATED)
+
+
+class AdminWeightBasedShippingDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, method_id: int):
+        return Response({'method': _weight_based_payload(get_object_or_404(get_model('shipping', 'WeightBased'), id=method_id))})
+
+    def patch(self, request, method_id: int):
+        method = get_object_or_404(get_model('shipping', 'WeightBased'), id=method_id)
+        for field in ['code', 'name', 'description', 'default_weight']:
+            if field in request.data:
+                setattr(method, field, request.data[field])
+        method.save()
+        return Response({'method': _weight_based_payload(method)})
+
+    def delete(self, request, method_id: int):
+        get_object_or_404(get_model('shipping', 'WeightBased'), id=method_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminWeightBandCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, method_id: int):
+        method = get_object_or_404(get_model('shipping', 'WeightBased'), id=method_id)
+        if request.data.get('upper_limit') in (None, ''):
+            raise serializers.ValidationError({'upper_limit': 'Upper limit is required.'})
+        if request.data.get('charge') in (None, ''):
+            raise serializers.ValidationError({'charge': 'Charge is required.'})
+        band = method.bands.create(upper_limit=request.data.get('upper_limit'), charge=request.data.get('charge'))
+        return Response({'band': {'id': band.id, 'upper_limit': _decimal(band.upper_limit), 'charge': _decimal(band.charge)}}, status=status.HTTP_201_CREATED)
+
+
+class AdminWeightBandDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, method_id: int, band_id: int):
+        band = get_object_or_404(get_model('shipping', 'WeightBand'), id=band_id, method_id=method_id)
+        for field in ['upper_limit', 'charge']:
+            if field in request.data:
+                setattr(band, field, request.data[field])
+        band.save()
+        return Response({'band': {'id': band.id, 'upper_limit': _decimal(band.upper_limit), 'charge': _decimal(band.charge)}})
+
+    def delete(self, request, method_id: int, band_id: int):
+        get_object_or_404(get_model('shipping', 'WeightBand'), id=band_id, method_id=method_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _page_payload(page):
+    return {'id': page.id, 'url': page.url, 'title': page.title, 'content': page.content, 'registration_required': page.registration_required}
+
+
+class AdminPageCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        FlatPage = apps.get_model('flatpages', 'FlatPage')
+        return Response(_page(request, FlatPage.objects.order_by('url'), _page_payload))
+
+    def post(self, request):
+        FlatPage = apps.get_model('flatpages', 'FlatPage')
+        page = FlatPage.objects.create(
+            url=request.data.get('url', ''),
+            title=request.data.get('title', ''),
+            content=request.data.get('content', ''),
+            registration_required=bool(request.data.get('registration_required', False)),
+        )
+        page.sites.add(Site.objects.get_current())
+        return Response({'page': _page_payload(page)}, status=status.HTTP_201_CREATED)
+
+
+class AdminPageDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, page_id: int):
+        return Response({'page': _page_payload(get_object_or_404(apps.get_model('flatpages', 'FlatPage'), id=page_id))})
+
+    def patch(self, request, page_id: int):
+        page = get_object_or_404(apps.get_model('flatpages', 'FlatPage'), id=page_id)
+        for field in ['url', 'title', 'content', 'registration_required']:
+            if field in request.data:
+                setattr(page, field, request.data[field])
+        page.save()
+        return Response({'page': _page_payload(page)})
+
+    def delete(self, request, page_id: int):
+        get_object_or_404(apps.get_model('flatpages', 'FlatPage'), id=page_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _communication_payload(template):
+    return {
+        'id': template.id,
+        'code': template.code,
+        'name': template.name,
+        'category': template.category,
+        'email_subject_template': template.email_subject_template,
+        'email_body_template': template.email_body_template,
+        'email_body_html_template': template.email_body_html_template,
+        'sms_template': template.sms_template,
+    }
+
+
+class AdminCommunicationCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        CommunicationEventType = get_model('communication', 'CommunicationEventType')
+        return Response({'results': [_communication_payload(row) for row in CommunicationEventType.objects.order_by('category', 'code')]})
+
+
+class AdminCommunicationDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, slug: str):
+        template = get_object_or_404(get_model('communication', 'CommunicationEventType'), code=slug)
+        return Response({'communication': _communication_payload(template)})
+
+    def patch(self, request, slug: str):
+        template = get_object_or_404(get_model('communication', 'CommunicationEventType'), code=slug)
+        for field in ['name', 'category', 'email_subject_template', 'email_body_template', 'email_body_html_template', 'sms_template']:
+            if field in request.data:
+                setattr(template, field, request.data[field])
+        template.save()
+        return Response({'communication': _communication_payload(template)})
+
+
+class AdminReportListAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        return Response({'results': ['orders', 'products', 'customers', 'vouchers']})
+
+
+class AdminReportAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, report_name: str):
+        Order = get_model('order', 'Order')
+        Product = get_model('catalogue', 'Product')
+        User = get_user_model()
+        Voucher = get_model('voucher', 'Voucher')
+        reports = {
+            'orders': {'orders': Order.objects.count(), 'revenue': _decimal(Order.objects.aggregate(total=Sum('total_incl_tax'))['total'])},
+            'products': {'products': Product.objects.count(), 'public_products': Product.objects.filter(is_public=True).count()},
+            'customers': {'customers': User.objects.filter(is_staff=False).count(), 'staff': User.objects.filter(is_staff=True).count()},
+            'vouchers': {'vouchers': Voucher.objects.count(), 'redemptions': Voucher.objects.aggregate(total=Sum('num_orders'))['total'] or 0},
+        }
+        if report_name not in reports:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'report': report_name, 'data': reports[report_name]})
