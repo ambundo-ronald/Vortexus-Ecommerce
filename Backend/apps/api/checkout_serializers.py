@@ -6,6 +6,12 @@ from rest_framework import serializers
 class BasketItemCreateSerializer(serializers.Serializer):
     product_id = serializers.IntegerField(min_value=1)
     quantity = serializers.IntegerField(required=False, min_value=1, default=1)
+    options = serializers.ListField(
+        required=False,
+        child=serializers.DictField(),
+        allow_empty=True,
+        default=list,
+    )
 
     def validate_product_id(self, value):
         Product = apps.get_model('catalogue', 'Product')
@@ -20,18 +26,53 @@ class BasketItemCreateSerializer(serializers.Serializer):
         request = self.context['request']
         product = self.context['product']
         quantity = attrs['quantity']
+        options = self._clean_options(product, attrs.get('options') or [])
         stock_info = request.strategy.fetch_for_product(product)
 
         if not getattr(stock_info, 'stockrecord', None):
             raise serializers.ValidationError({'product_id': 'This product cannot be purchased yet.'})
 
-        requested_total = request.basket.product_quantity(product) + quantity
+        requested_total = request.basket.line_quantity(product, stock_info.stockrecord, options=options) + quantity
         permitted, reason = stock_info.availability.is_purchase_permitted(requested_total)
         if not permitted:
             raise serializers.ValidationError({'quantity': str(reason)})
 
         attrs['product'] = product
+        attrs['options'] = options
         return attrs
+
+    def _clean_options(self, product, submitted_options):
+        product_options = list(getattr(product, 'options', []) or [])
+        if not product_options and submitted_options:
+            raise serializers.ValidationError({'options': 'This product does not accept options.'})
+
+        by_id = {option.id: option for option in product_options}
+        by_code = {option.code: option for option in product_options}
+        cleaned = []
+        seen = set()
+
+        for raw in submitted_options:
+            option = None
+            if raw.get('option_id') not in (None, ''):
+                try:
+                    option = by_id.get(int(raw.get('option_id')))
+                except (TypeError, ValueError):
+                    option = None
+            elif raw.get('code'):
+                option = by_code.get(str(raw.get('code')))
+            if option is None:
+                raise serializers.ValidationError({'options': 'Unknown product option.'})
+            value = raw.get('value')
+            if option.required and value in (None, '', []):
+                raise serializers.ValidationError({'options': f'{option.name} is required.'})
+            if value not in (None, '', []):
+                cleaned.append({'option': option, 'value': value})
+                seen.add(option.id)
+
+        missing = [option.name for option in product_options if option.required and option.id not in seen]
+        if missing:
+            raise serializers.ValidationError({'options': f"Required options missing: {', '.join(missing)}"})
+        return cleaned
 
 
 class BasketLineUpdateSerializer(serializers.Serializer):

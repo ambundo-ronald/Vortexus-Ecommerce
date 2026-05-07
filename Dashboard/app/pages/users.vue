@@ -12,8 +12,11 @@ const UCheckbox = resolveComponent("UCheckbox");
 const currentPage = ref(1);
 const pageSize = ref(10);
 const searchQuery = ref("");
-const roleFilter = ref("");
-const statusFilter = ref("");
+const searchInput = ref("");
+const ALL_ROLES = "__all_roles__";
+const ALL_STATUSES = "__all_statuses__";
+const roleFilter = ref(ALL_ROLES);
+const statusFilter = ref(ALL_STATUSES);
 const sortBy = ref<SortBy>();
 const sortDir = ref<SortDir>("asc");
 const userData = ref<UserTableRow[]>([]);
@@ -22,6 +25,8 @@ const isLoading = ref(false);
 const isSaving = ref(false);
 const editingUserId = ref<string | null>(null);
 const isEditorOpen = ref(false);
+const selectedUserDetail = ref<Record<string, any> | null>(null);
+const saveError = ref("");
 const summary = ref({
   total: 0,
   active: 0,
@@ -42,7 +47,7 @@ const userForm = reactive({
 });
 
 const roleOptions = [
-  { label: "All roles", value: "" },
+  { label: "All roles", value: ALL_ROLES },
   { label: "Customer", value: "customer" },
   { label: "Supplier", value: "supplier" },
   { label: "Staff", value: "staff" },
@@ -56,9 +61,14 @@ const editableRoleOptions = [
 ];
 
 const statusOptions = [
-  { label: "All statuses", value: "" },
+  { label: "All statuses", value: ALL_STATUSES },
   { label: "Active", value: "active" },
   { label: "Suspended", value: "suspended" },
+];
+
+const quickStatusOptions = [
+  { label: "Activate", value: "active", icon: "i-lucide-user-check" },
+  { label: "Suspend", value: "suspended", icon: "i-lucide-user-x" },
 ];
 
 const editableStatusOptions = [
@@ -78,6 +88,8 @@ const columns = getUserTableColumns({
 
 function resetForm() {
   editingUserId.value = null;
+  selectedUserDetail.value = null;
+  saveError.value = "";
   userForm.email = "";
   userForm.first_name = "";
   userForm.last_name = "";
@@ -89,14 +101,29 @@ function resetForm() {
   userForm.isSupplier = false;
 }
 
+function normalizeSelectedUser(value: any): UserTableRow {
+  return value?.original || value;
+}
+
+function formatDate(value?: string) {
+  if (!value)
+    return "Never";
+
+  return new Intl.DateTimeFormat("en-KE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
 async function loadUsers() {
   isLoading.value = true;
   const result = await getUsers({
     page: currentPage.value,
     pageSize: pageSize.value,
     search: searchQuery.value,
-    role: roleFilter.value,
-    status: statusFilter.value,
+    role: roleFilter.value === ALL_ROLES ? "" : roleFilter.value,
+    status: statusFilter.value === ALL_STATUSES ? "" : statusFilter.value,
     sortBy: sortBy.value,
   });
 
@@ -118,19 +145,34 @@ async function loadUsers() {
   isLoading.value = false;
 }
 
+function applySearch() {
+  currentPage.value = 1;
+  searchQuery.value = searchInput.value.trim();
+}
+
+function clearFilters() {
+  searchInput.value = "";
+  searchQuery.value = "";
+  roleFilter.value = ALL_ROLES;
+  statusFilter.value = ALL_STATUSES;
+  currentPage.value = 1;
+}
+
 function openCreateUser() {
   resetForm();
   isEditorOpen.value = true;
 }
 
 async function openEditUser(user: UserTableRow) {
+  const rowUser = normalizeSelectedUser(user);
   resetForm();
-  editingUserId.value = user.id;
+  editingUserId.value = rowUser.id;
   isEditorOpen.value = true;
 
-  const result = await getUser(user.id);
+  const result = await getUser(rowUser.id);
   if (result.success) {
     const data = result.data;
+    selectedUserDetail.value = data;
     userForm.email = data.email;
     userForm.first_name = data.first_name;
     userForm.last_name = data.last_name;
@@ -151,6 +193,20 @@ async function openEditUser(user: UserTableRow) {
 }
 
 async function submitUserForm() {
+  saveError.value = "";
+  if (!userForm.email.trim()) {
+    saveError.value = "Email is required.";
+    return;
+  }
+  if (!editingUserId.value && !userForm.password) {
+    saveError.value = "Password is required when creating a user.";
+    return;
+  }
+  if (userForm.password && userForm.password.length < 8) {
+    saveError.value = "Password must contain at least 8 characters.";
+    return;
+  }
+
   isSaving.value = true;
   const payload = {
     email: userForm.email,
@@ -177,6 +233,7 @@ async function submitUserForm() {
     await loadUsers();
   }
   else {
+    saveError.value = result.error || "Could not save user.";
     toast.add({
       title: "Save failed",
       description: result.error || "Could not save user.",
@@ -187,34 +244,54 @@ async function submitUserForm() {
   isSaving.value = false;
 }
 
+async function setUserStatus(status: "active" | "suspended") {
+  if (!editingUserId.value)
+    return;
+
+  userForm.status = status;
+  await submitUserForm();
+}
+
 watch([currentPage, pageSize, searchQuery, roleFilter, statusFilter, sortBy, sortDir], loadUsers, { immediate: true });
-watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
+watch([roleFilter, statusFilter, pageSize], () => {
   currentPage.value = 1;
 });
 </script>
 
 <template>
   <div>
-    <div class="mb-4 flex items-center justify-between p-8 pb-4">
-      <h1 class="text-xl font-semibold">Users</h1>
+    <div class="mb-4 flex flex-col gap-4 p-4 pb-2 sm:p-8 sm:pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h1 class="text-2xl font-black text-slate-950">Users</h1>
+        <p class="mt-1 text-sm text-slate-500">Manage dashboard access and customer accounts.</p>
+      </div>
 
-      <div class="flex w-full items-center justify-end gap-2">
-        <UInput
-          v-model="searchQuery"
-          class="max-w-sm"
-          size="lg"
-          icon="i-lucide-search"
-          placeholder="Search users..."
-          :ui="{ leadingIcon: 'size-4' }"
-        />
+      <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+        <form class="flex min-w-56 flex-1 gap-2 lg:max-w-sm" @submit.prevent="applySearch">
+          <UInput
+            v-model="searchInput"
+            class="flex-1"
+            color="neutral"
+            variant="outline"
+            size="lg"
+            icon="i-lucide-search"
+            placeholder="Search users..."
+            :ui="{ leadingIcon: 'size-4' }"
+          />
+          <UButton color="neutral" variant="outline" type="submit" size="lg">
+            Search
+          </UButton>
+        </form>
 
         <USelect
           v-model="roleFilter"
           :items="roleOptions"
+          class="min-w-56 flex-1 lg:max-w-sm"
+          color="neutral"
+          variant="outline"
+          size="lg"
           value-attribute="value"
           option-attribute="label"
-          class="min-w-40"
-          size="lg"
         />
 
         <USelect
@@ -223,12 +300,17 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
           value-attribute="value"
           option-attribute="label"
           class="min-w-40"
+          color="neutral"
+          variant="outline"
           size="lg"
         />
 
         <UButton variant="outline" :loading="isLoading" @click="loadUsers">
           <UIcon name="i-lucide-refresh-cw" />
           Refresh
+        </UButton>
+        <UButton variant="ghost" color="neutral" @click="clearFilters">
+          Clear
         </UButton>
         <UButton color="primary" variant="solid" @click="openCreateUser">
           <UIcon name="i-lucide-plus" />
@@ -237,7 +319,7 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
       </div>
     </div>
 
-    <div class="mb-8 grid grid-cols-1 gap-8 px-8 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-8 grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-4">
       <CardsKpiCard2
         name="Total Users"
         :value="summary.total"
@@ -272,13 +354,13 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
       />
     </div>
 
-    <div class="px-8">
+    <div class="px-4 sm:px-8">
       <UTable
         class="cursor-pointer"
         :data="userData"
         :columns="columns"
         :loading="isLoading"
-        @select="(user) => openEditUser(user)"
+        @select="(user) => openEditUser(normalizeSelectedUser(user))"
       />
       <div class="flex justify-end pt-4">
         <UPagination
@@ -294,7 +376,7 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
       v-if="isEditorOpen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
     >
-      <UCard class="w-full max-w-2xl">
+      <UCard class="max-h-[92vh] w-full max-w-4xl overflow-y-auto">
         <template #header>
           <div class="flex items-center justify-between gap-4">
             <div>
@@ -315,12 +397,33 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
           </div>
         </template>
 
+        <div v-if="saveError" class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          {{ saveError }}
+        </div>
+
+        <div v-if="selectedUserDetail" class="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Joined</p>
+            <p class="mt-1 font-semibold text-slate-950">{{ formatDate(selectedUserDetail.dateJoined) }}</p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Last login</p>
+            <p class="mt-1 font-semibold text-slate-950">{{ formatDate(selectedUserDetail.lastLogin) }}</p>
+          </div>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Access</p>
+            <p class="mt-1 font-semibold text-slate-950">
+              {{ selectedUserDetail.isSuperuser ? "Super admin" : selectedUserDetail.isStaff ? "Staff" : selectedUserDetail.isSupplier ? "Supplier" : "Customer" }}
+            </p>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <UFormField label="Email" required>
-            <UInput v-model="userForm.email" type="email" />
+            <UInput v-model="userForm.email" type="email" autocomplete="email" />
           </UFormField>
           <UFormField :label="editingUserId ? 'New password' : 'Password'" :required="!editingUserId">
-            <UInput v-model="userForm.password" type="password" />
+            <UInput v-model="userForm.password" type="password" autocomplete="new-password" />
           </UFormField>
           <UFormField label="First name">
             <UInput v-model="userForm.first_name" />
@@ -354,6 +457,28 @@ watch([searchQuery, roleFilter, statusFilter, pageSize], () => {
               option-attribute="label"
             />
           </UFormField>
+        </div>
+
+        <div v-if="editingUserId" class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h4 class="font-bold text-slate-950">Quick access controls</h4>
+              <p class="text-sm text-slate-500">Use these for fast activation or suspension.</p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-for="option in quickStatusOptions"
+              :key="option.value"
+              :icon="option.icon"
+              color="neutral"
+              :variant="userForm.status === option.value ? 'solid' : 'outline'"
+              :loading="isSaving && userForm.status === option.value"
+              @click="setUserStatus(option.value as 'active' | 'suspended')"
+            >
+              {{ option.label }}
+            </UButton>
+          </div>
         </div>
 
         <template #footer>

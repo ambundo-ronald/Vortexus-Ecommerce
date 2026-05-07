@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, F, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -377,6 +378,7 @@ def _voucher_payload(voucher):
         'num_orders': voucher.num_orders,
         'total_discount': _decimal(voucher.total_discount),
         'date_created': voucher.date_created,
+        'offers': [_offer_payload(offer) for offer in voucher.offers.select_related('condition', 'benefit').all()],
     }
 
 
@@ -426,6 +428,29 @@ class AdminVoucherStatsAPIView(APIView):
         return Response({'stats': _voucher_payload(voucher)})
 
 
+class AdminVoucherOfferCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, voucher_id: int):
+        voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+        return Response({'results': [_offer_payload(offer) for offer in voucher.offers.select_related('condition', 'benefit').all()]})
+
+    def post(self, request, voucher_id: int):
+        voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+        offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=request.data.get('offer_id'))
+        if offer.offer_type != offer.VOUCHER:
+            offer.offer_type = offer.VOUCHER
+            offer.save(update_fields=['offer_type'])
+        voucher.offers.add(offer)
+        return Response({'voucher': _voucher_payload(voucher)}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, voucher_id: int):
+        voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+        offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=request.data.get('offer_id'))
+        voucher.offers.remove(offer)
+        return Response({'voucher': _voucher_payload(voucher)})
+
+
 def _offer_payload(offer):
     return {
         'id': offer.id,
@@ -441,7 +466,146 @@ def _offer_payload(offer):
         'num_applications': offer.num_applications,
         'num_orders': offer.num_orders,
         'total_discount': _decimal(offer.total_discount),
+        'condition_id': offer.condition_id,
+        'benefit_id': offer.benefit_id,
+        'condition': _condition_payload(offer.condition) if getattr(offer, 'condition_id', None) else None,
+        'benefit': _benefit_payload(offer.benefit) if getattr(offer, 'benefit_id', None) else None,
+        'voucher_ids': list(offer.vouchers.values_list('id', flat=True)) if hasattr(offer, 'vouchers') else [],
     }
+
+
+def _condition_payload(condition):
+    return {
+        'id': condition.id,
+        'type': condition.type,
+        'range_id': condition.range_id,
+        'range_name': condition.range.name if condition.range_id else '',
+        'value': _decimal(condition.value),
+        'proxy_class': condition.proxy_class or '',
+        'name': str(condition),
+        'description': condition.description,
+    }
+
+
+def _benefit_payload(benefit):
+    return {
+        'id': benefit.id,
+        'type': benefit.type,
+        'range_id': benefit.range_id,
+        'range_name': benefit.range.name if benefit.range_id else '',
+        'value': _decimal(benefit.value),
+        'max_affected_items': benefit.max_affected_items,
+        'proxy_class': benefit.proxy_class or '',
+        'name': str(benefit),
+        'description': benefit.description,
+    }
+
+
+def _save_offer_component(instance, data, allowed_fields):
+    for field in allowed_fields:
+        if field in data:
+            value = data[field]
+            if field in {'range_id', 'value', 'max_affected_items', 'proxy_class'} and value in ('', None):
+                value = None
+            setattr(instance, field, value)
+    try:
+        instance.full_clean()
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else exc.messages) from exc
+    instance.save()
+    return instance
+
+
+class AdminOfferConditionCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Condition = get_model('offer', 'Condition')
+        return Response(_page(request, Condition.objects.select_related('range').order_by('id'), _condition_payload))
+
+    def post(self, request):
+        Condition = get_model('offer', 'Condition')
+        condition = Condition(
+            type=request.data.get('type', Condition.COUNT),
+            range_id=request.data.get('range_id') or None,
+            value=request.data.get('value') or None,
+            proxy_class=request.data.get('proxy_class') or None,
+        )
+        _save_offer_component(condition, {}, [])
+        return Response({'condition': _condition_payload(condition)}, status=status.HTTP_201_CREATED)
+
+
+class AdminOfferConditionDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, condition_id: int):
+        return Response({'condition': _condition_payload(get_object_or_404(get_model('offer', 'Condition'), id=condition_id))})
+
+    def patch(self, request, condition_id: int):
+        condition = get_object_or_404(get_model('offer', 'Condition'), id=condition_id)
+        _save_offer_component(condition, request.data, ['type', 'range_id', 'value', 'proxy_class'])
+        return Response({'condition': _condition_payload(condition)})
+
+    def delete(self, request, condition_id: int):
+        get_object_or_404(get_model('offer', 'Condition'), id=condition_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminOfferBenefitCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Benefit = get_model('offer', 'Benefit')
+        return Response(_page(request, Benefit.objects.select_related('range').order_by('id'), _benefit_payload))
+
+    def post(self, request):
+        Benefit = get_model('offer', 'Benefit')
+        benefit = Benefit(
+            type=request.data.get('type', Benefit.PERCENTAGE),
+            range_id=request.data.get('range_id') or None,
+            value=request.data.get('value') or None,
+            max_affected_items=request.data.get('max_affected_items') or None,
+            proxy_class=request.data.get('proxy_class') or None,
+        )
+        _save_offer_component(benefit, {}, [])
+        return Response({'benefit': _benefit_payload(benefit)}, status=status.HTTP_201_CREATED)
+
+
+class AdminOfferBenefitDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, benefit_id: int):
+        return Response({'benefit': _benefit_payload(get_object_or_404(get_model('offer', 'Benefit'), id=benefit_id))})
+
+    def patch(self, request, benefit_id: int):
+        benefit = get_object_or_404(get_model('offer', 'Benefit'), id=benefit_id)
+        _save_offer_component(benefit, request.data, ['type', 'range_id', 'value', 'max_affected_items', 'proxy_class'])
+        return Response({'benefit': _benefit_payload(benefit)})
+
+    def delete(self, request, benefit_id: int):
+        get_object_or_404(get_model('offer', 'Benefit'), id=benefit_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminOfferMetadataAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        Offer = get_model('offer', 'ConditionalOffer')
+        Condition = get_model('offer', 'Condition')
+        Benefit = get_model('offer', 'Benefit')
+        return Response(
+            {
+                'offer_types': [{'value': value, 'label': str(label)} for value, label in Offer.TYPE_CHOICES],
+                'offer_statuses': [
+                    {'value': Offer.OPEN, 'label': 'Open'},
+                    {'value': Offer.SUSPENDED, 'label': 'Suspended'},
+                    {'value': Offer.CONSUMED, 'label': 'Consumed'},
+                ],
+                'condition_types': [{'value': value, 'label': str(label)} for value, label in Condition.TYPE_CHOICES],
+                'benefit_types': [{'value': value, 'label': str(label)} for value, label in Benefit.TYPE_CHOICES],
+            }
+        )
 
 
 class AdminOfferCollectionAPIView(APIView):
@@ -455,6 +619,7 @@ class AdminOfferCollectionAPIView(APIView):
         Offer = get_model('offer', 'ConditionalOffer')
         condition_id = request.data.get('condition_id')
         benefit_id = request.data.get('benefit_id')
+        voucher_id = request.data.get('voucher_id')
         if not condition_id or not benefit_id:
             raise serializers.ValidationError(
                 {
@@ -466,12 +631,15 @@ class AdminOfferCollectionAPIView(APIView):
             name=request.data.get('name', ''),
             slug=request.data.get('slug') or slugify(request.data.get('name', '')),
             description=request.data.get('description', ''),
-            offer_type=request.data.get('offer_type', Offer.SITE),
+            offer_type=request.data.get('offer_type') or (Offer.VOUCHER if voucher_id else Offer.SITE),
             status=request.data.get('status', Offer.OPEN),
             condition_id=condition_id,
             benefit_id=benefit_id,
             priority=request.data.get('priority') or 0,
         )
+        if voucher_id:
+            voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
+            voucher.offers.add(offer)
         return Response({'offer': _offer_payload(offer)}, status=status.HTTP_201_CREATED)
 
 
@@ -896,7 +1064,16 @@ class AdminReportListAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        return Response({'results': ['orders', 'products', 'customers', 'vouchers']})
+        return Response(
+            {
+                'results': [
+                    {'code': 'orders', 'name': 'Orders', 'description': 'Order totals, status, customer, and placement date.'},
+                    {'code': 'products', 'name': 'Products', 'description': 'Catalog visibility, stock, category, and pricing.'},
+                    {'code': 'customers', 'name': 'Customers', 'description': 'Customer and staff account status.'},
+                    {'code': 'vouchers', 'name': 'Vouchers', 'description': 'Coupon usage and discount totals.'},
+                ]
+            }
+        )
 
 
 class AdminReportAPIView(APIView):
@@ -907,12 +1084,101 @@ class AdminReportAPIView(APIView):
         Product = get_model('catalogue', 'Product')
         User = get_user_model()
         Voucher = get_model('voucher', 'Voucher')
-        reports = {
-            'orders': {'orders': Order.objects.count(), 'revenue': _decimal(Order.objects.aggregate(total=Sum('total_incl_tax'))['total'])},
-            'products': {'products': Product.objects.count(), 'public_products': Product.objects.filter(is_public=True).count()},
-            'customers': {'customers': User.objects.filter(is_staff=False).count(), 'staff': User.objects.filter(is_staff=True).count()},
-            'vouchers': {'vouchers': Voucher.objects.count(), 'redemptions': Voucher.objects.aggregate(total=Sum('num_orders'))['total'] or 0},
-        }
-        if report_name not in reports:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        return Response({'report': report_name, 'data': reports[report_name]})
+        StockRecord = get_model('partner', 'StockRecord')
+
+        if report_name == 'orders':
+            queryset = Order.objects.select_related('user').order_by('-date_placed')
+            return Response(
+                {
+                    'report': report_name,
+                    'summary': {
+                        'orders': queryset.count(),
+                        'revenue': _decimal(queryset.aggregate(total=Sum('total_incl_tax'))['total']),
+                        'by_status': list(queryset.values('status').annotate(count=Count('id')).order_by('status')),
+                    },
+                    **_page(
+                        request,
+                        queryset,
+                        lambda order: {
+                            'id': order.id,
+                            'number': order.number,
+                            'status': order.status,
+                            'customer': getattr(order.user, 'email', '') if order.user_id else '',
+                            'total_incl_tax': _decimal(order.total_incl_tax),
+                            'currency': order.currency,
+                            'date_placed': order.date_placed,
+                        },
+                    ),
+                }
+            )
+
+        if report_name == 'products':
+            queryset = Product.objects.exclude(structure='parent').prefetch_related('categories', 'stockrecords').order_by('title')
+            return Response(
+                {
+                    'report': report_name,
+                    'summary': {
+                        'products': queryset.count(),
+                        'public_products': queryset.filter(is_public=True).count(),
+                        'draft_products': queryset.filter(is_public=False).count(),
+                        'stock_units': StockRecord.objects.aggregate(total=Sum('num_in_stock'))['total'] or 0,
+                    },
+                    **_page(
+                        request,
+                        queryset,
+                        lambda product: {
+                            'id': product.id,
+                            'title': product.title,
+                            'upc': product.upc,
+                            'is_public': product.is_public,
+                            'category': product.categories.first().name if product.categories.exists() else '',
+                            'stock': sum((row.num_in_stock or 0) for row in product.stockrecords.all()),
+                            'date_updated': product.date_updated,
+                        },
+                    ),
+                }
+            )
+
+        if report_name == 'customers':
+            queryset = User.objects.order_by('-date_joined')
+            return Response(
+                {
+                    'report': report_name,
+                    'summary': {
+                        'customers': queryset.filter(is_staff=False).count(),
+                        'staff': queryset.filter(is_staff=True).count(),
+                        'active': queryset.filter(is_active=True).count(),
+                    },
+                    **_page(
+                        request,
+                        queryset,
+                        lambda user: {
+                            'id': user.id,
+                            'email': user.email,
+                            'username': user.username,
+                            'first_name': user.first_name,
+                            'last_name': user.last_name,
+                            'is_staff': user.is_staff,
+                            'is_active': user.is_active,
+                            'date_joined': user.date_joined,
+                        },
+                    ),
+                }
+            )
+
+        if report_name == 'vouchers':
+            queryset = Voucher.objects.prefetch_related('offers').order_by('-date_created')
+            return Response(
+                {
+                    'report': report_name,
+                    'summary': {
+                        'vouchers': queryset.count(),
+                        'basket_additions': queryset.aggregate(total=Sum('num_basket_additions'))['total'] or 0,
+                        'redemptions': queryset.aggregate(total=Sum('num_orders'))['total'] or 0,
+                        'discount': _decimal(queryset.aggregate(total=Sum('total_discount'))['total']),
+                    },
+                    **_page(request, queryset, _voucher_payload),
+                }
+            )
+
+        return Response(status=status.HTTP_404_NOT_FOUND)

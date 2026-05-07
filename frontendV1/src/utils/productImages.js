@@ -1,10 +1,44 @@
-export const PRODUCT_PLACEHOLDER_IMAGES = [
-  "/images/Placeholder.jpg",
-  "/images/back%20view.png",
-  "/images/left%20view%20palce%20holder.jpg",
-  "/images/right%20view%20placeholder.jpg"
-];
+import { mediaUrl } from "./media";
 
-export function productPlaceholderImage(index = 0) {
-  return PRODUCT_PLACEHOLDER_IMAGES[index] || PRODUCT_PLACEHOLDER_IMAGES[0];
+function imageCandidate(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return value.src || value.url || value.original || value.image || "";
+}
+
+export function productImageUrl(product = {}) {
+  const candidates = [
+    product.thumbnail,
+    product.primary_image,
+    product.primaryImage,
+    product.image_url,
+    product.imageUrl,
+    product.image,
+    product.src,
+    product.product?.thumbnail,
+    product.product?.primary_image,
+    product.product?.image_url
+  ];
+
+  if (Array.isArray(product.images)) {
+    candidates.push(...product.images.map(imageCandidate));
+  }
+
+  const first = candidates.map(imageCandidate).find(Boolean);
+  return mediaUrl(first || "");
+}
+
+export function productImageList(product = {}) {
+  const images = [];
+  const primary = productImageUrl(product);
+  if (primary) images.push(primary);
+
+  if (Array.isArray(product.images)) {
+    for (const image of product.images) {
+      const url = mediaUrl(imageCandidate(image));
+      if (url && !images.includes(url)) images.push(url);
+    }
+  }
+
+  return images;
 }

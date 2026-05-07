@@ -39,6 +39,14 @@ export default function ProductDetailPage() {
   const reviewCount = Number(product.review_count || product.reviews_count || 0);
   const rating = Number(product.rating || product.average_review_score || 0);
 
+  async function handleAddToCart() {
+    try {
+      await addItem(product.id);
+    } catch {
+      // Global notification state already shows the failed action.
+    }
+  }
+
   return (
     <>
       <Link className="back-link" to="/catalog">
@@ -75,7 +83,7 @@ export default function ProductDetailPage() {
           </dl>
           <p>{product.description || "No product description has been added yet."}</p>
           <div className="product-actions">
-            <button className="primary-button" type="button" disabled={cartLoading} onClick={() => void addItem(product.id)}>
+            <button className="primary-button" type="button" disabled={cartLoading} onClick={() => void handleAddToCart()}>
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : "Add to cart"}
             </button>

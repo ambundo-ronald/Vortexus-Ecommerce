@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { wishlistApi } from "../api/wishlist.api";
+import { useUiStore } from "../store/ui.store";
 import { useWishlistStore } from "../store/wishlist.store";
 
 function messageFromError(error) {
@@ -35,6 +36,11 @@ export function useWishlist({ auto = true } = {}) {
       const payload = await wishlistApi.removeDefaultItem(productId);
       setWishlist(payload?.wishlist || null);
       useWishlistStore.getState().setStatus(productId, false);
+      useUiStore.getState().notify({
+        title: "Removed",
+        message: "The product was removed from your wishlist.",
+        icon: "heart_minus"
+      });
       return payload?.wishlist || null;
     } catch (error) {
       setError(messageFromError(error));

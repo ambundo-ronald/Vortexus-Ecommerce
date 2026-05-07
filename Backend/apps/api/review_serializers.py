@@ -26,6 +26,12 @@ def review_payload(review, request_user=None) -> dict:
     if review.user and str(reviewer_name).strip().lower() == 'anonymous':
         reviewer_name = review.user.username
     is_owner = bool(request_user and review.user_id and request_user.id == review.user_id)
+    user_vote = None
+    can_vote = False
+    if request_user and getattr(request_user, 'is_authenticated', False):
+        existing_vote = review.votes.filter(user=request_user).first()
+        user_vote = existing_vote.delta if existing_vote else None
+        can_vote = not is_owner and existing_vote is None
     return {
         'id': review.id,
         'product_id': review.product_id,
@@ -38,6 +44,10 @@ def review_payload(review, request_user=None) -> dict:
         'reviewer_name': str(reviewer_name),
         'total_votes': review.total_votes,
         'delta_votes': review.delta_votes,
+        'up_votes': review.num_up_votes,
+        'down_votes': review.num_down_votes,
+        'user_vote': user_vote,
+        'can_vote': can_vote,
         'date_created': review.date_created,
         'can_edit': is_owner,
         'can_delete': is_owner,

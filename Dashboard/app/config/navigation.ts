@@ -30,9 +30,9 @@ export const mainNav = [
     to: "/media",
   },
   {
-    label: "Campaigns",
+    label: "Integrations",
     icon: "i-lucide-users",
-    to: "/campaigns",
+    to: "/integrations",
   },
 ];
 

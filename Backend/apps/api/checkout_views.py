@@ -30,6 +30,7 @@ from .checkout_utils import (
     build_checkout_payload,
     clear_selected_shipping_method,
     get_checkout_session,
+    get_selected_shipping_method,
     get_shipping_address,
     get_shipping_methods,
 )
@@ -55,6 +56,7 @@ class BasketItemCollectionAPIView(APIView):
         line, _ = request.basket.add_product(
             serializer.validated_data['product'],
             quantity=serializer.validated_data['quantity'],
+            options=serializer.validated_data.get('options') or [],
         )
         try:
             sync_basket_line_reservation(line)
@@ -143,6 +145,56 @@ class ShippingMethodSelectionAPIView(APIView):
 
         get_checkout_session(request).use_shipping_method(method_code)
         return Response(build_checkout_payload(request))
+
+
+class CheckoutPreviewAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        basket = request.basket
+        if basket.is_empty:
+            raise serializers.ValidationError({'basket': 'Your basket is empty.'})
+        shipping_address = get_shipping_address(request, basket)
+        shipping_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
+        payload = build_checkout_payload(request)
+        preview = {
+            'ready': True,
+            'missing': [],
+            'basket': payload['basket'],
+            'shipping': payload.get('shipping'),
+            'billing': payload.get('billing'),
+        }
+        if basket.is_shipping_required() and not shipping_address:
+            preview['ready'] = False
+            preview['missing'].append('shipping_address')
+        if basket.is_shipping_required() and not shipping_method:
+            preview['ready'] = False
+            preview['missing'].append('shipping_method')
+        if preview['ready']:
+            pricing = build_order_prices(basket, shipping_address, shipping_method)
+            preview['totals'] = {
+                'shipping': float(pricing['shipping_price'].incl_tax),
+                'order_total': float(pricing['order_total'].incl_tax),
+                'currency': pricing['order_total'].currency,
+                'taxes': pricing['tax_breakdown'],
+            }
+        return Response({'preview': preview})
+
+
+class CheckoutThankYouAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        order_number = request.query_params.get('order_number') or get_checkout_session(request).get_order_number()
+        if not order_number:
+            raise serializers.ValidationError({'order_number': 'Order number is required.'})
+        Order = apps.get_model('order', 'Order')
+        queryset = Order.objects.select_related('user', 'shipping_address')
+        if request.user.is_authenticated:
+            order = get_object_or_404(queryset, number=order_number, user=request.user)
+        else:
+            order = get_object_or_404(queryset, number=order_number)
+        return Response({'detail': 'Order placed successfully.', 'order': OrderSummarySerializer(order).data})
 
 
 class OrderPlacementAPIView(APIView):

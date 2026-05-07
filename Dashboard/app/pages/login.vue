@@ -1,88 +1,169 @@
 <script setup lang="ts">
-const { fetchCurrentUser, isAuthenticated, loading, login } = useAdminAuth();
-const toast = useToast();
+definePageMeta({
+  layout: false,
+})
 
+const auth = useAuth()
+const toast = useToast()
 const form = reactive({
-  identifier: "admin@vortexus.demo",
-  password: "",
-});
+  identifier: '',
+  password: '',
+})
 
-const isSubmitting = ref(false);
+const canSubmit = computed(() => form.identifier.trim().length > 0 && form.password.length > 0 && !auth.isLoading.value)
 
-onMounted(async () => {
-  if (!isAuthenticated.value)
-    await fetchCurrentUser();
-  if (isAuthenticated.value)
-    await navigateTo("/");
-});
+async function submit() {
+  if (!canSubmit.value)
+    return
 
-async function submitLogin() {
-  isSubmitting.value = true;
-  const result = await login(form.identifier, form.password);
+  const result = await auth.login({
+    identifier: form.identifier.trim(),
+    password: form.password,
+  })
+
   if (result.success) {
     toast.add({
-      title: "Logged in",
-      description: "Dashboard session is ready.",
-      color: "success",
-    });
-    await navigateTo("/");
+      title: 'Welcome back',
+      description: 'Dashboard session is ready.',
+      color: 'success',
+    })
+    await navigateTo('/')
+    return
   }
-  else {
-    toast.add({
-      title: "Login failed",
-      description: result.error || "Check your credentials and try again.",
-      color: "error",
-    });
-  }
-  isSubmitting.value = false;
+
+  toast.add({
+    title: 'Could not sign in',
+    description: result.error || 'Check your email and password.',
+    color: 'error',
+  })
 }
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-elevated px-4">
-    <UCard class="w-full max-w-md">
-      <template #header>
-        <div class="space-y-1">
-          <h1 class="text-2xl font-bold">Vortexus Admin</h1>
-          <p class="text-sm text-(--ui-text-muted)">Sign in with a staff account to load live backend data.</p>
+  <main class="flex min-h-screen items-center justify-center bg-[#f4f7fb] px-4 py-10">
+    <section class="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl md:grid-cols-[1fr_0.9fr]">
+      <div class="hidden min-h-[620px] flex-col justify-between bg-[#0f172a] p-10 text-white md:flex">
+        <div>
+          <div class="mb-10 flex items-center gap-3">
+            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black">
+              VX
+            </div>
+            <div>
+              <p class="text-xl font-bold leading-tight">
+                Vortexus
+              </p>
+              <p class="text-sm text-slate-300">
+                Admin dashboard
+              </p>
+            </div>
+          </div>
+
+          <h1 class="max-w-md text-4xl font-black leading-tight">
+            Manage products, orders, customers, and store operations from one place.
+          </h1>
+          <p class="mt-5 max-w-md text-base leading-7 text-slate-300">
+            Changes made here flow through the backend and become visible in the customer storefront where supported by the existing APIs.
+          </p>
         </div>
-      </template>
 
-      <form class="space-y-4" @submit.prevent="submitLogin">
-        <UFormField label="Email or username" required>
-          <UInput
-            v-model="form.identifier"
-            autocomplete="username"
-            icon="i-lucide-user"
-            placeholder="admin@vortexus.demo"
+        <div class="grid grid-cols-3 gap-3">
+          <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p class="text-2xl font-black">
+              01
+            </p>
+            <p class="mt-1 text-xs text-slate-300">
+              Products
+            </p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p class="text-2xl font-black">
+              02
+            </p>
+            <p class="mt-1 text-xs text-slate-300">
+              Orders
+            </p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p class="text-2xl font-black">
+              03
+            </p>
+            <p class="mt-1 text-xs text-slate-300">
+              Customers
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <form class="p-6 sm:p-10 md:p-12" @submit.prevent="submit">
+        <div class="mb-9 flex items-center gap-3 md:hidden">
+          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black text-white">
+            VX
+          </div>
+          <div>
+            <p class="text-xl font-bold leading-tight text-slate-950">
+              Vortexus
+            </p>
+            <p class="text-sm text-slate-500">
+              Admin dashboard
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-wide text-[#3d7cff]">
+            Secure access
+          </p>
+          <h2 class="mt-3 text-3xl font-black tracking-tight text-slate-950">
+            Sign in
+          </h2>
+          <p class="mt-3 text-sm leading-6 text-slate-500">
+            Use a staff account with dashboard permissions.
+          </p>
+        </div>
+
+        <div class="mt-8 space-y-5">
+          <UFormField label="Email or username">
+            <UInput
+              v-model="form.identifier"
+              size="xl"
+              icon="i-lucide-user"
+              autocomplete="username"
+              placeholder="admin@example.com"
+            />
+          </UFormField>
+
+          <UFormField label="Password">
+            <UInput
+              v-model="form.password"
+              size="xl"
+              icon="i-lucide-lock"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Enter password"
+            />
+          </UFormField>
+
+          <UAlert
+            v-if="auth.error.value"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-info"
+            :description="auth.error.value"
           />
-        </UFormField>
 
-        <UFormField label="Password" required>
-          <UInput
-            v-model="form.password"
-            autocomplete="current-password"
-            icon="i-lucide-lock"
-            placeholder="Enter password"
-            type="password"
-          />
-        </UFormField>
-
-        <UButton
-          block
-          color="primary"
-          type="submit"
-          :loading="isSubmitting || loading"
-        >
-          Sign In
-        </UButton>
+          <UButton
+            type="submit"
+            size="xl"
+            block
+            color="primary"
+            icon="i-lucide-log-in"
+            :loading="auth.isLoading.value"
+            :disabled="!canSubmit"
+          >
+            Sign in to dashboard
+          </UButton>
+        </div>
       </form>
-
-      <template #footer>
-        <p class="text-xs text-(--ui-text-muted)">
-          Demo admin: <span class="font-medium">admin@vortexus.demo</span>
-        </p>
-      </template>
-    </UCard>
-  </div>
+    </section>
+  </main>
 </template>

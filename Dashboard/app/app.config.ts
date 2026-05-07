@@ -5,13 +5,14 @@ export default defineAppConfig({
   },
   ui: {
     colors: {
-      primary: "emerald",
-      neutral: "neutral",
+      primary: "blue",
+      neutral: "slate",
     },
     card: {
       slots: {
-        body: "!gap-0 p-4 sm:p-6 !bg-elevated/20",
-        header: "bg-muted dark:bg-elevated/20",
+        root: "bg-white border border-slate-200 shadow-sm",
+        body: "!gap-0 p-4 sm:p-6",
+        header: "bg-white border-b border-slate-200",
       },
     },
     badge: {
@@ -32,11 +33,11 @@ export default defineAppConfig({
     },
     table: {
       slots: {
-        root: "bg-default dark:bg-elevated/20 rounded-lg border border-default",
-        thead: "[&>tr]:after:bg-(--ui-border)",
-        th: "py-4 px-6 font-medium text-toned tracking-tight",
-        td: "py-4 px-6 text-toned dark:text-muted",
-        separator: 'bg-border'
+        root: "overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm",
+        thead: "bg-slate-50",
+        th: "py-4 px-6 font-semibold text-slate-600 tracking-normal",
+        td: "py-4 px-6 text-slate-700",
+        separator: "bg-slate-200",
       },
     },
     select: {

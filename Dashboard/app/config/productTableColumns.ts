@@ -42,36 +42,34 @@ export function getProductTableColumns({
       accessorKey: "id",
       header: ({ column }) => renderSortableHeader("Product #", column),
       cell: ({ row }) =>
-        h("span", { class: "font-mono" }, `#${row.original.id}`),
+        h("span", { class: "font-mono text-xs text-slate-500" }, `#${row.original.id}`),
     },
     {
       accessorKey: "name",
       header: ({ column }) => renderSortableHeader("Product", column),
       cell: ({ row }) =>
-        h("div", { class: "min-w-50 flex items-center gap-3" }, [
+        h("div", { class: "min-w-64 flex items-center gap-3" }, [
           h(UAvatar as Component, {
             src: row.original.imageUrl,
             alt: row.original.name,
-            size: "xs",
+            size: "md",
             imgClass: "object-cover",
-            onError: (e: Event) => {
-              const target = e.target as HTMLImageElement;
-              target.src =
-                "https://placehold.co/400x400/64748b/ffffff?text=N/A";
-            },
           }),
-          h("span", { class: "font-medium text-default" }, row.original.name),
+          h("div", { class: "min-w-0" }, [
+            h("span", { class: "block truncate font-semibold text-slate-950" }, row.original.name),
+            h("span", { class: "block truncate text-xs text-slate-500" }, row.original.category || "Uncategorized"),
+          ]),
         ]),
     },
     {
       accessorKey: "sku",
       header: ({ column }) => renderSortableHeader("SKU", column),
-      cell: ({ row }) => h("span", { class: "font-mono" }, row.original.sku),
+      cell: ({ row }) => h("span", { class: "font-mono text-xs text-slate-600" }, row.original.sku || "-"),
     },
     {
       accessorKey: "category",
       header: ({ column }) => renderSortableHeader("Category", column),
-      cell: ({ row }) => row.original.category,
+      cell: ({ row }) => h("span", { class: "text-slate-600" }, row.original.category || "Uncategorized"),
     },
     {
       accessorKey: "status",
@@ -95,7 +93,7 @@ export function getProductTableColumns({
       cell: ({ row }) => {
         const stock = row.original.stock;
         const color =
-          stock > 50 ? "success" : stock > 10 ? "warning" : "danger";
+          stock > 50 ? "success" : stock > 10 ? "warning" : "error";
         return h(UBadge as Component, {
           label: stock.toString(),
           color,
@@ -106,7 +104,7 @@ export function getProductTableColumns({
     {
       accessorKey: "price",
       header: ({ column }) => renderSortableHeader("Price", column),
-      cell: ({ row }) => `$${Number(row.getValue("price") ?? 0).toFixed(2)}`,
+      cell: ({ row }) => h("span", { class: "font-semibold text-slate-950" }, formatMoney(row.original.price, row.original.currency || "KES")),
     },
     {
       id: "actions",

@@ -141,32 +141,34 @@ watch(selectedRange, loadDashboard, { immediate: true });
     <div class="grid grid-cols-1 gap-6 px-4 md:grid-cols-2 md:px-8 xl:grid-cols-4">
       <CardsKpiCard2
         name="Revenue"
-        :value="moneyFormatter.format(summary?.kpis?.revenue || 0)"
-        :budget="summary?.kpis?.recent_revenue || 0"
+        :value="summary?.kpis?.revenue || 0"
+        :budget="summary?.kpis?.revenue || 0"
+        format="currency"
+        :currency="summary?.currency || 'USD'"
         color="var(--color-success)"
         icon="i-lucide-banknote"
         :loading="isLoading"
       />
       <CardsKpiCard2
         name="Orders"
-        :value="formatNumber(summary?.kpis?.orders || 0)"
-        :budget="summary?.kpis?.recent_orders || 0"
+        :value="summary?.kpis?.orders || 0"
+        :budget="summary?.kpis?.orders || 0"
         color="var(--color-info)"
         icon="i-lucide-shopping-cart"
         :loading="isLoading"
       />
       <CardsKpiCard2
         name="Products"
-        :value="formatNumber(summary?.kpis?.products || 0)"
-        :budget="summary?.kpis?.active_products || 0"
+        :value="summary?.kpis?.products || 0"
+        :budget="summary?.kpis?.products || 0"
         color="var(--color-warning)"
         icon="i-lucide-box"
         :loading="isLoading"
       />
       <CardsKpiCard2
         name="Users"
-        :value="formatNumber(summary?.kpis?.users || 0)"
-        :budget="summary?.kpis?.staff_users || 0"
+        :value="summary?.kpis?.users || 0"
+        :budget="summary?.kpis?.users || 0"
         color="var(--color-primary)"
         icon="i-lucide-users"
         :loading="isLoading"

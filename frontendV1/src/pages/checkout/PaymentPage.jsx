@@ -8,11 +8,13 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
+import { useUiStore } from "../../store/ui.store";
 
 export default function PaymentPage() {
   const navigate = useNavigate();
   const checkoutState = useCheckout();
   const paymentState = usePayment();
+  const notify = useUiStore((state) => state.notify);
   const { basket, shipping, loading, saving, error, placeOrder } = checkoutState;
   const paymentError = paymentState.error;
 
@@ -24,6 +26,7 @@ export default function PaymentPage() {
         guest_email: form.payerEmail
       });
       sessionStorage.setItem("vortexus:lastOrder", JSON.stringify(orderPayload));
+      notify({ title: "Order placed", message: "Your order has been received.", icon: "task_alt" });
       navigate("/checkout/confirmation", { replace: true, state: { orderPayload } });
     } catch {
       // Hook state already exposes the normalized message.

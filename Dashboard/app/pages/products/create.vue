@@ -2,15 +2,19 @@
 import type { FormSubmitEvent } from "@nuxt/ui";
 import ProductForm, { type ProductFormSchema } from "~/components/Forms/ProductForm.vue";
 import type { ProductImageItem } from "~/types/ProductImage";
-import type { ProductStockData } from '~/types/ProductTableRow'
 
 const pageTitle = computed(() => "New Product");
 const { createProduct, getCategoryOptions, syncProductImages } = useProduct();
+const isSaving = ref(false)
 
 function discardChanges() {
   navigateTo("/products");
 }
 async function submit(event: FormSubmitEvent<ProductFormSchema>) {
+  if (isSaving.value)
+    return
+
+  isSaving.value = true
   const toast = useToast();
   const result = await createProduct(event.data);
   if (result.success) {
@@ -23,11 +27,12 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
           description: imageResult.error || "The product was created, but one or more images failed to upload.",
           color: "warning",
         });
+        isSaving.value = false
         return navigateTo(`/products/${productId}/edit`)
       }
     }
-    toast.add({ title: "Success!", description: "New product saved.", color: "success" });
-    navigateTo("/products");
+    toast.add({ title: "Product created", description: "The product is now saved.", color: "success" });
+    await navigateTo("/products");
   } else {
     toast.add({
       title: "Create failed",
@@ -35,6 +40,7 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
       color: "error",
     });
   }
+  isSaving.value = false
 }
 
 const statusOptions = [
@@ -60,29 +66,6 @@ onMounted(async () => {
   }
 })
 
-const stockChartData = ref<ProductStockData[]>(
-  Array.from({ length: 30 }, (_, i) => {
-    const date = new Date()
-    date.setDate(date.getDate() - (29 - i))
-    return {
-      date: formatDate(date),
-      stock: Math.floor(90 + Math.random() * 40),
-    }
-  })
-)
-
-const stockChartCategories = {
-  stock: { name: 'Product Stock', color: '#3b82f6' },
-}
-
-function formatDate(date: Date) {
-  const options: Intl.DateTimeFormatOptions = {
-    month: 'short',
-    day: 'numeric',
-  }
-  return new Intl.DateTimeFormat('en-US', options).format(date)
-}
-
 const images = ref<ProductImageItem[]>([]);
 </script>
 
@@ -90,8 +73,8 @@ const images = ref<ProductImageItem[]>([]);
   <div class="w-full">
     <ProductForm :status-options="statusOptions" :categories="categories" @on-submit="submit">
       <template #header="{ submit }">
-        <div class="max-w-screen-xl mx-auto py-4">
-          <div class="flex justify-between items-center">
+        <div class="mx-auto max-w-screen-xl py-4">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-3">
               <UButton
                 icon="i-lucide-arrow-left"
@@ -102,7 +85,7 @@ const images = ref<ProductImageItem[]>([]);
                 aria-label="Back to products"
                 @click="discardChanges"
               />
-              <h1 class="text-xl font-semibold text-default truncate">
+              <h1 class="truncate text-2xl font-black text-slate-950">
                 {{ pageTitle }}
               </h1>
             </div>
@@ -113,7 +96,7 @@ const images = ref<ProductImageItem[]>([]);
                 variant="outline"
                 @click="discardChanges"
               />
-              <UButton color="primary" variant="solid" @click="submit">
+              <UButton color="primary" variant="solid" :loading="isSaving" @click="submit">
                 Save
                 <UIcon name="i-lucide-save" />
               </UButton>
@@ -123,9 +106,6 @@ const images = ref<ProductImageItem[]>([]);
       </template>
       <template #images>
         <ProductImages v-model="images" />
-      </template>
-      <template #stock>
-        <ChartsProductStock :chart-data="stockChartData" :categories="stockChartCategories" />
       </template>
     </ProductForm>
   </div>

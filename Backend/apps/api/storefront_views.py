@@ -4,6 +4,7 @@ from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import signing
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -29,6 +30,7 @@ from .wishlist_serializers import (
     get_wishlist_model,
     user_wishlist_queryset,
     wishlist_detail_payload,
+    wishlist_line_payload,
 )
 
 
@@ -64,6 +66,25 @@ def _user_address_payload(address) -> dict:
 
 
 def _saved_items(request, display_currency: str | None = None) -> list[dict]:
+    if request.user.is_authenticated:
+        wishlist = get_default_wishlist(request.user, create=False)
+        if not wishlist:
+            return []
+        payload = []
+        for line in wishlist.lines.select_related('product').all():
+            line_payload = wishlist_line_payload(line, display_currency=display_currency)
+            payload.append(
+                {
+                    'id': line.id,
+                    'quantity': line.quantity,
+                    'date_saved': wishlist.date_created,
+                    'wishlist_id': wishlist.id,
+                    'wishlist_item': line_payload,
+                    'product': line_payload.get('product'),
+                }
+            )
+        return payload
+
     Product = apps.get_model('catalogue', 'Product')
     items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
     product_ids = [item.get('product_id') for item in items if item.get('product_id')]
@@ -212,6 +233,20 @@ class BasketLineSaveForLaterAPIView(APIView):
         if request.basket.pk is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         line = get_object_or_404(request.basket.lines.select_related('product'), id=line_id)
+        if request.user.is_authenticated:
+            wishlist = get_default_wishlist(request.user, create=True)
+            wishlist_line, created = wishlist.lines.get_or_create(
+                product=line.product,
+                defaults={'title': line.product.get_title(), 'quantity': line.quantity},
+            )
+            if not created:
+                wishlist_line.quantity += line.quantity
+                wishlist_line.title = line.product.get_title()
+                wishlist_line.save(update_fields=['quantity', 'title'])
+            line.delete()
+            payload = build_checkout_payload(request)
+            payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}
+            return Response(payload)
         items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
         saved_id = max([item.get('id', 0) for item in items] or [0]) + 1
         items = [item for item in items if item.get('product_id') != line.product_id]
@@ -235,6 +270,19 @@ class SavedItemMoveToCartAPIView(APIView):
 
     @transaction.atomic
     def post(self, request, saved_line_id: int):
+        if request.user.is_authenticated:
+            wishlist = get_default_wishlist(request.user, create=False)
+            if not wishlist:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            saved_line = get_object_or_404(wishlist.lines.select_related('product'), id=saved_line_id)
+            if not saved_line.product:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            line, _ = request.basket.add_product(saved_line.product, quantity=saved_line.quantity)
+            sync_basket_line_reservation(line)
+            saved_line.delete()
+            payload = build_checkout_payload(request)
+            payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}
+            return Response(payload)
         items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
         item = next((entry for entry in items if entry.get('id') == saved_line_id), None)
         if item is None:
@@ -253,6 +301,11 @@ class SavedItemDetailAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def delete(self, request, saved_line_id: int):
+        if request.user.is_authenticated:
+            wishlist = get_default_wishlist(request.user, create=False)
+            if wishlist:
+                wishlist.lines.filter(id=saved_line_id).delete()
+            return Response({'results': _saved_items(request, display_currency=resolve_display_currency(request))})
         items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
         _save_items(request, [entry for entry in items if entry.get('id') != saved_line_id])
         return Response({'results': _saved_items(request, display_currency=resolve_display_currency(request))})
@@ -284,14 +337,39 @@ class SharedWishListAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request, key: str):
+        WishList = get_wishlist_model()
         signer = signing.Signer(salt='storefront-wishlist-share')
         try:
             wishlist_id = signer.unsign(key)
+            wishlist = get_object_or_404(WishList.objects.select_related('owner'), id=wishlist_id)
         except signing.BadSignature:
+            wishlist = get_object_or_404(WishList.objects.select_related('owner'), key=key)
+        if wishlist.visibility not in {wishlist.PUBLIC, wishlist.SHARED}:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        WishList = get_wishlist_model()
-        wishlist = get_object_or_404(WishList.objects.select_related('owner'), id=wishlist_id)
         return Response({'wishlist': wishlist_detail_payload(wishlist, display_currency=resolve_display_currency(request))})
+
+
+class WishListShareAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, wishlist_id: int):
+        wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
+        visibility = request.data.get('visibility') or wishlist.SHARED
+        if visibility not in {wishlist.SHARED, wishlist.PUBLIC}:
+            raise serializers.ValidationError({'visibility': 'Use Shared or Public for share links.'})
+        update_fields = ['visibility']
+        if request.data.get('regenerate_key'):
+            wishlist.key = wishlist.__class__.random_key()
+            update_fields.append('key')
+        wishlist.visibility = visibility
+        wishlist.save(update_fields=update_fields)
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(wishlist, display_currency=resolve_display_currency(request)),
+                'share_key': wishlist.key,
+                'share_path': f'/api/v1/wishlists/shared/{wishlist.key}/',
+            }
+        )
 
 
 class AddressSerializer(serializers.Serializer):
@@ -700,6 +778,26 @@ class ProductReviewDetailAPIView(APIView):
         Review = get_review_model()
         review = get_object_or_404(Review.objects.select_related('user', 'product'), id=review_id, product=product, status=Review.APPROVED)
         return Response({'review': review_payload(review, request_user=request.user)})
+
+
+class ProductReviewVoteAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, product_id: int, review_id: int):
+        product = get_object_or_404(public_product_queryset(), id=product_id)
+        Review = get_review_model()
+        review = get_object_or_404(Review.objects.select_related('user', 'product'), id=review_id, product=product, status=Review.APPROVED)
+        raw_delta = request.data.get('delta', request.data.get('vote', 'up'))
+        delta = -1 if str(raw_delta).lower() in {'-1', 'down', 'no', 'false'} else 1
+        Vote = apps.get_model('reviews', 'Vote')
+        vote = Vote(review=review, user=request.user, delta=delta)
+        try:
+            vote.full_clean()
+            vote.save()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'vote': exc.messages}) from exc
+        review.refresh_from_db()
+        return Response({'review': review_payload(review, request_user=request.user)}, status=status.HTTP_201_CREATED)
 
 
 class SearchFacetAPIView(APIView):

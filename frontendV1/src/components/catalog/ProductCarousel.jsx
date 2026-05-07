@@ -6,7 +6,7 @@ import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
 import { useWishlistStore } from "../../store/wishlist.store";
-import { productPlaceholderImage } from "../../utils/productImages";
+import { productImageUrl } from "../../utils/productImages";
 import { productPrice } from "../../utils/productDisplay";
 
 const fallbackSlides = [
@@ -40,6 +40,14 @@ export default function ProductCarousel({ products = [], loading = false }) {
     node.scrollBy({ left: direction * Math.min(node.clientWidth, 520), behavior: "smooth" });
   }
 
+  async function handleAddToCart(productId) {
+    try {
+      await addItem(productId);
+    } catch {
+      // Global notification state already shows the failed action.
+    }
+  }
+
   if (loading) {
     return (
       <section className="commerce-carousel commerce-carousel--loading" aria-label="Loading featured products">
@@ -60,7 +68,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
       <div className="carousel-track" ref={scrollRef}>
         {slides.map((product, index) => {
           const hasProduct = Boolean(product.id);
-          const image = hasProduct ? productPlaceholderImage(index % 4) : "";
+          const image = hasProduct ? productImageUrl(product) : "";
           const price = hasProduct ? productPrice(product) : null;
           const canAdd = hasProduct && product.in_stock && !price.isQuote;
 
@@ -82,7 +90,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
                         className="icon-action"
                         type="button"
                         disabled={cartLoading}
-                        onClick={() => void addItem(product.id)}
+                        onClick={() => void handleAddToCart(product.id)}
                         aria-label={`Add ${product.title} to cart`}
                       >
                         <MaterialIcon name="add_shopping_cart" size={18} />

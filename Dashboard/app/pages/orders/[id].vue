@@ -18,6 +18,21 @@ const statusOptions = computed(() =>
   }))
 );
 
+function statusColor(status: string) {
+  const normalized = String(status || "").toLowerCase();
+
+  if (["paid", "delivered", "complete", "completed", "success"].includes(normalized))
+    return "success";
+  if (["packed", "shipped", "processing"].includes(normalized))
+    return "primary";
+  if (["failed", "cancelled", "canceled"].includes(normalized))
+    return "error";
+  if (["pending"].includes(normalized))
+    return "warning";
+
+  return "neutral";
+}
+
 const orderSteps = computed(() => {
   if (!order.value)
     return [];
@@ -51,17 +66,17 @@ const googleMapsUrl = computed(() => {
 });
 
 const formatDate = (dateString: string) =>
-  new Date(dateString).toLocaleDateString("en-US", {
+  dateString ? new Date(dateString).toLocaleDateString("en-KE", {
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
+  }) : "Not available";
 
 const formatTime = (dateString: string) =>
-  new Date(dateString).toLocaleTimeString("en-US", {
+  dateString ? new Date(dateString).toLocaleTimeString("en-KE", {
     hour: "2-digit",
     minute: "2-digit",
-  });
+  }) : "";
 
 function discardChanges() {
   navigateTo("/orders");
@@ -128,11 +143,11 @@ onMounted(async () => {
     <div v-if="isLoading" class="flex min-h-96 items-center justify-center">
       <UIcon
         name="i-lucide-loader-2"
-        class="h-8 w-8 animate-spin text-toned dark:text-muted"
+      class="h-8 w-8 animate-spin text-slate-500"
       />
     </div>
 
-    <div v-else-if="order" class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div v-else-if="order" class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-10">
       <div class="flex items-center justify-between pb-6">
         <div class="flex items-center gap-4">
           <UButton
@@ -144,9 +159,14 @@ onMounted(async () => {
             aria-label="Back to orders"
             @click="discardChanges"
           />
-          <h1 class="truncate text-xl font-semibold text-default">
+          <div>
+            <h1 class="truncate text-2xl font-black tracking-tight text-slate-950">
             {{ order.orderNo }}
-          </h1>
+            </h1>
+            <p class="mt-1 text-sm text-slate-500">
+              Created {{ formatDate(order.createdDate) }}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -154,41 +174,41 @@ onMounted(async () => {
         <div class="space-y-6 lg:col-span-2">
           <Stepper :steps="orderSteps" />
 
-          <UCard>
+          <UCard class="border border-slate-200 bg-white shadow-sm">
             <template #header>
-              <h3 class="text-lg font-bold text-default">Order Details</h3>
+              <h3 class="text-lg font-bold text-slate-950">Order details</h3>
             </template>
 
             <div class="space-y-6">
               <div class="grid grid-cols-2 gap-6">
                 <div>
-                  <div class="mb-1 text-sm text-toned dark:text-muted">
+                  <div class="mb-1 text-sm text-slate-500">
                     Created
                   </div>
-                  <div class="font-medium tracking-tight text-default">
+                  <div class="font-semibold tracking-tight text-slate-950">
                     {{ formatDate(order.createdDate) }}
                   </div>
                 </div>
                 <div>
-                  <div class="mb-1 text-sm text-toned dark:text-muted">Total</div>
-                  <div class="font-medium tracking-tight text-default">
-                    ${{ order.orderTotal.toFixed(2) }}
+                  <div class="mb-1 text-sm text-slate-500">Total</div>
+                  <div class="font-semibold tracking-tight text-slate-950">
+                    {{ formatMoney(order.orderTotal, "KES") }}
                   </div>
                 </div>
                 <div>
-                  <div class="mb-1 text-sm text-toned dark:text-muted">
+                  <div class="mb-1 text-sm text-slate-500">
                     Order Via
                   </div>
-                  <div class="font-medium tracking-tight text-default">
+                  <div class="font-semibold tracking-tight text-slate-950">
                     {{ order.orderVia }}
                   </div>
                 </div>
                 <div>
-                  <div class="mb-1 text-sm text-toned dark:text-muted">
+                  <div class="mb-1 text-sm text-slate-500">
                     Order Stage
                   </div>
                   <UBadge
-                    color="success"
+                    :color="statusColor(order.status)"
                     variant="soft"
                     size="lg"
                     class="capitalize"
@@ -199,15 +219,15 @@ onMounted(async () => {
               </div>
 
               <div>
-                <h4 class="mb-3 text-base font-semibold text-default">
+                <h4 class="mb-3 text-base font-semibold text-slate-950">
                   <UIcon
                     name="i-lucide-map-pin"
                     class="mr-2 inline h-4 w-4 text-primary"
                   />
                   Shipping Information
                 </h4>
-                <div class="space-y-4 rounded-lg bg-elevated p-4">
-                  <div class="font-medium tracking-tight text-default">
+                <div class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="font-medium tracking-tight text-slate-950">
                     {{ order.shippingAddress?.street || "No shipping address provided" }}<br>
                     <template v-if="order.shippingAddress">
                       {{ order.shippingAddress.city }},
@@ -217,7 +237,7 @@ onMounted(async () => {
                   </div>
                   <iframe
                     v-if="order.shippingAddress"
-                    class="h-56 w-full rounded-lg border border-muted"
+                    class="h-56 w-full rounded-lg border border-slate-200"
                     style="min-height:224px"
                     :src="googleMapsUrl"
                     allowfullscreen
@@ -228,52 +248,59 @@ onMounted(async () => {
               </div>
 
               <div>
-                <h4 class="mb-3 text-base font-semibold text-default">
+                <h4 class="mb-3 text-base font-semibold text-slate-950">
                   Products
                 </h4>
                 <div class="space-y-4">
                   <div
                     v-for="product in order.products"
                     :key="product.id"
-                    class="flex items-center gap-4 rounded-lg bg-elevated p-4"
+                    class="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4"
                   >
                     <img
-                      :src="product.image || 'https://placehold.co/400x400/64748b/ffffff?text=N/A'"
+                      v-if="product.image"
+                      :src="mediaUrl(product.image)"
                       :alt="product.name"
-                      class="h-12 w-12 rounded-lg object-cover"
+                      class="h-14 w-14 rounded-lg border border-slate-200 object-cover"
                     >
+                    <div
+                      v-else
+                      class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-400"
+                    >
+                      <UIcon name="i-lucide-image-off" class="size-5" />
+                    </div>
                     <div class="flex-1">
-                      <div class="font-medium text-default">
+                      <div class="font-semibold text-slate-950">
                         {{ product.name }}
                       </div>
-                      <div class="text-sm text-toned dark:text-muted">
+                      <div class="text-sm text-slate-500">
                         Qty: {{ product.quantity }}
                       </div>
                     </div>
-                    <div class="font-semibold text-default">
-                      ${{ Number(product.price || 0).toFixed(2) }}
+                    <div class="font-semibold text-slate-950">
+                      {{ formatMoney(product.price || 0, "KES") }}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="border-t border-muted pt-4">
+              <div class="border-t border-slate-200 pt-4">
                 <div class="space-y-2">
                   <div class="flex justify-between">
-                    <span class="text-toned dark:text-muted">Subtotal</span>
-                    <span class="text-default">${{ Number(order.subtotal || 0).toFixed(2) }}</span>
+                    <span class="text-slate-500">Subtotal</span>
+                    <span class="text-slate-950">{{ formatMoney(order.subtotal || 0, "KES") }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-toned dark:text-muted">Shipping</span>
-                    <span class="text-default">${{ Number(order.shipping || 0).toFixed(2) }}</span>
+                    <span class="text-slate-500">Shipping</span>
+                    <span class="text-slate-950">{{ formatMoney(order.shipping || 0, "KES") }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-toned dark:text-muted">Tax</span>
-                    <span class="text-default">${{ Number(order.tax || 0).toFixed(2) }}</span>
+                    <span class="text-slate-500">Tax</span>
+                    <span class="text-slate-950">{{ formatMoney(order.tax || 0, "KES") }}</span>
                   </div>
-                  <div class="flex justify-between border-t border-muted pt-2 text-lg font-semibold text-default">
+                  <div class="flex justify-between border-t border-slate-200 pt-2 text-lg font-bold text-slate-950">
                     <span>Total</span>
-                    <span>${{ order.orderTotal.toFixed(2) }}</span>
+                    <span>{{ formatMoney(order.orderTotal, "KES") }}</span>
                   </div>
                 </div>
               </div>
@@ -282,18 +309,18 @@ onMounted(async () => {
         </div>
 
         <div class="space-y-6">
-          <UCard>
+          <UCard class="border border-slate-200 bg-white shadow-sm">
             <template #header>
               <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-settings-2" class="h-5 w-5 text-default" />
-                <h3 class="text-lg font-bold text-default">Admin Actions</h3>
+                <UIcon name="i-lucide-settings-2" class="h-5 w-5 text-slate-950" />
+                <h3 class="text-lg font-bold text-slate-950">Admin actions</h3>
               </div>
             </template>
 
             <div class="space-y-4">
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label class="mb-2 block text-sm font-medium text-default">Order status</label>
+                  <label class="mb-2 block text-sm font-medium text-slate-950">Order status</label>
                   <USelect
                     v-model="statusForm.status"
                     :items="statusOptions"
@@ -303,7 +330,7 @@ onMounted(async () => {
                   />
                 </div>
                 <div>
-                  <label class="mb-2 block text-sm font-medium text-default">Tracking reference</label>
+                  <label class="mb-2 block text-sm font-medium text-slate-950">Tracking reference</label>
                   <UInput
                     v-model="statusForm.tracking_reference"
                     size="lg"
@@ -313,7 +340,7 @@ onMounted(async () => {
               </div>
 
               <div>
-                <label class="mb-2 block text-sm font-medium text-default">Internal note</label>
+                <label class="mb-2 block text-sm font-medium text-slate-950">Internal note</label>
                 <UTextarea
                   v-model="statusForm.note"
                   :rows="4"
@@ -342,9 +369,9 @@ onMounted(async () => {
             </div>
           </UCard>
 
-          <UCard>
+          <UCard class="border border-slate-200 bg-white shadow-sm">
             <template #header>
-              <h3 class="text-lg font-bold text-default">Customer</h3>
+              <h3 class="text-lg font-bold text-slate-950">Customer</h3>
             </template>
 
             <div class="space-y-6">
@@ -356,14 +383,14 @@ onMounted(async () => {
                     <UIcon name="i-lucide-user" class="h-6 w-6 text-primary" />
                   </div>
                   <div
-                    class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-bg bg-success"
+                    class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-500"
                   />
                 </div>
                 <div>
-                  <div class="font-medium text-default">
+                  <div class="font-semibold text-slate-950">
                     {{ order.customer?.name || order.companyName }}
                   </div>
-                  <div class="text-sm text-toned dark:text-muted">
+                  <div class="text-sm text-slate-500">
                     {{ order.customer?.company || order.companyName }}
                   </div>
                 </div>
@@ -371,28 +398,28 @@ onMounted(async () => {
 
               <div class="space-y-3">
                 <div class="flex items-center gap-3">
-                  <UIcon name="i-lucide-mail" class="h-4 w-4 text-toned dark:text-muted" />
+                  <UIcon name="i-lucide-mail" class="h-4 w-4 text-slate-500" />
                   <div>
-                    <div class="text-sm text-toned dark:text-muted">Email</div>
-                    <div class="font-medium tracking-tight text-default">
+                    <div class="text-sm text-slate-500">Email</div>
+                    <div class="font-medium tracking-tight text-slate-950">
                       {{ order.customer?.email || "No email available" }}
                     </div>
                   </div>
                 </div>
                 <div class="flex items-center gap-3">
-                  <UIcon name="i-lucide-phone" class="h-4 w-4 text-toned dark:text-muted" />
+                  <UIcon name="i-lucide-phone" class="h-4 w-4 text-slate-500" />
                   <div>
-                    <div class="text-sm text-toned dark:text-muted">Phone</div>
-                    <div class="font-medium tracking-tight text-default">
+                    <div class="text-sm text-slate-500">Phone</div>
+                    <div class="font-medium tracking-tight text-slate-950">
                       {{ order.customer?.phone || "No phone available" }}
                     </div>
                   </div>
                 </div>
                 <div class="flex items-center gap-3">
-                  <UIcon name="i-lucide-building" class="h-4 w-4 text-toned dark:text-muted" />
+                  <UIcon name="i-lucide-building" class="h-4 w-4 text-slate-500" />
                   <div>
-                    <div class="text-sm text-toned dark:text-muted">Company</div>
-                    <div class="font-medium tracking-tight text-default">
+                    <div class="text-sm text-slate-500">Company</div>
+                    <div class="font-medium tracking-tight text-slate-950">
                       {{ order.customer?.company || order.companyName }}
                     </div>
                   </div>
@@ -401,17 +428,17 @@ onMounted(async () => {
             </div>
           </UCard>
 
-          <UCard>
+          <UCard class="border border-slate-200 bg-white shadow-sm">
             <template #header>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <UIcon name="i-lucide-truck" class="h-5 w-5 text-default" />
-                  <h3 class="text-lg font-bold text-default">Tracking</h3>
+                  <UIcon name="i-lucide-truck" class="h-5 w-5 text-slate-950" />
+                  <h3 class="text-lg font-bold text-slate-950">Tracking</h3>
                 </div>
                 <div class="flex flex-col items-end gap-1">
-                  <div class="text-sm text-toned dark:text-muted">
+                  <div class="text-sm text-slate-500">
                     <span>Status : </span>
-                    <span class="font-medium text-danger">{{ order.status }}</span>
+                    <span class="font-medium text-slate-950">{{ order.status }}</span>
                   </div>
                 </div>
               </div>
@@ -419,7 +446,7 @@ onMounted(async () => {
 
             <div class="relative pl-8">
               <div
-                class="absolute bottom-0 left-3 top-0 w-px border-l-2 border-dashed border-muted"
+                class="absolute bottom-0 left-3 top-0 w-px border-l-2 border-dashed border-slate-200"
               />
 
               <div class="space-y-6">
@@ -432,10 +459,10 @@ onMounted(async () => {
                     }"
                   />
                   <div class="space-y-1">
-                    <div class="font-medium text-default">
+                    <div class="font-medium text-slate-950">
                       {{ item.status }} ({{ formatTime(item.date) }})
                     </div>
-                    <div class="text-sm text-toned dark:text-muted">
+                    <div class="text-sm text-slate-500">
                       {{ item.location }}
                     </div>
                   </div>
@@ -444,24 +471,24 @@ onMounted(async () => {
             </div>
           </UCard>
 
-          <UCard v-if="order.supplierGroups?.length">
+          <UCard v-if="order.supplierGroups?.length" class="border border-slate-200 bg-white shadow-sm">
             <template #header>
-              <div class="flex items-center gap-2">
-                <UIcon name="i-lucide-boxes" class="h-5 w-5 text-default" />
-                <h3 class="text-lg font-bold text-default">Supplier Groups</h3>
-              </div>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-boxes" class="h-5 w-5 text-slate-950" />
+                  <h3 class="text-lg font-bold text-slate-950">Supplier Groups</h3>
+                </div>
             </template>
 
             <div class="space-y-4">
               <div
                 v-for="group in order.supplierGroups"
                 :key="group.id"
-                class="rounded-lg border border-muted p-4"
+                class="rounded-lg border border-slate-200 p-4"
               >
                 <div class="mb-2 flex items-center justify-between gap-3">
                   <div>
-                    <div class="font-medium text-default">{{ group.name }}</div>
-                    <div class="text-sm text-toned dark:text-muted">
+                    <div class="font-medium text-slate-950">{{ group.name }}</div>
+                    <div class="text-sm text-slate-500">
                       {{ group.itemCount }} items across {{ group.lineCount }} lines
                     </div>
                   </div>
@@ -472,12 +499,12 @@ onMounted(async () => {
                     class="capitalize"
                   />
                 </div>
-                <div class="space-y-1 text-sm text-toned dark:text-muted">
+                <div class="space-y-1 text-sm text-slate-500">
                   <div v-if="group.trackingReference">
-                    Tracking: <span class="font-medium text-default">{{ group.trackingReference }}</span>
+                    Tracking: <span class="font-medium text-slate-950">{{ group.trackingReference }}</span>
                   </div>
                   <div v-if="group.notes">
-                    Note: <span class="font-medium text-default">{{ group.notes }}</span>
+                    Note: <span class="font-medium text-slate-950">{{ group.notes }}</span>
                   </div>
                 </div>
               </div>
@@ -491,9 +518,9 @@ onMounted(async () => {
       <div class="text-center">
         <UIcon
           name="i-lucide-package-x"
-          class="mx-auto mb-4 h-12 w-12 text-toned dark:text-muted"
+          class="mx-auto mb-4 h-12 w-12 text-slate-400"
         />
-        <p class="text-default">Order not found</p>
+        <p class="text-slate-950">Order not found</p>
       </div>
     </div>
   </div>

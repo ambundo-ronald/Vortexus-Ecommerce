@@ -9,6 +9,8 @@ export interface ProductListParams {
   sortDir?: 'asc' | 'desc'
 }
 
+const DEFAULT_CURRENCY = 'KES'
+
 function mapSort(sortBy?: string, sortDir: 'asc' | 'desc' = 'asc') {
   if (sortBy === 'price')
     return sortDir === 'desc' ? 'price_desc' : 'price_asc'
@@ -38,6 +40,7 @@ function mapProductDetailToForm(product: any) {
     name: product.name,
     description: product.description || '',
     price: Number(product.price || 0),
+    currency: product.currency || DEFAULT_CURRENCY,
     originalPrice: undefined,
     chargeTax: true,
     sku: product.sku || '',
@@ -48,7 +51,10 @@ function mapProductDetailToForm(product: any) {
     category: firstCategoryId,
     brand: product.brand || specificationMap.brand || '',
     tags: product.tags || specificationMap.tags || '',
-    images: product.images || [],
+    images: (product.images || []).map((image: any) => ({
+      ...image,
+      src: mediaUrl(image.src),
+    })),
   }
 }
 
@@ -58,9 +64,9 @@ function mapFormToPayload(data: Record<string, any>) {
     title: data.name,
     description: data.description || '',
     is_public: data.status === 'active',
-    category_ids: data.category ? [Number(data.category)] : [],
+    category_ids: data.category && data.category !== '__uncategorized__' ? [Number(data.category)] : [],
     price: Number(data.price || 0),
-    currency: 'USD',
+    currency: data.currency || DEFAULT_CURRENCY,
     num_in_stock: Number(data.stock || 0),
     attributes: {
       weight_grams: data.weight ?? '',
@@ -90,7 +96,17 @@ export function useProduct() {
           sort_by: mapSort(params.sortBy, params.sortDir || 'asc'),
         },
       })
-      return { success: true, data: response }
+      return {
+        success: true,
+        data: {
+          ...response,
+          results: (response.results || []).map(product => ({
+            ...product,
+            currency: product.currency || DEFAULT_CURRENCY,
+            imageUrl: mediaUrl(product.imageUrl),
+          })),
+        },
+      }
     }
     catch (err: any) {
       error.value = err?.data?.error?.detail || err?.message || 'Unknown error'
@@ -198,7 +214,7 @@ export function useProduct() {
         method: 'POST',
         body: formData,
       })
-      return { success: true, data: result.image }
+      return { success: true, data: { ...result.image, src: mediaUrl(result.image.src) } }
     }
     catch (err: any) {
       return { success: false, error: err?.data?.error?.detail || err?.message || 'Unknown error' }

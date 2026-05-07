@@ -422,6 +422,16 @@ def serialize_basket_line(line, display_currency: str | None = None) -> dict:
     display_line_total, _ = convert_amount(line_total, base_currency, display_currency)
     product['price'] = display_unit_price
     product['currency'] = output_currency
+    options = [
+        {
+            'id': attribute.id,
+            'option_id': attribute.option_id,
+            'code': attribute.option.code if attribute.option_id else '',
+            'name': attribute.option.name if attribute.option_id else '',
+            'value': attribute.value,
+        }
+        for attribute in line.attributes.select_related('option').all()
+    ]
 
     return {
         'id': line.id,
@@ -436,6 +446,7 @@ def serialize_basket_line(line, display_currency: str | None = None) -> dict:
         'base_line_total': _money_payload(line_total),
         'base_currency': base_currency,
         'product': product,
+        'options': options,
         'availability': {
             'is_available': bool(getattr(availability, 'is_available_to_buy', False)),
             'message': str(getattr(availability, 'message', '') or ''),

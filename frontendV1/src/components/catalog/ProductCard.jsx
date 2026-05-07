@@ -4,8 +4,8 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import StarRating from "../reviews/StarRating.jsx";
 import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useCartStore } from "../../store/cart.store";
-import { productPlaceholderImage } from "../../utils/productImages";
-import { productPrice } from "../../utils/productDisplay";
+import { productImageUrl } from "../../utils/productImages";
+import { productInitials, productPrice } from "../../utils/productDisplay";
 
 export default function ProductCard({ product }) {
   const addItem = useCartStore((state) => state.addItem);
@@ -13,12 +13,21 @@ export default function ProductCard({ product }) {
   const price = productPrice(product);
   const reviewCount = Number(product.review_count || 0);
   const rating = Number(product.rating || 0);
+  const image = productImageUrl(product);
+
+  async function handleAddToCart() {
+    try {
+      await addItem(product.id);
+    } catch {
+      // Global notification state already shows the failed action.
+    }
+  }
 
   return (
     <article className="product-card">
       <WishlistButton productId={product.id} productTitle={product.title} />
       <Link to={`/products/${product.id}`} className="product-card__media">
-        <img src={productPlaceholderImage()} alt={product.title} loading="lazy" />
+        {image ? <img src={image} alt={product.title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(product.title)}</span>}
       </Link>
       <div className="product-card__body">
         <h3>
@@ -39,7 +48,7 @@ export default function ProductCard({ product }) {
             className="add-cart-button add-cart-button--icon"
             type="button"
             disabled={loading}
-            onClick={() => void addItem(product.id)}
+            onClick={() => void handleAddToCart()}
             aria-label={`Add ${product.title} to cart`}
           >
             <MaterialIcon name="add_shopping_cart" size={18} />

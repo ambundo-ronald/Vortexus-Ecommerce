@@ -1,97 +1,100 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { mainNav, supportNav, settingsNav } from '~/config/navigation';
+import { mainNav, settingsNav, supportNav } from '~/config/navigation'
 
-const route = useRoute();
-
-const collapsed = ref(false);
+const route = useRoute()
 
 const isLinkActive = (item: { to?: string }) => {
-  if (!item.to) return false;
-  if (item.to === '/') return route.path === '/';
-  return route.path.startsWith(item.to);
-};
+  if (!item.to)
+    return false
+  if (item.to === '/')
+    return route.path === '/'
+  return route.path.startsWith(item.to)
+}
 </script>
 
 <template>
   <div
-    class="w-64 h-auto min-h-full fixed  left-0 top-0 pt-22 bottom-0 overflow-y-auto p-4 flex flex-col bg-default border-r border-default"
+    class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex"
   >
-    <nav class="space-y-2">
-      <div
-        class="flex items-center justify-between cursor-pointer"
-        @click="collapsed = !collapsed"
-      >
-        <div class="text-xs font-bold text-muted">VORTEXUS ADMIN</div>
-        <UIcon
-          :name="collapsed ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-          class="text-muted"
-          size="16"
-        />
+    <NuxtLink to="/" class="mb-8 flex items-center gap-3">
+      <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
+        VX
       </div>
-      <div v-show="!collapsed" class="w-full">
+      <div>
+        <p class="text-lg font-black leading-tight text-slate-950">
+          Vortexus
+        </p>
+        <p class="text-xs text-slate-500">
+          Operations
+        </p>
+      </div>
+    </NuxtLink>
+
+    <nav class="space-y-2">
+      <div class="text-xs font-bold uppercase tracking-wide text-slate-400">
+        Manage
+      </div>
+      <div class="w-full space-y-1">
         <template v-for="item in mainNav" :key="item.label">
           <NuxtLink v-if="item.to" :to="item.to" block>
             <UButton
-              variant="link"
+              color="neutral"
+              variant="ghost"
               :active="isLinkActive(item)"
               active-variant="soft"
-              class="w-full flex items-center"
+              class="w-full justify-start"
               :icon="item.icon"
             >
               {{ item.label }}
-              <span v-if="false" class="ml-auto text-blue-600">•</span>
             </UButton>
           </NuxtLink>
           <UButton
             v-else
-            variant="link"
-            class="w-full flex items-center"
+            color="neutral"
+            variant="ghost"
+            class="w-full justify-start"
             :icon="item.icon"
-            icon-class="mr-1"
-            icon-size="20"
           >
             {{ item.label }}
-            <span v-if="false" class="ml-auto text-blue-600">•</span>
           </UButton>
         </template>
       </div>
     </nav>
+
     <div class="mt-auto">
-      <h3 class="text-xs font-semibold mb-2 uppercase text-dimmed">
-        Operations
+      <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+        Help
       </h3>
       <template v-for="item in supportNav" :key="item.label">
-        <NuxtLink :to="item.to">
+        <NuxtLink v-if="item.to" :to="item.to">
           <UButton
-            variant="link"
-            class="w-full flex items-center"
+            color="neutral"
+            variant="ghost"
+            class="w-full justify-start"
             :icon="item.icon"
-            icon-class="mr-1"
-            icon-size="20"
           >
             {{ item.label }}
             <span
               v-if="item.highlight"
-              class="w-1.5 h-1.5 bg-blue-500 rounded-full ml-2"
+              class="ml-auto h-1.5 w-1.5 rounded-full bg-[#3d7cff]"
             />
           </UButton>
         </NuxtLink>
       </template>
-      <div class="mt-6 border-t pt-4 border-muted">
-        <h3 class="text-xs font-semibold mb-2 uppercase text-dimmed">
+
+      <div class="mt-6 border-t border-slate-200 pt-4">
+        <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
           Settings
         </h3>
         <template v-for="item in settingsNav" :key="item.label">
-          <NuxtLink :to="item.to">
+          <NuxtLink v-if="item.to" :to="item.to">
             <UButton
-              variant="link"
+              color="neutral"
+              variant="ghost"
               :active="isLinkActive(item)"
               active-variant="soft"
-              class="w-full flex items-center"
+              class="w-full justify-start"
               :icon="item.icon"
-              icon-class="mr-1"
-              icon-size="20"
             >
               {{ item.label }}
             </UButton>

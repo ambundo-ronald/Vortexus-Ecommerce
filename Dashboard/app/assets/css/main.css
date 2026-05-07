@@ -3,7 +3,8 @@
 
 html, body, #__nuxt {
   height: 100%;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
+  background: #f4f7fb;
 }
 
 html {
@@ -11,8 +12,21 @@ html {
 }
 
 :root {
-  --ui-primary: black;
-  --ui-text: black;
+  --color-primary: #3d7cff;
+  --color-primary-600: #2f6df6;
+  --color-primary-700: #1a56d9;
+  --color-accent: #4f5d73;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f4f7fb;
+  --color-border: #dbe5f3;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+
+  --ui-primary: var(--color-primary);
+  --ui-text: var(--color-text);
+  --ui-bg: var(--color-surface);
+  --ui-bg-muted: var(--color-surface-muted);
+  --ui-border: var(--color-border);
 
   /* Component: Steps */
   --steps-bg: var(--colors-green-100);
@@ -36,12 +50,15 @@ html {
 }
 
 .dark {
-  --ui-primary: white;
-  --ui-text: white;
+  --ui-primary: var(--color-primary);
+  --ui-text: var(--color-text);
+  --ui-bg: var(--color-surface);
+  --ui-bg-muted: var(--color-surface-muted);
+  --ui-border: var(--color-border);
 
   --steps-border: var(--color-neutral-800);
   --steps-border-complete: var(--color-success);
-  --steps-icon: var(--ui-text-inverted);
-  --steps-icon-complete: var(--ui-text-inverted);
+  --steps-icon: var(--color-text);
+  --steps-icon-complete: white;
 
 }

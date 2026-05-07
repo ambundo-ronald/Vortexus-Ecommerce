@@ -6,6 +6,7 @@ import SearchBar from "../search/SearchBar.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCategories } from "../../hooks/useCategories";
 import { useCartStore } from "../../store/cart.store";
+import { useUiStore } from "../../store/ui.store";
 
 const navItems = [
   { to: "/", label: "Home", icon: "home" },
@@ -14,11 +15,14 @@ const navItems = [
 
 export default function Navbar() {
   const itemCount = useCartStore((state) => state.basket.item_count || 0);
+  const openCartDrawer = useUiStore((state) => state.openCartDrawer);
+  const openWishlistDrawer = useUiStore((state) => state.openWishlistDrawer);
   const { user, logout, loading } = useAuth();
   const { categories } = useCategories();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const activeCategory = searchParams.get("category") || "";
+  const categoryMatch = location.pathname.match(/^\/catalog\/category\/([^/]+)/);
+  const activeCategory = searchParams.get("category") || (categoryMatch ? decodeURIComponent(categoryMatch[1]) : "");
   const searchValue = searchParams.get("q") || "";
   const showCatalogTools = !location.pathname.startsWith("/account") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/supplier");
   const showCategoryNavigation = location.pathname.startsWith("/catalog");
@@ -48,10 +52,16 @@ export default function Navbar() {
             </NavLink>
           </nav>
 
-          <NavLink to="/checkout/cart" className="header-action">
+          {user ? (
+            <button className="header-action" type="button" onClick={openWishlistDrawer}>
+              <MaterialIcon name="favorite" size={20} />
+              <span>Wishlist</span>
+            </button>
+          ) : null}
+          <button type="button" className="header-action" onClick={openCartDrawer}>
             <MaterialIcon name="shopping_cart" size={20} />
             <span>Cart {itemCount}</span>
-          </NavLink>
+          </button>
           {user ? (
             <button className="notification-action" type="button" aria-label="Sign out" disabled={loading} onClick={() => void logout()}>
               <MaterialIcon name="logout" size={25} />
