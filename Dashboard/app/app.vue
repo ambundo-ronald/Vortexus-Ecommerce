@@ -74,9 +74,7 @@ async function handleLogout() {
         </header>
 
         <main class="px-4 py-6 sm:px-6 lg:px-8">
-          <NuxtLayout>
-            <NuxtPage />
-          </NuxtLayout>
+          <NuxtPage />
         </main>
       </div>
     </div>

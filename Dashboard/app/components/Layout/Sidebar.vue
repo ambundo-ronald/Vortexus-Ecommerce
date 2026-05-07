@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { mainNav, supportNav, settingsNav } from '~/config/navigation';
+import { mainNav, settingsNav, supportNav } from '~/config/navigation'
 
-const route = useRoute();
+const route = useRoute()
 
 const isLinkActive = (item: { to?: string }) => {
-  if (!item.to) return false;
-  if (item.to === '/') return route.path === '/';
-  return route.path.startsWith(item.to);
-};
+  if (!item.to)
+    return false
+  if (item.to === '/')
+    return route.path === '/'
+  return route.path.startsWith(item.to)
+}
 </script>
 
 <template>
   <div
-    class="hidden lg:flex w-64 min-h-screen fixed left-0 top-0 bottom-0 overflow-y-auto p-4 flex-col bg-white border-r border-slate-200"
+    class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex"
   >
     <NuxtLink to="/" class="mb-8 flex items-center gap-3">
       <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
@@ -58,8 +60,9 @@ const isLinkActive = (item: { to?: string }) => {
         </template>
       </div>
     </nav>
+
     <div class="mt-auto">
-      <h3 class="text-xs font-bold mb-2 uppercase tracking-wide text-slate-400">
+      <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
         Help
       </h3>
       <template v-for="item in supportNav" :key="item.label">
@@ -78,8 +81,9 @@ const isLinkActive = (item: { to?: string }) => {
           </UButton>
         </NuxtLink>
       </template>
-      <div class="mt-6 border-t pt-4 border-slate-200">
-        <h3 class="text-xs font-bold mb-2 uppercase tracking-wide text-slate-400">
+
+      <div class="mt-6 border-t border-slate-200 pt-4">
+        <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
           Settings
         </h3>
         <template v-for="item in settingsNav" :key="item.label">

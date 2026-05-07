@@ -8,6 +8,7 @@ from .account_views import (
     AccountRegisterAPIView,
     CsrfTokenAPIView,
 )
+from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView
 from .health_views import LivenessAPIView, ReadinessAPIView
 from .integration_views import (
@@ -113,6 +114,9 @@ urlpatterns = [
     path('admin/suppliers/<int:supplier_id>/', SupplierAdminDetailAPIView.as_view(), name='admin-supplier-detail'),
     path('admin/audit-logs/', AuditLogCollectionAPIView.as_view(), name='admin-audit-logs'),
     path('admin/audit-logs/<int:audit_log_id>/', AuditLogDetailAPIView.as_view(), name='admin-audit-log-detail'),
+    path('admin/dashboard/', AdminDashboardAPIView.as_view(), name='admin-dashboard'),
+    path('admin/campaigns/', AdminCampaignsAPIView.as_view(), name='admin-campaigns'),
+    path('admin/support/', AdminSupportAPIView.as_view(), name='admin-support'),
     path('admin/users/', AdminUserCollectionAPIView.as_view(), name='admin-users'),
     path('admin/users/<int:user_id>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
     path('admin/media/', AdminMediaCollectionAPIView.as_view(), name='admin-media'),

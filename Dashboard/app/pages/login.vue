@@ -40,9 +40,9 @@ async function submit() {
 </script>
 
 <template>
-  <main class="min-h-screen bg-[#f4f7fb] flex items-center justify-center px-4 py-10">
-    <section class="w-full max-w-5xl grid overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl md:grid-cols-[1fr_0.9fr]">
-      <div class="hidden min-h-[620px] bg-[#0f172a] p-10 text-white md:flex md:flex-col md:justify-between">
+  <main class="flex min-h-screen items-center justify-center bg-[#f4f7fb] px-4 py-10">
+    <section class="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-xl md:grid-cols-[1fr_0.9fr]">
+      <div class="hidden min-h-[620px] flex-col justify-between bg-[#0f172a] p-10 text-white md:flex">
         <div>
           <div class="mb-10 flex items-center gap-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black">

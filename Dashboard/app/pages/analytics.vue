@@ -1,174 +1,153 @@
 <script setup lang="ts">
-import { useSortable } from "@vueuse/integrations/useSortable";
-import { analyticsDataset } from "~/data/analyticsData";
+import type { TableColumn } from "@nuxt/ui";
 
-const selectedRange = ref("Last 30 days");
-const selectedPage = ref("All products");
-const selectedTrafficPage = ref("All pages");
+const { getDashboard } = useDashboard();
+const toast = useToast();
 
-const analyticsData = analyticsDataset[selectedRange.value];
+const selectedRange = ref(30);
+const isLoading = ref(false);
+const summary = ref<any | null>(null);
 
-const kpiCards = ref([
-  {
-    key: "totalSessions",
-    label: "Total sessions",
-    value: () => analyticsData?.kpi.totalSessions,
-    chart: "DashboardTotalSessionsChart",
-    chartData: () => analyticsData?.charts.totalSessions,
-  },
-  {
-    key: "sessionDuration",
-    label: "Session duration",
-    value: () => analyticsData?.kpi.sessionDuration,
-    chart: "DashboardSessionDurationChart",
-    chartData: () => analyticsData?.charts.sessionDuration,
-  },
-  {
-    key: "pagesPerSession",
-    label: "Pages per session",
-    value: () => analyticsData?.kpi.pagesPerSession,
-    chart: "DashboardPagesPerSessionChart",
-    chartData: () => analyticsData?.charts.pagesPerSession,
-  },
-  {
-    key: "bounceRate",
-    label: "Bounce rate",
-    value: () => analyticsData?.kpi.bounceRate + "%",
-    chart: "DashboardBounceRateChart",
-    chartData: () => analyticsData?.charts.bounceRate,
-  },
-]);
+const rangeOptions = [
+  { label: "Last 7 days", value: 7 },
+  { label: "Last 30 days", value: 30 },
+  { label: "Last 90 days", value: 90 },
+  { label: "Last 365 days", value: 365 },
+];
 
-const gridRef = ref();
-useSortable(gridRef, kpiCards, { animation: 200, handle: ".kpi-drag-handle" });
+const moneyFormatter = computed(() =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: summary.value?.currency || "USD",
+    maximumFractionDigits: 0,
+  }),
+);
+
+const daily = computed(() =>
+  (summary.value?.daily || []).map((item: any) => ({
+    date: new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    revenue: Number(item.revenue || 0),
+    orders: Number(item.orders || 0),
+  })),
+);
+
+const revenueCategories = {
+  revenue: { name: "Revenue", color: "#2563eb" },
+};
+
+const orderCategories = {
+  orders: { name: "Orders", color: "#059669" },
+};
+
+const categoryColumns: TableColumn<any>[] = [
+  { accessorKey: "name", header: "Category" },
+  {
+    accessorKey: "value",
+    header: "Share",
+    cell: ({ row }) => `${row.original.value}%`,
+  },
+];
+
+async function loadAnalytics() {
+  isLoading.value = true;
+  const result = await getDashboard(selectedRange.value);
+  if (result.success)
+    summary.value = result.data;
+  else
+    toast.add({
+      title: "Could not load analytics",
+      description: result.error || "Please try again.",
+      color: "error",
+    });
+  isLoading.value = false;
+}
+
+watch(selectedRange, loadAnalytics, { immediate: true });
 </script>
 
 <template>
-  <div v-if="analyticsData">
-    <div class="flex justify-between items-center p-8 mb-4 pb-4">
-      <h1 class="text-xl font-semibold">Analytics</h1>
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <UButton variant="outline">
-            <UIcon name="i-lucide-list-filter-plus" />
-            Filter
-          </UButton>
-          <USelect
-            v-model="selectedRange"
-            :items="['Last 7 days', 'Last 30 days', 'Last 90 days']"
-            class="w-36"
-          />
-        </div>
+  <div class="min-h-screen bg-default">
+    <div class="flex flex-col gap-4 p-8 pb-4 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h1 class="text-xl font-semibold">Operational Analytics</h1>
+        <p class="text-sm text-toned">
+          Database-backed sales, orders, product mix, and stock signals.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <USelect
+          v-model="selectedRange"
+          :items="rangeOptions"
+          value-attribute="value"
+          option-attribute="label"
+          class="w-40"
+        />
+        <UButton variant="outline" :loading="isLoading" @click="loadAnalytics">
+          <UIcon name="i-lucide-refresh-cw" />
+          Refresh
+        </UButton>
       </div>
     </div>
 
-    <div class="px-8">
-      <BlocksKpiGrid ref="gridRef">
-        <template v-for="(card, idx) in kpiCards" :key="idx">
-          <div class="relative group">
-            <CardsKpiCard>
-              <template #label>
-                {{ card.label }}
-              </template>
-              <template #icon>
-                <UIcon
-                  name="i-lucide-grip"
-                  size="24"
-                  class="kpi-drag-handle cursor-move mr-1 transition text-dimmed cursor-pointer"
-              /></template>
-              <template #value>{{ card.value() }}</template>
-              <template #trend>
-                <UBadge class="text-success-600 font-semibold">
-                  <UIcon name="i-lucide-trending-up" size="16" />
-                  {{ analyticsData?.kpi.trend }}%
-                </UBadge>
-              </template>
-              <template #chart>
-                <component :is="card.chart" :data="card.chartData()" />
-              </template>
-            </CardsKpiCard>
-          </div>
+    <div class="grid grid-cols-1 gap-6 px-8 xl:grid-cols-3">
+      <UCard class="xl:col-span-2">
+        <template #header>
+          <h3 class="text-base font-semibold">Revenue by Day</h3>
         </template>
-      </BlocksKpiGrid>
+        <BarChart
+          :data="daily"
+          :height="320"
+          :categories="revenueCategories"
+          :y-axis="['revenue']"
+          :x-formatter="(tick: number) => daily[tick]?.date || ''"
+          :y-formatter="(value: number) => moneyFormatter.format(value)"
+        />
+      </UCard>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <UCard>
-          <template #header>
-            <div class="flex justify-between items-center">
-              <h2 class="text-lg font-medium text-text">
-                Top ecommerce actions
-              </h2>
-              <USelect
-                v-model="selectedPage"
-                :items="['All products', 'Featured', 'On Sale']"
-                class="w-32"
-              />
-            </div>
-          </template>
-          <ul>
-            <li
-              v-for="(item, i) in analyticsData?.topLinks ?? []"
-              :key="i"
-              class="mb-4"
-            >
-              <div class="flex justify-between items-center text-sm mb-1">
-                <span class="text-text">{{ item.label }}</span>
-                <span class="text-text-dimmed"
-                  >{{ item.sessions }} sessions
-                  <UIcon name="i-lucide-chevron-right" class="inline"
-                /></span>
-              </div>
-              <div class="w-full rounded-full h-2.5 bg-bg-elevated">
-                <div
-                  class="h-2.5 rounded-full bg-blue-600 dark:bg-blue-500"
-                  :style="{ width: item.width }"
-                />
-              </div>
-            </li>
-          </ul>
-          <div class="flex justify-center">
-            <UButton variant="outline" class="py-2 mt-2">Load more</UButton>
+      <UCard>
+        <template #header>
+          <h3 class="text-base font-semibold">Order Status</h3>
+        </template>
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-toned">Pending / active</span>
+            <UBadge color="warning" variant="soft">{{ summary?.order_status?.pending || 0 }}</UBadge>
           </div>
-        </UCard>
-        <UCard>
-          <template #header>
-            <div class="flex justify-between items-center">
-              <h2 class="text-lg font-medium text-text">
-                Top pages by traffic
-              </h2>
-              <USelect
-                v-model="selectedTrafficPage"
-                :items="['All pages', 'Homepage', 'Pricing']"
-                class="w-32"
-              />
-            </div>
-          </template>
-          <ul>
-            <li
-              v-for="(item, i) in analyticsData?.topTraffic ?? []"
-              :key="i"
-              class="mb-4"
-            >
-              <div class="flex justify-between items-center text-sm mb-1">
-                <span class="text-text">{{ item.label }}</span>
-                <span class="text-text-dimmed"
-                  >{{ item.sessions }} sessions
-                  <UIcon name="i-lucide-chevron-right" class="inline"
-                /></span>
-              </div>
-              <div class="w-full rounded-full h-2.5 bg-bg-elevated">
-                <div
-                  class="h-2.5 rounded-full bg-blue-600 dark:bg-blue-500"
-                  :style="{ width: item.width }"
-                />
-              </div>
-            </li>
-          </ul>
-          <div class="flex justify-center">
-            <UButton variant="outline" class="py-2 mt-2">Load more</UButton>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-toned">Completed</span>
+            <UBadge color="success" variant="soft">{{ summary?.order_status?.completed || 0 }}</UBadge>
           </div>
-        </UCard>
-      </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-toned">Failed / cancelled</span>
+            <UBadge color="error" variant="soft">{{ summary?.order_status?.failed || 0 }}</UBadge>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard class="xl:col-span-2">
+        <template #header>
+          <h3 class="text-base font-semibold">Orders by Day</h3>
+        </template>
+        <AreaChart
+          :data="daily"
+          :height="300"
+          :categories="orderCategories"
+          :x-formatter="(tick: number) => daily[tick]?.date || ''"
+          :y-formatter="(value: number) => String(value)"
+          :hide-legend="true"
+        />
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <h3 class="text-base font-semibold">Category Mix</h3>
+        </template>
+        <UTable
+          :columns="categoryColumns"
+          :data="summary?.category_share || []"
+          :loading="isLoading"
+        />
+      </UCard>
     </div>
   </div>
 </template>
