@@ -1,0 +1,792 @@
+from decimal import Decimal
+
+from django.apps import apps
+from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.core import signing
+from django.db import transaction
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_encode
+from django.utils.http import urlsafe_base64_decode
+from oscar.core.loading import get_model
+from rest_framework import permissions, serializers, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.common.currency import resolve_display_currency
+from apps.common.products import serialize_product_card
+from apps.inventory.services import sync_basket_line_reservation
+
+from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
+from .order_serializers import OrderSummarySerializer
+from .review_serializers import get_review_model, public_product_queryset, review_payload
+from .wishlist_serializers import (
+    get_default_wishlist,
+    get_wishlist_model,
+    user_wishlist_queryset,
+    wishlist_detail_payload,
+)
+
+
+SAVED_ITEMS_SESSION_KEY = 'storefront_saved_items'
+RECENTLY_VIEWED_SESSION_KEY = 'storefront_recently_viewed_product_ids'
+
+
+def _money_payload(value) -> float:
+    if value is None:
+        return 0.0
+    return float(Decimal(str(value)).quantize(Decimal('0.01')))
+
+
+def _user_address_payload(address) -> dict:
+    return {
+        'id': address.id,
+        'title': address.title or '',
+        'first_name': address.first_name or '',
+        'last_name': address.last_name or '',
+        'line1': address.line1 or '',
+        'line2': address.line2 or '',
+        'line3': address.line3 or '',
+        'line4': address.line4 or '',
+        'state': address.state or '',
+        'postcode': address.postcode or '',
+        'country': serialize_country(address.country) if address.country_id else None,
+        'country_code': address.country_id or '',
+        'phone_number': str(address.phone_number or ''),
+        'notes': address.notes or '',
+        'is_default_for_shipping': address.is_default_for_shipping,
+        'is_default_for_billing': address.is_default_for_billing,
+    }
+
+
+def _saved_items(request, display_currency: str | None = None) -> list[dict]:
+    Product = apps.get_model('catalogue', 'Product')
+    items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
+    product_ids = [item.get('product_id') for item in items if item.get('product_id')]
+    products = {
+        product.id: product
+        for product in Product.objects.filter(id__in=product_ids).prefetch_related('stockrecords', 'images', 'categories')
+    }
+    payload = []
+    for item in items:
+        product = products.get(item.get('product_id'))
+        if not product:
+            continue
+        payload.append(
+            {
+                'id': item['id'],
+                'quantity': item.get('quantity', 1),
+                'date_saved': item.get('date_saved', ''),
+                'product': serialize_product_card(product, display_currency=display_currency),
+            }
+        )
+    return payload
+
+
+def _save_items(request, items: list[dict]):
+    request.session[SAVED_ITEMS_SESSION_KEY] = items
+    request.session.modified = True
+
+
+def _offer_payload(offer) -> dict:
+    return {
+        'id': offer.id,
+        'name': offer.name,
+        'slug': offer.slug,
+        'description': offer.description or '',
+        'offer_type': offer.offer_type,
+        'status': offer.status,
+        'exclusive': offer.exclusive,
+        'priority': offer.priority,
+        'start_datetime': offer.start_datetime.isoformat() if offer.start_datetime else None,
+        'end_datetime': offer.end_datetime.isoformat() if offer.end_datetime else None,
+        'redirect_url': offer.redirect_url or '',
+    }
+
+
+def _range_payload(range_obj) -> dict:
+    return {
+        'id': range_obj.id,
+        'name': range_obj.name,
+        'slug': range_obj.slug,
+        'description': range_obj.description or '',
+        'is_public': range_obj.is_public,
+        'includes_all_products': range_obj.includes_all_products,
+        'num_products': range_obj.num_products(),
+    }
+
+
+class VoucherApplyAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        code = str(request.data.get('code', '')).strip()
+        if not code:
+            raise serializers.ValidationError({'code': 'Voucher code is required.'})
+
+        Voucher = apps.get_model('voucher', 'Voucher')
+        voucher = get_object_or_404(Voucher, code__iexact=code)
+        if not voucher.is_active():
+            raise serializers.ValidationError({'code': 'This voucher is not active.'})
+        if not voucher.is_available_for_basket(request.basket):
+            raise serializers.ValidationError({'code': 'This voucher cannot be applied to this basket.'})
+        if request.user.is_authenticated and not voucher.is_available_to_user(request.user):
+            raise serializers.ValidationError({'code': 'This voucher is not available for this account.'})
+
+        if request.basket.pk is None:
+            request.basket.save()
+        request.basket.vouchers.add(voucher)
+        voucher.num_basket_additions += 1
+        voucher.save(update_fields=['num_basket_additions'])
+        request.basket.reset_offer_applications()
+        return Response(build_checkout_payload(request))
+
+
+class VoucherRemoveAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def delete(self, request, voucher_id: int):
+        Voucher = apps.get_model('voucher', 'Voucher')
+        voucher = get_object_or_404(Voucher, id=voucher_id)
+        if request.basket.pk is None:
+            return Response(build_checkout_payload(request))
+        request.basket.vouchers.remove(voucher)
+        request.basket.reset_offer_applications()
+        return Response(build_checkout_payload(request))
+
+
+class OfferCollectionAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        Offer = apps.get_model('offer', 'ConditionalOffer')
+        now = timezone.now()
+        offers = Offer.objects.filter(status=Offer.OPEN).filter(
+            Q(start_datetime__isnull=True) | Q(start_datetime__lte=now),
+            Q(end_datetime__isnull=True) | Q(end_datetime__gte=now),
+        ).order_by('priority', 'name')
+        return Response({'results': [_offer_payload(offer) for offer in offers]})
+
+
+class OfferDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, slug: str):
+        Offer = apps.get_model('offer', 'ConditionalOffer')
+        offer = get_object_or_404(Offer, slug=slug)
+        return Response({'offer': _offer_payload(offer)})
+
+
+class CatalogRangeDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, slug: str):
+        Range = apps.get_model('offer', 'Range')
+        range_obj = get_object_or_404(Range, slug=slug, is_public=True)
+        products = range_obj.all_products().filter(is_public=True).exclude(structure='parent')[:60]
+        display_currency = resolve_display_currency(request)
+        return Response(
+            {
+                'range': _range_payload(range_obj),
+                'results': [serialize_product_card(product, display_currency=display_currency) for product in products],
+            }
+        )
+
+
+class SavedItemsAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({'results': _saved_items(request, display_currency=resolve_display_currency(request))})
+
+
+class BasketLineSaveForLaterAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @transaction.atomic
+    def post(self, request, line_id: int):
+        if request.basket.pk is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        line = get_object_or_404(request.basket.lines.select_related('product'), id=line_id)
+        items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
+        saved_id = max([item.get('id', 0) for item in items] or [0]) + 1
+        items = [item for item in items if item.get('product_id') != line.product_id]
+        items.append(
+            {
+                'id': saved_id,
+                'product_id': line.product_id,
+                'quantity': line.quantity,
+                'date_saved': timezone.now().isoformat(),
+            }
+        )
+        line.delete()
+        _save_items(request, items)
+        payload = build_checkout_payload(request)
+        payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}
+        return Response(payload)
+
+
+class SavedItemMoveToCartAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @transaction.atomic
+    def post(self, request, saved_line_id: int):
+        items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
+        item = next((entry for entry in items if entry.get('id') == saved_line_id), None)
+        if item is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        Product = apps.get_model('catalogue', 'Product')
+        product = get_object_or_404(Product, id=item['product_id'])
+        line, _ = request.basket.add_product(product, quantity=item.get('quantity', 1))
+        sync_basket_line_reservation(line)
+        _save_items(request, [entry for entry in items if entry.get('id') != saved_line_id])
+        payload = build_checkout_payload(request)
+        payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}
+        return Response(payload)
+
+
+class SavedItemDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def delete(self, request, saved_line_id: int):
+        items = request.session.get(SAVED_ITEMS_SESSION_KEY, [])
+        _save_items(request, [entry for entry in items if entry.get('id') != saved_line_id])
+        return Response({'results': _saved_items(request, display_currency=resolve_display_currency(request))})
+
+
+class WishListItemMoveAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, wishlist_id: int, product_id: int):
+        target_id = request.data.get('target_wishlist_id')
+        if not target_id:
+            raise serializers.ValidationError({'target_wishlist_id': 'Target wishlist is required.'})
+        source = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
+        target = get_object_or_404(user_wishlist_queryset(request.user), id=target_id)
+        line = get_object_or_404(source.lines.all(), product_id=product_id)
+        target.lines.get_or_create(product=line.product)
+        line.delete()
+        default_wishlist = get_default_wishlist(request.user, create=False)
+        default_wishlist_id = default_wishlist.id if default_wishlist else None
+        return Response(
+            {
+                'source': wishlist_detail_payload(source, default_wishlist_id=default_wishlist_id),
+                'target': wishlist_detail_payload(target, default_wishlist_id=default_wishlist_id),
+            }
+        )
+
+
+class SharedWishListAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, key: str):
+        signer = signing.Signer(salt='storefront-wishlist-share')
+        try:
+            wishlist_id = signer.unsign(key)
+        except signing.BadSignature:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        WishList = get_wishlist_model()
+        wishlist = get_object_or_404(WishList.objects.select_related('owner'), id=wishlist_id)
+        return Response({'wishlist': wishlist_detail_payload(wishlist, display_currency=resolve_display_currency(request))})
+
+
+class AddressSerializer(serializers.Serializer):
+    title = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    first_name = serializers.CharField(max_length=255)
+    last_name = serializers.CharField(max_length=255)
+    line1 = serializers.CharField(max_length=255)
+    line2 = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    line3 = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    line4 = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    state = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    postcode = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    country_code = serializers.CharField(max_length=2)
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    is_default_for_shipping = serializers.BooleanField(required=False, default=False)
+    is_default_for_billing = serializers.BooleanField(required=False, default=False)
+
+    def validate_country_code(self, value):
+        Country = apps.get_model('address', 'Country')
+        try:
+            return Country.objects.get(iso_3166_1_a2=value.upper())
+        except Country.DoesNotExist as exc:
+            raise serializers.ValidationError('Unknown country code.') from exc
+
+    def save(self, *, user, instance=None):
+        data = self.validated_data.copy()
+        country = data.pop('country_code')
+        defaults = {
+            **data,
+            'country': country,
+            'user': user,
+        }
+        if instance is None:
+            UserAddress = apps.get_model('address', 'UserAddress')
+            instance = UserAddress(**defaults)
+        else:
+            for field, value in defaults.items():
+                setattr(instance, field, value)
+        instance.save()
+        return instance
+
+
+class AccountAddressCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        addresses = request.user.addresses.all().order_by('-is_default_for_shipping', '-is_default_for_billing', '-date_created')
+        return Response({'results': [_user_address_payload(address) for address in addresses]})
+
+    def post(self, request):
+        serializer = AddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        address = serializer.save(user=request.user)
+        return Response({'address': _user_address_payload(address)}, status=status.HTTP_201_CREATED)
+
+
+class AccountAddressDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, request, address_id):
+        return get_object_or_404(request.user.addresses.all(), id=address_id)
+
+    def get(self, request, address_id: int):
+        return Response({'address': _user_address_payload(self.get_object(request, address_id))})
+
+    def patch(self, request, address_id: int):
+        address = self.get_object(request, address_id)
+        serializer = AddressSerializer(instance=address, data={**_user_address_payload(address), **request.data}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        address = serializer.save(user=request.user, instance=address)
+        return Response({'address': _user_address_payload(address)})
+
+    def delete(self, request, address_id: int):
+        self.get_object(request, address_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AccountAddressDefaultShippingAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, address_id: int):
+        address = get_object_or_404(request.user.addresses.all(), id=address_id)
+        address.is_default_for_shipping = True
+        address.save()
+        return Response({'address': _user_address_payload(address)})
+
+
+class AccountAddressDefaultBillingAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, address_id: int):
+        address = get_object_or_404(request.user.addresses.all(), id=address_id)
+        address.is_default_for_billing = True
+        address.save()
+        return Response({'address': _user_address_payload(address)})
+
+
+class CheckoutAddressCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        addresses = request.user.addresses.all().order_by('-is_default_for_shipping', '-date_created')
+        return Response({'results': [_user_address_payload(address) for address in addresses]})
+
+
+class CheckoutUseShippingAddressAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        address = get_object_or_404(request.user.addresses.all(), id=request.data.get('address_id'))
+        get_checkout_session(request).ship_to_user_address(address)
+        return Response(build_checkout_payload(request))
+
+
+class CheckoutUseBillingAddressAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        address = get_object_or_404(request.user.addresses.all(), id=request.data.get('address_id'))
+        get_checkout_session(request).bill_to_user_address(address)
+        return Response({'billing': {'address': _user_address_payload(address)}})
+
+
+class GuestOrderLookupAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        order_number = str(request.data.get('order_number', '')).strip()
+        email = str(request.data.get('email', '')).strip().lower()
+        Order = apps.get_model('order', 'Order')
+        order = get_object_or_404(Order, number=order_number)
+        order_email = (getattr(order, 'guest_email', '') or getattr(order.user, 'email', '') or '').lower()
+        if order_email != email:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        lookup_hash = signing.dumps({'order_number': order.number, 'email': email}, salt='guest-order-lookup')
+        return Response({'order_number': order.number, 'hash': lookup_hash})
+
+
+class GuestOrderDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, order_number: str, lookup_hash: str):
+        try:
+            payload = signing.loads(lookup_hash, salt='guest-order-lookup', max_age=60 * 60 * 24 * 30)
+        except signing.BadSignature:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if payload.get('order_number') != order_number:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        Order = apps.get_model('order', 'Order')
+        order = get_object_or_404(Order, number=order_number)
+        return Response({'order': OrderSummarySerializer(order).data})
+
+
+class AccountOrderLineDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, order_number: str, line_id: int):
+        OrderLine = apps.get_model('order', 'Line')
+        line = get_object_or_404(OrderLine.objects.select_related('order', 'product'), id=line_id, order__number=order_number, order__user=request.user)
+        return Response(
+            {
+                'line': {
+                    'id': line.id,
+                    'order_number': line.order.number,
+                    'status': line.status,
+                    'quantity': line.quantity,
+                    'title': line.title,
+                    'upc': line.upc,
+                    'line_price_before_discounts': _money_payload(line.line_price_before_discounts_incl_tax),
+                    'line_price': _money_payload(line.line_price_incl_tax),
+                    'currency': line.order.currency,
+                    'product': serialize_product_card(line.product, display_currency=resolve_display_currency(request)) if line.product else None,
+                }
+            }
+        )
+
+
+class AccountEmailCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        emails = EmailNotification.objects.filter(recipient__iexact=request.user.email)[:100]
+        return Response({'results': [_email_payload(email) for email in emails]})
+
+
+class AccountEmailDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, email_id: int):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        email = get_object_or_404(EmailNotification, id=email_id, recipient__iexact=request.user.email)
+        return Response({'email': _email_payload(email)})
+
+
+def _email_payload(email) -> dict:
+    return {
+        'id': email.id,
+        'event_type': email.event_type,
+        'status': email.status,
+        'recipient': email.recipient,
+        'subject': email.subject,
+        'metadata': email.metadata,
+        'sent_at': email.sent_at.isoformat() if email.sent_at else None,
+        'created_at': email.created_at.isoformat(),
+    }
+
+
+class AccountNotificationCollectionAPIView(AccountEmailCollectionAPIView):
+    pass
+
+
+class AccountNotificationArchiveAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        emails = EmailNotification.objects.filter(recipient__iexact=request.user.email, metadata__archived=True)[:100]
+        return Response({'results': [_email_payload(email) for email in emails]})
+
+
+class AccountNotificationDetailAPIView(AccountEmailDetailAPIView):
+    pass
+
+
+class AccountNotificationStateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, notification_id: int, action: str):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        notification = get_object_or_404(EmailNotification, id=notification_id, recipient__iexact=request.user.email)
+        notification.metadata = {**notification.metadata, action: True}
+        notification.save(update_fields=['metadata', 'updated_at'])
+        return Response({'notification': _email_payload(notification)})
+
+
+class AccountNotificationReadAllAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        for notification in EmailNotification.objects.filter(recipient__iexact=request.user.email):
+            notification.metadata = {**notification.metadata, 'read': True}
+            notification.save(update_fields=['metadata', 'updated_at'])
+        return Response({'detail': 'Notifications marked as read.'})
+
+
+def _product_alert_payload(alert) -> dict:
+    return {
+        'id': alert.id,
+        'product_id': alert.product_id,
+        'email': alert.email,
+        'status': alert.status,
+        'key': alert.key,
+        'date_created': alert.date_created.isoformat(),
+        'date_confirmed': alert.date_confirmed.isoformat() if alert.date_confirmed else None,
+        'date_cancelled': alert.date_cancelled.isoformat() if alert.date_cancelled else None,
+    }
+
+
+class AccountProductAlertCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alerts = ProductAlert.objects.filter(user=request.user).select_related('product').order_by('-date_created')
+        return Response({'results': [_product_alert_payload(alert) for alert in alerts]})
+
+
+class ProductAlertCreateAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, product_id: int):
+        Product = apps.get_model('catalogue', 'Product')
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        product = get_object_or_404(Product, id=product_id, is_public=True)
+        email = request.data.get('email') or (request.user.email if request.user.is_authenticated else '')
+        if not email:
+            raise serializers.ValidationError({'email': 'Email is required.'})
+        alert, _ = ProductAlert.objects.get_or_create(
+            product=product,
+            email=email,
+            defaults={'user': request.user if request.user.is_authenticated else None},
+        )
+        return Response({'alert': _product_alert_payload(alert)}, status=status.HTTP_201_CREATED)
+
+
+class ProductAlertConfirmAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, key: str):
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alert = get_object_or_404(ProductAlert, key=key)
+        if alert.can_be_confirmed:
+            alert.confirm()
+        return Response({'alert': _product_alert_payload(alert)})
+
+
+class ProductAlertCancelAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, key: str):
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alert = get_object_or_404(ProductAlert, key=key)
+        if alert.can_be_cancelled:
+            alert.cancel()
+        return Response({'alert': _product_alert_payload(alert)})
+
+
+class AccountProductAlertDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, alert_id: int):
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alert = get_object_or_404(ProductAlert, id=alert_id, user=request.user)
+        if alert.can_be_cancelled:
+            alert.cancel()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordResetRequestAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = str(request.data.get('email', '')).strip()
+        User = get_user_model()
+        user = User.objects.filter(email__iexact=email).first()
+        payload = {'detail': 'If that email exists, password reset instructions will be sent.'}
+        if user:
+            payload['uid'] = urlsafe_base64_encode(force_bytes(user.pk))
+            payload['token'] = default_token_generator.make_token(user)
+        return Response(payload)
+
+
+class PasswordResetConfirmAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        uid = request.data.get('uid', '')
+        token = request.data.get('token', '')
+        password = request.data.get('new_password', '')
+        password_confirm = request.data.get('new_password_confirm', '')
+        if password != password_confirm:
+            raise serializers.ValidationError({'new_password_confirm': 'Passwords do not match.'})
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+        except Exception as exc:
+            raise serializers.ValidationError({'uid': 'Invalid reset link.'}) from exc
+        if not user_id:
+            raise serializers.ValidationError({'uid': 'Invalid reset link.'})
+        user = get_object_or_404(get_user_model(), pk=user_id)
+        if not default_token_generator.check_token(user, token):
+            raise serializers.ValidationError({'token': 'Invalid or expired reset token.'})
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        return Response({'detail': 'Password reset successfully.'})
+
+
+class AccountDeleteAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get('password', '')
+        if not request.user.check_password(password):
+            raise serializers.ValidationError({'password': 'Password is incorrect.'})
+        request.user.is_active = False
+        request.user.save(update_fields=['is_active'])
+        return Response({'detail': 'Account scheduled for deletion.'})
+
+
+class RecentlyViewedAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        Product = apps.get_model('catalogue', 'Product')
+        product_ids = request.session.get(RECENTLY_VIEWED_SESSION_KEY, [])
+        products = {product.id: product for product in Product.objects.filter(id__in=product_ids)}
+        return Response(
+            {
+                'results': [
+                    serialize_product_card(products[product_id], display_currency=resolve_display_currency(request))
+                    for product_id in product_ids
+                    if product_id in products
+                ]
+            }
+        )
+
+
+class ProductViewedAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, product_id: int):
+        get_object_or_404(public_product_queryset(), id=product_id)
+        product_ids = [pid for pid in request.session.get(RECENTLY_VIEWED_SESSION_KEY, []) if pid != product_id]
+        request.session[RECENTLY_VIEWED_SESSION_KEY] = [product_id, *product_ids][:24]
+        request.session.modified = True
+        return Response({'product_id': product_id})
+
+
+class ProductReviewDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, product_id: int, review_id: int):
+        product = get_object_or_404(public_product_queryset(), id=product_id)
+        Review = get_review_model()
+        review = get_object_or_404(Review.objects.select_related('user', 'product'), id=review_id, product=product, status=Review.APPROVED)
+        return Response({'review': review_payload(review, request_user=request.user)})
+
+
+class SearchFacetAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        Product = apps.get_model('catalogue', 'Product')
+        products = Product.objects.filter(is_public=True).exclude(structure='parent')
+        categories = apps.get_model('catalogue', 'Category').objects.filter(product__in=products).distinct()[:50]
+        brands = (
+            products.filter(attribute_values__attribute__code='brand')
+            .values_list('attribute_values__value_text', flat=True)
+            .distinct()[:50]
+        )
+        return Response(
+            {
+                'facets': {
+                    'categories': [{'name': category.name, 'slug': category.slug} for category in categories],
+                    'price_ranges': [
+                        {'label': 'Under 100', 'min': None, 'max': 100},
+                        {'label': '100 to 500', 'min': 100, 'max': 500},
+                        {'label': '500 to 1000', 'min': 500, 'max': 1000},
+                        {'label': '1000+', 'min': 1000, 'max': None},
+                    ],
+                    'brands': [{'name': brand} for brand in brands if brand],
+                    'availability': [{'value': True, 'label': 'In stock'}],
+                }
+            }
+        )
+
+
+class BillingStateAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        fields = get_checkout_session(request).new_billing_address_fields()
+        return Response({'billing': {'address': fields or None}})
+
+
+class BillingAddressAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def put(self, request):
+        serializer = AddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data.copy()
+        country = data.pop('country_code')
+        get_checkout_session(request).bill_to_new_address({**data, 'country': country})
+        return Response({'billing': {'address': request.data}})
+
+
+class AccountPreferenceAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile = getattr(request.user, 'customer_profile', None)
+        return Response(
+            {
+                'preferences': {
+                    'receive_order_updates': getattr(profile, 'receive_order_updates', True),
+                    'receive_marketing_emails': getattr(profile, 'receive_marketing_emails', False),
+                    'preferred_currency': getattr(profile, 'preferred_currency', ''),
+                    'country_code': getattr(profile, 'country_code', ''),
+                    'phone': getattr(profile, 'phone', ''),
+                    'company': getattr(profile, 'company', ''),
+                }
+            }
+        )
+
+    def patch(self, request):
+        profile = getattr(request.user, 'customer_profile', None)
+        if profile is None:
+            return Response({'preferences': request.data})
+        allowed_fields = {
+            'receive_order_updates',
+            'receive_marketing_emails',
+            'preferred_currency',
+            'country_code',
+            'phone',
+            'company',
+        }
+        update_fields = []
+        for field in allowed_fields:
+            if field in request.data:
+                setattr(profile, field, request.data[field])
+                update_fields.append(field)
+        if update_fields:
+            update_fields.append('updated_at')
+            profile.save(update_fields=update_fields)
+        return self.get(request)
