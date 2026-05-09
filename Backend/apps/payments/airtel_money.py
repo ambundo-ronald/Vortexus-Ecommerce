@@ -1,5 +1,6 @@
 from django.conf import settings
 
+from .config import get_payment_setting, provider_is_enabled
 from .services import confirm_payment_session
 
 
@@ -8,7 +9,7 @@ class AirtelMoneyGatewayError(Exception):
 
 
 def airtel_money_is_configured() -> bool:
-    return settings.AIRTEL_MONEY_SANDBOX_ENABLED
+    return bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED and provider_is_enabled('airtel_money', default=True))
 
 
 def initiate_airtel_collection(payment_session) -> dict:
@@ -18,7 +19,7 @@ def initiate_airtel_collection(payment_session) -> dict:
     phone_number = _normalize_phone_number(payment_session.payer_phone)
     provider_payload = {
         **payment_session.provider_payload,
-        'provider': settings.AIRTEL_MONEY_PROVIDER_NAME,
+        'provider': get_payment_setting('airtel_money', 'provider_name', settings.AIRTEL_MONEY_PROVIDER_NAME),
         'channel': 'airtel_collection',
         'provider_reference': f'AIRTEL-{payment_session.reference}',
         'customer_message': 'Approve the Airtel Money prompt on the handset to complete payment.',

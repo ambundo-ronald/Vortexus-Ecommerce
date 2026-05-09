@@ -2,8 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 
 import { paymentsApi } from "../api/payments.api";
 
+const COMPLETE_STATUSES = new Set(["authorized", "paid"]);
+const FAILED_STATUSES = new Set(["cancelled", "failed"]);
+const POLL_DELAY_MS = 4000;
+const MAX_PAYMENT_POLLS = 30;
+
 function messageFromError(error) {
   return error?.normalized?.message || error?.message || "Payment could not be completed.";
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function usePayment({ auto = true } = {}) {
@@ -70,6 +79,51 @@ export function usePayment({ auto = true } = {}) {
     }
   }, []);
 
+  const getPaymentStatus = useCallback(async (reference, method = "") => {
+    let payload;
+    if (method === "mpesa") {
+      payload = await paymentsApi.mpesaStatus(reference);
+    } else if (method === "airtel_money") {
+      payload = await paymentsApi.airtelStatus(reference);
+    } else {
+      payload = await paymentsApi.detail(reference);
+    }
+    const nextPayment = payload?.payment || null;
+    if (nextPayment) setPayment(nextPayment);
+    return nextPayment;
+  }, []);
+
+  const waitForPayment = useCallback(async (createdPayment, { maxPolls = MAX_PAYMENT_POLLS, delayMs = POLL_DELAY_MS } = {}) => {
+    if (!createdPayment?.reference) {
+      throw new Error("Payment was not created. Choose another payment option.");
+    }
+
+    if (COMPLETE_STATUSES.has(createdPayment.status)) return createdPayment;
+    if (FAILED_STATUSES.has(createdPayment.status)) {
+      throw new Error("Payment was not completed. Choose another payment option.");
+    }
+
+    setProcessing(true);
+    setError("");
+    try {
+      for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+        if (attempt > 0) await delay(delayMs);
+        const nextPayment = await getPaymentStatus(createdPayment.reference, createdPayment.method);
+        if (COMPLETE_STATUSES.has(nextPayment?.status)) return nextPayment;
+        if (FAILED_STATUSES.has(nextPayment?.status)) {
+          throw new Error("Payment was not completed. Choose another payment option.");
+        }
+      }
+
+      throw new Error("Payment is still pending. Confirm the prompt on your phone, then try again.");
+    } catch (error) {
+      setError(messageFromError(error));
+      throw error;
+    } finally {
+      setProcessing(false);
+    }
+  }, [getPaymentStatus]);
+
   useEffect(() => {
     if (auto) void loadMethods();
   }, [auto, loadMethods]);
@@ -82,6 +136,8 @@ export function usePayment({ auto = true } = {}) {
     error,
     setError,
     loadMethods,
-    initializePayment
+    initializePayment,
+    getPaymentStatus,
+    waitForPayment
   };
 }

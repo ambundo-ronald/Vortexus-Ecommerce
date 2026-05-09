@@ -2,10 +2,13 @@
 const colorMode = useColorMode();
 const toast = useToast();
 const { getSettings, updateSettings } = useSettings();
+const { getPaymentConfig, updatePaymentConfig } = usePaymentConfig();
 
 const theme = ref(colorMode.preference);
 const isLoading = ref(false);
 const isSaving = ref(false);
+const isPaymentLoading = ref(false);
+const isPaymentSaving = ref(false);
 
 const store = ref({
   site_name: "",
@@ -29,6 +32,36 @@ const profile = ref({
   preferred_currency: "",
   receive_order_updates: true,
   receive_marketing_emails: false,
+});
+
+const paymentConfig = ref({
+  mpesa: {
+    is_enabled: true,
+    is_configured: false,
+    base_url: "https://sandbox.safaricom.co.ke",
+    consumer_key: "",
+    has_consumer_key: false,
+    consumer_secret: "",
+    has_consumer_secret: false,
+    shortcode: "",
+    passkey: "",
+    has_passkey: false,
+    callback_url: "",
+    transaction_type: "CustomerPayBillOnline",
+    timeout_seconds: 30,
+  },
+  airtel_money: {
+    is_enabled: true,
+    is_configured: false,
+    provider_name: "sandbox_airtel_money",
+    sandbox_enabled: false,
+  },
+  card: {
+    is_enabled: true,
+    is_configured: false,
+    provider_name: "sandbox_card",
+    sandbox_enabled: false,
+  },
 });
 
 function applySettings(data: any) {
@@ -62,6 +95,38 @@ async function loadSettings() {
       color: "error",
     });
   isLoading.value = false;
+}
+
+async function loadPaymentConfig() {
+  isPaymentLoading.value = true;
+  const result = await getPaymentConfig();
+  if (result.success && result.data) {
+    paymentConfig.value = {
+      mpesa: {
+        ...paymentConfig.value.mpesa,
+        ...result.data.mpesa,
+        consumer_key: "",
+        consumer_secret: "",
+        passkey: "",
+      },
+      airtel_money: {
+        ...paymentConfig.value.airtel_money,
+        ...result.data.airtel_money,
+      },
+      card: {
+        ...paymentConfig.value.card,
+        ...result.data.card,
+      },
+    };
+  }
+  else {
+    toast.add({
+      title: "Could not load payment settings",
+      description: result.error || "Please try again.",
+      color: "error",
+    });
+  }
+  isPaymentLoading.value = false;
 }
 
 function changeTheme(value: string) {
@@ -109,7 +174,75 @@ async function saveSettings() {
   isSaving.value = false;
 }
 
-onMounted(loadSettings);
+async function savePaymentConfig() {
+  isPaymentSaving.value = true;
+  const mpesaPayload: Record<string, any> = {
+    is_enabled: paymentConfig.value.mpesa.is_enabled,
+    base_url: paymentConfig.value.mpesa.base_url,
+    shortcode: paymentConfig.value.mpesa.shortcode,
+    callback_url: paymentConfig.value.mpesa.callback_url,
+    transaction_type: paymentConfig.value.mpesa.transaction_type,
+    timeout_seconds: Number(paymentConfig.value.mpesa.timeout_seconds || 30),
+  };
+
+  if (paymentConfig.value.mpesa.consumer_key)
+    mpesaPayload.consumer_key = paymentConfig.value.mpesa.consumer_key;
+  if (paymentConfig.value.mpesa.consumer_secret)
+    mpesaPayload.consumer_secret = paymentConfig.value.mpesa.consumer_secret;
+  if (paymentConfig.value.mpesa.passkey)
+    mpesaPayload.passkey = paymentConfig.value.mpesa.passkey;
+
+  const result = await updatePaymentConfig({
+    mpesa: mpesaPayload,
+    airtel_money: {
+      is_enabled: paymentConfig.value.airtel_money.is_enabled,
+      provider_name: paymentConfig.value.airtel_money.provider_name,
+    },
+    card: {
+      is_enabled: paymentConfig.value.card.is_enabled,
+      provider_name: paymentConfig.value.card.provider_name,
+    },
+  });
+
+  if (result.success && result.data) {
+    paymentConfig.value = {
+      mpesa: {
+        ...paymentConfig.value.mpesa,
+        ...result.data.mpesa,
+        consumer_key: "",
+        consumer_secret: "",
+        passkey: "",
+      },
+      airtel_money: {
+        ...paymentConfig.value.airtel_money,
+        ...result.data.airtel_money,
+      },
+      card: {
+        ...paymentConfig.value.card,
+        ...result.data.card,
+      },
+    };
+    toast.add({
+      title: "Payment integrations saved",
+      description: "Checkout will use the updated provider configuration.",
+      color: "success",
+    });
+  }
+  else {
+    toast.add({
+      title: "Could not save payment integrations",
+      description: result.error || "Please check the form and try again.",
+      color: "error",
+    });
+  }
+
+  isPaymentSaving.value = false;
+}
+
+onMounted(() => {
+  void loadSettings();
+  void loadPaymentConfig();
+});
 </script>
 
 <template>
@@ -223,6 +356,108 @@ onMounted(loadSettings);
         <div class="space-y-4">
           <UCheckbox v-model="profile.receive_order_updates" label="Receive order updates" />
           <UCheckbox v-model="profile.receive_marketing_emails" label="Receive marketing emails" />
+        </div>
+      </UCard>
+
+      <UCard class="lg:col-span-3">
+        <template #header>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 class="text-lg font-semibold">Payment Integrations</h3>
+              <p class="text-sm text-(--ui-text-muted)">Provider details are stored on the backend and used during checkout.</p>
+            </div>
+            <UButton color="primary" icon="i-lucide-save" :loading="isPaymentSaving" @click="savePaymentConfig">
+              Save Payment Settings
+            </UButton>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div class="rounded-lg border border-default p-4">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">M-Pesa Daraja</h4>
+                <p class="text-xs text-(--ui-text-muted)">STK push and callback configuration.</p>
+              </div>
+              <UBadge :color="paymentConfig.mpesa.is_configured ? 'success' : 'warning'" variant="soft">
+                {{ paymentConfig.mpesa.is_configured ? "Configured" : "Incomplete" }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-4">
+              <UCheckbox v-model="paymentConfig.mpesa.is_enabled" label="Enable M-Pesa at checkout" :disabled="isPaymentLoading" />
+              <UFormField label="Base URL">
+                <UInput v-model="paymentConfig.mpesa.base_url" :loading="isPaymentLoading" placeholder="https://sandbox.safaricom.co.ke" />
+              </UFormField>
+              <UFormField label="Consumer key">
+                <UInput v-model="paymentConfig.mpesa.consumer_key" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
+              </UFormField>
+              <UFormField label="Consumer secret">
+                <UInput v-model="paymentConfig.mpesa.consumer_secret" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
+              </UFormField>
+              <UFormField label="Shortcode">
+                <UInput v-model="paymentConfig.mpesa.shortcode" :loading="isPaymentLoading" placeholder="174379" />
+              </UFormField>
+              <UFormField label="Passkey">
+                <UInput v-model="paymentConfig.mpesa.passkey" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_passkey ? 'Saved' : 'Required'" autocomplete="new-password" />
+              </UFormField>
+              <UFormField label="Callback URL">
+                <UInput v-model="paymentConfig.mpesa.callback_url" :loading="isPaymentLoading" placeholder="https://example.com/api/v1/payments/mpesa/callback/" />
+              </UFormField>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <UFormField label="Transaction type">
+                  <UInput v-model="paymentConfig.mpesa.transaction_type" :loading="isPaymentLoading" placeholder="CustomerPayBillOnline" />
+                </UFormField>
+                <UFormField label="Timeout seconds">
+                  <UInput v-model.number="paymentConfig.mpesa.timeout_seconds" :loading="isPaymentLoading" type="number" min="1" max="120" />
+                </UFormField>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-default p-4">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">Airtel Money</h4>
+                <p class="text-xs text-(--ui-text-muted)">Mobile collection provider controls.</p>
+              </div>
+              <UBadge :color="paymentConfig.airtel_money.is_configured ? 'success' : 'neutral'" variant="soft">
+                {{ paymentConfig.airtel_money.is_configured ? "Ready" : "Disabled" }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-4">
+              <UCheckbox v-model="paymentConfig.airtel_money.is_enabled" label="Enable Airtel Money at checkout" :disabled="isPaymentLoading || !paymentConfig.airtel_money.sandbox_enabled" />
+              <UFormField label="Provider name">
+                <UInput v-model="paymentConfig.airtel_money.provider_name" :loading="isPaymentLoading" placeholder="sandbox_airtel_money" />
+              </UFormField>
+              <p class="text-xs text-(--ui-text-muted)">
+                Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-default p-4">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">Cards</h4>
+                <p class="text-xs text-(--ui-text-muted)">Sandbox card authorization controls.</p>
+              </div>
+              <UBadge :color="paymentConfig.card.is_configured ? 'success' : 'neutral'" variant="soft">
+                {{ paymentConfig.card.is_configured ? "Ready" : "Disabled" }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-4">
+              <UCheckbox v-model="paymentConfig.card.is_enabled" label="Enable cards at checkout" :disabled="isPaymentLoading || !paymentConfig.card.sandbox_enabled" />
+              <UFormField label="Provider name">
+                <UInput v-model="paymentConfig.card.provider_name" :loading="isPaymentLoading" placeholder="sandbox_card" />
+              </UFormField>
+              <p class="text-xs text-(--ui-text-muted)">
+                Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}
+              </p>
+            </div>
+          </div>
         </div>
       </UCard>
 

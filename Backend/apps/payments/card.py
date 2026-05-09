@@ -1,5 +1,6 @@
 from django.conf import settings
 
+from .config import get_payment_setting, provider_is_enabled
 from .services import confirm_payment_session
 
 
@@ -17,7 +18,7 @@ def authorize_card_payment(
     expiry_year: int | None = None,
     holder_name: str = '',
 ):
-    if not settings.CARD_SANDBOX_ENABLED:
+    if not settings.CARD_SANDBOX_ENABLED or not provider_is_enabled('card', default=True):
         raise CardGatewayError('Card sandbox integration is disabled on this backend.')
 
     token = (payment_token or '').strip()
@@ -29,7 +30,7 @@ def authorize_card_payment(
     masked_last4 = ''.join(ch for ch in str(last4 or '') if ch.isdigit())[-4:]
     payment_session.provider_payload = {
         **payment_session.provider_payload,
-        'provider': settings.CARD_PROVIDER_NAME,
+        'provider': get_payment_setting('card', 'provider_name', settings.CARD_PROVIDER_NAME),
         'payment_token': token,
         'card_brand': (card_brand or '').strip().lower(),
         'last4': masked_last4,
@@ -39,7 +40,8 @@ def authorize_card_payment(
     }
     payment_session.save(update_fields=['provider_payload', 'updated_at'])
 
-    external_reference = f'{settings.CARD_PROVIDER_NAME.upper()}-{payment_session.reference}'
+    provider_name = get_payment_setting('card', 'provider_name', settings.CARD_PROVIDER_NAME)
+    external_reference = f'{provider_name.upper()}-{payment_session.reference}'
     return confirm_payment_session(
         payment_session,
         success=True,

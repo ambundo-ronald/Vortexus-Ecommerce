@@ -5,15 +5,25 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 
+from .config import provider_is_enabled
+
 
 def available_payment_methods() -> list[dict]:
-    return [method.copy() for method in settings.PAYMENT_METHODS]
+    methods = []
+    for method in settings.PAYMENT_METHODS:
+        provider = method.get('provider') or method.get('code')
+        if provider_is_enabled(provider, default=True):
+            methods.append(method.copy())
+    return methods
 
 
 def get_payment_method(code: str) -> dict | None:
     normalized = (code or '').strip()
     for method in settings.PAYMENT_METHODS:
         if method['code'] == normalized:
+            provider = method.get('provider') or method.get('code')
+            if not provider_is_enabled(provider, default=True):
+                return None
             return method.copy()
     return None
 

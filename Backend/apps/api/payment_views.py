@@ -10,6 +10,7 @@ from apps.payments.mpesa import (
     MpesaGatewayError,
     find_payment_by_callback_reference,
     handle_callback,
+    handle_stk_query_result,
     initiate_stk_push,
     mpesa_is_configured,
     query_stk_push_status,
@@ -171,6 +172,7 @@ class MpesaStatusAPIView(APIView):
                 query_data = query_stk_push_status(payment_session)
                 payment_session.metadata = {**payment_session.metadata, 'last_query': query_data}
                 payment_session.save(update_fields=['metadata', 'updated_at'])
+                payment_session = handle_stk_query_result(payment_session, query_data)
             except (MpesaConfigurationError, MpesaGatewayError):
                 pass
         return Response({'payment': serialize_payment_session(payment_session)})

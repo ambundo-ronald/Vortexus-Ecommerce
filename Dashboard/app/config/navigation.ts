@@ -145,6 +145,11 @@ export const navSections: NavSection[] = [
         to: '/content/pages',
       },
       {
+        label: 'Marketing Blocks',
+        icon: 'i-lucide-panels-top-left',
+        to: '/content/marketing-blocks',
+      },
+      {
         label: 'Communications',
         icon: 'i-lucide-send',
         to: '/content/communications',

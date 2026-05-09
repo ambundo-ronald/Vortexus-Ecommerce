@@ -68,6 +68,7 @@ const requiredPages = [
   '/promotions/vouchers',
   '/promotions/ranges',
   '/content/pages',
+  '/content/marketing-blocks',
   '/content/communications',
 ]
 
@@ -94,6 +95,7 @@ const pageComposableExpectations = {
   'app/pages/reports.vue': ['useReports'],
   'app/pages/audit-logs.vue': ['useAuditLogs'],
   'app/pages/content/pages.vue': ['usePages'],
+  'app/pages/content/marketing-blocks.vue': ['useMarketingBlocks'],
   'app/pages/content/communications.vue': ['useCommunications'],
   'app/pages/integrations.vue': ['useIntegrations'],
   'app/pages/users.vue': ['useUser'],

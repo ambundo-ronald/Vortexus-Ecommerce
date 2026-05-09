@@ -10,6 +10,8 @@ import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
 
+const COMPLETE_STATUSES = new Set(["authorized", "paid"]);
+
 export default function PaymentPage() {
   const navigate = useNavigate();
   const checkoutState = useCheckout();
@@ -21,8 +23,12 @@ export default function PaymentPage() {
   async function handlePaymentSubmit(form) {
     try {
       const payment = await paymentState.initializePayment(form);
+      const selectedMethod = paymentState.methods.find((method) => method.code === payment.method);
+      const finalPayment = selectedMethod?.requires_prepayment && !COMPLETE_STATUSES.has(payment.status)
+        ? await paymentState.waitForPayment(payment)
+        : payment;
       const orderPayload = await placeOrder({
-        payment_reference: payment.reference,
+        payment_reference: finalPayment.reference,
         guest_email: form.payerEmail
       });
       sessionStorage.setItem("vortexus:lastOrder", JSON.stringify(orderPayload));
@@ -51,6 +57,9 @@ export default function PaymentPage() {
       <Alert>{error || paymentError}</Alert>
       {paymentError ? (
         <Alert tone="warning">Choose another payment option if this one is not available.</Alert>
+      ) : null}
+      {paymentState.payment?.status === "pending" ? (
+        <Alert tone="info">Payment request sent. Approve the prompt on your phone to place the order.</Alert>
       ) : null}
 
       <div className="checkout-layout">

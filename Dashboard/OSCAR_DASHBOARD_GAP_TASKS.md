@@ -327,9 +327,22 @@ This backlog tracks the missing dashboard coverage compared with Oscar's built-i
 ## Post-Oscar Dashboard Enhancements
 
 ### Task 26: Storefront Marketing Content
+- Status: Done
 - Build dashboard management for storefront banners, promo branding, hero sections, announcement strips, and featured homepage blocks.
 - Add backend models/API endpoints if no existing content-block API covers this workflow.
 - Support image/media selection, headline/copy, CTA text/link, placement, sort order, active status, and optional start/end dates.
 - Expose storefront fetch endpoints for active marketing blocks by placement.
 - Update API documentation and task completion notes when implemented.
 - Done when staff can manage homepage and promotional storefront content without code changes.
+- Added `apps.content.MarketingBlock` with placement, headline/copy, image URL, CTA, styling, active status, sort order, optional start/end dates, and metadata.
+- Added staff endpoints at `/api/v1/admin/marketing-blocks/` and `/api/v1/admin/marketing-blocks/<block_id>/`.
+- Added public storefront endpoint at `/api/v1/content/marketing-blocks/` with optional `placement` filtering for active/current blocks.
+- Added dashboard page `/content/marketing-blocks` and Content navigation entry.
+- Updated API documentation and dashboard smoke tests.
+- Wired `frontendV1` homepage to render marketing placements from the public endpoint:
+  - `announcement` above the hero.
+  - `home_hero` in the hero carousel.
+  - `promo_banner` below the hero.
+  - `featured` as a homepage feature grid.
+  - `brand_strip` near the bottom of the homepage.
+- Added storefront fallback behavior so the existing static hero images still render when no dashboard marketing blocks exist.
