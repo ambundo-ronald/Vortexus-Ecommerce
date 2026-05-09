@@ -45,6 +45,13 @@ pnpm build
 pnpm preview
 ```
 
+### Smoke Tests
+
+```bash
+# Check dashboard route files, navigation links, auth handling, and shared admin helpers
+npm run test:smoke
+```
+
 ## Key Technologies
 
 - **Nuxt 3** - Full-stack Vue framework

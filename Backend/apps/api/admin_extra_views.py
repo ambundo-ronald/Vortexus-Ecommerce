@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .checkout_utils import serialize_shipping_address
-from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer
+from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer, _order_note_payload
 
 
 def _decimal(value) -> float:
@@ -633,9 +633,12 @@ class AdminOfferCollectionAPIView(APIView):
             description=request.data.get('description', ''),
             offer_type=request.data.get('offer_type') or (Offer.VOUCHER if voucher_id else Offer.SITE),
             status=request.data.get('status', Offer.OPEN),
+            exclusive=bool(request.data.get('exclusive', False)),
             condition_id=condition_id,
             benefit_id=benefit_id,
             priority=request.data.get('priority') or 0,
+            start_datetime=request.data.get('start_datetime') or None,
+            end_datetime=request.data.get('end_datetime') or None,
         )
         if voucher_id:
             voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
@@ -651,9 +654,12 @@ class AdminOfferDetailAPIView(APIView):
 
     def patch(self, request, offer_id: int):
         offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id)
-        for field in ['name', 'slug', 'description', 'offer_type', 'exclusive', 'status', 'priority', 'start_datetime', 'end_datetime']:
+        for field in ['name', 'slug', 'description', 'offer_type', 'exclusive', 'status', 'priority', 'start_datetime', 'end_datetime', 'condition_id', 'benefit_id']:
             if field in request.data:
-                setattr(offer, field, request.data[field])
+                value = request.data[field]
+                if field in {'start_datetime', 'end_datetime'} and value in ('', None):
+                    value = None
+                setattr(offer, field, value)
         offer.save()
         return Response({'offer': _offer_payload(offer)})
 
@@ -824,6 +830,14 @@ class AdminOrderShippingAddressAPIView(APIView):
         for field in ['first_name', 'last_name', 'line1', 'line2', 'line3', 'line4', 'state', 'postcode', 'phone_number', 'notes']:
             if field in request.data:
                 setattr(address, field, request.data[field])
+        if 'country_code' in request.data:
+            country_code = str(request.data.get('country_code') or '').strip().upper()
+            if country_code:
+                Country = apps.get_model('address', 'Country')
+                country = Country.objects.filter(iso_3166_1_a2__iexact=country_code, is_shipping_country=True).first()
+                if not country:
+                    return Response({'error': {'detail': 'Unsupported shipping country.', 'errors': {'country_code': ['Unsupported shipping country.']}}}, status=status.HTTP_400_BAD_REQUEST)
+                address.country = country
         address.save()
         order.shipping_address = address
         order.save(update_fields=['shipping_address'])
@@ -833,11 +847,18 @@ class AdminOrderShippingAddressAPIView(APIView):
 class AdminOrderNoteAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
+    def get(self, request, order_number: str):
+        order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        return Response({'results': [_order_note_payload(note) for note in order.notes.select_related('user').all()]})
+
     def post(self, request, order_number: str):
         order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        message = str(request.data.get('message', '') or '').strip()
+        if not message:
+            return Response({'error': {'detail': 'Message is required.', 'errors': {'message': ['This field is required.']}}}, status=status.HTTP_400_BAD_REQUEST)
         Note = get_model('order', 'OrderNote')
-        note = Note.objects.create(order=order, user=request.user, message=request.data.get('message', ''), note_type=request.data.get('note_type', 'Admin'))
-        return Response({'note': {'id': note.id, 'message': note.message, 'note_type': note.note_type, 'date_created': note.date_created}}, status=status.HTTP_201_CREATED)
+        note = Note.objects.create(order=order, user=request.user, message=message, note_type=request.data.get('note_type', 'Admin'))
+        return Response({'note': _order_note_payload(note)}, status=status.HTTP_201_CREATED)
 
 
 def _partner_payload(partner):

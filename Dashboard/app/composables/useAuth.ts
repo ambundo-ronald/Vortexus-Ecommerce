@@ -42,9 +42,11 @@ export function useAuth() {
     error.value = null
 
     try {
-      const response = await request<{ user: AdminSessionUser }>('/account/me/')
-      user.value = response.user
-      return response.user
+      const response = await request<{ user: AdminSessionUser }>('/account/me/', {
+        redirectOnAuthError: false,
+      })
+      user.value = response.user?.is_staff ? response.user : null
+      return user.value
     }
     catch (err: any) {
       user.value = null
@@ -113,6 +115,11 @@ export function useAuth() {
     }
   }
 
+  function clearSession() {
+    user.value = null
+    hasCheckedSession.value = true
+  }
+
   return {
     user,
     hasCheckedSession,
@@ -123,5 +130,6 @@ export function useAuth() {
     refreshSession,
     login,
     logout,
+    clearSession,
   }
 }

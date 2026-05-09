@@ -1,15 +1,38 @@
 <script setup lang="ts">
 const route = useRoute();
-const { getOrder, updateOrderStatus } = useOrder();
+const { addOrderNote, getOrder, getOrderLine, getOrderNotes, updateOrderShippingAddress, updateOrderStatus } = useOrder();
 const toast = useToast();
 
 const order = ref<any>(null);
+const selectedLine = ref<any>(null);
 const isLoading = ref(true);
 const isSaving = ref(false);
+const isSavingAddress = ref(false);
+const isSavingNote = ref(false);
+const isEditingAddress = ref(false);
+const isLineDetailOpen = ref(false);
+const isLoadingLine = ref(false);
 const statusForm = reactive({
   status: "",
   tracking_reference: "",
   note: "",
+});
+const shippingForm = reactive({
+  first_name: "",
+  last_name: "",
+  line1: "",
+  line2: "",
+  line3: "",
+  line4: "",
+  state: "",
+  postcode: "",
+  country_code: "KE",
+  phone_number: "",
+  notes: "",
+});
+const noteForm = reactive({
+  note_type: "Admin",
+  message: "",
 });
 const statusOptions = computed(() =>
   (order.value?.availableStatuses || []).map((status: string) => ({
@@ -78,8 +101,28 @@ const formatTime = (dateString: string) =>
     minute: "2-digit",
   }) : "";
 
+const formatDateTime = (dateString: string) =>
+  dateString ? new Intl.DateTimeFormat("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(dateString)) : "Not available";
+
 function discardChanges() {
   navigateTo("/orders");
+}
+
+function fillShippingForm(address: any = {}) {
+  shippingForm.first_name = address?.firstName || address?.first_name || "";
+  shippingForm.last_name = address?.lastName || address?.last_name || "";
+  shippingForm.line1 = address?.line1 || address?.street || "";
+  shippingForm.line2 = address?.line2 || "";
+  shippingForm.line3 = address?.line3 || "";
+  shippingForm.line4 = address?.line4 || address?.city || "";
+  shippingForm.state = address?.state || "";
+  shippingForm.postcode = address?.postcode || address?.zipCode || "";
+  shippingForm.country_code = address?.countryCode || address?.country_code || "KE";
+  shippingForm.phone_number = address?.phoneNumber || address?.phone_number || "";
+  shippingForm.notes = address?.notes || "";
 }
 
 async function loadOrder() {
@@ -89,6 +132,7 @@ async function loadOrder() {
     statusForm.status = result.data?.status || "";
     statusForm.tracking_reference = result.data?.trackingReference || "";
     statusForm.note = "";
+    fillShippingForm(result.data?.shippingAddress || {});
   }
   else {
     toast.add({
@@ -97,6 +141,15 @@ async function loadOrder() {
       color: "error",
     });
   }
+}
+
+async function refreshOrderNotes() {
+  if (!order.value?.orderNo)
+    return;
+
+  const result = await getOrderNotes(order.value.orderNo);
+  if (result.success)
+    order.value.notes = result.data || [];
 }
 
 async function submitStatusUpdate() {
@@ -130,6 +183,116 @@ async function submitStatusUpdate() {
   }
 
   isSaving.value = false;
+}
+
+async function submitShippingAddress() {
+  if (!order.value?.orderNo)
+    return;
+  if (!shippingForm.first_name.trim() || !shippingForm.last_name.trim() || !shippingForm.line1.trim() || !shippingForm.line4.trim()) {
+    toast.add({
+      title: "Address incomplete",
+      description: "First name, last name, address line 1, and city are required.",
+      color: "warning",
+    });
+    return;
+  }
+
+  isSavingAddress.value = true;
+  const result = await updateOrderShippingAddress(order.value.orderNo, {
+    first_name: shippingForm.first_name.trim(),
+    last_name: shippingForm.last_name.trim(),
+    line1: shippingForm.line1.trim(),
+    line2: shippingForm.line2.trim(),
+    line3: shippingForm.line3.trim(),
+    line4: shippingForm.line4.trim(),
+    state: shippingForm.state.trim(),
+    postcode: shippingForm.postcode.trim(),
+    country_code: shippingForm.country_code.trim().toUpperCase(),
+    phone_number: shippingForm.phone_number.trim(),
+    notes: shippingForm.notes.trim(),
+  });
+
+  if (result.success) {
+    toast.add({
+      title: "Shipping address updated",
+      description: "The order delivery address was saved.",
+      color: "success",
+    });
+    isEditingAddress.value = false;
+    await loadOrder();
+  }
+  else {
+    toast.add({
+      title: "Address update failed",
+      description: result.error || "Could not update shipping address.",
+      color: "error",
+    });
+  }
+
+  isSavingAddress.value = false;
+}
+
+async function submitOrderNote() {
+  if (!order.value?.orderNo)
+    return;
+  if (!noteForm.message.trim()) {
+    toast.add({
+      title: "Note is empty",
+      description: "Enter a note before saving.",
+      color: "warning",
+    });
+    return;
+  }
+
+  isSavingNote.value = true;
+  const result = await addOrderNote(order.value.orderNo, {
+    message: noteForm.message.trim(),
+    note_type: noteForm.note_type.trim() || "Admin",
+  });
+
+  if (result.success) {
+    noteForm.message = "";
+    noteForm.note_type = "Admin";
+    toast.add({
+      title: "Note added",
+      description: "The order note was saved.",
+      color: "success",
+    });
+    await refreshOrderNotes();
+  }
+  else {
+    toast.add({
+      title: "Note failed",
+      description: result.error || "Could not add order note.",
+      color: "error",
+    });
+  }
+
+  isSavingNote.value = false;
+}
+
+async function openLineDetail(product: any) {
+  if (!order.value?.orderNo || !product?.id)
+    return;
+
+  selectedLine.value = null;
+  isLineDetailOpen.value = true;
+  isLoadingLine.value = true;
+  const result = await getOrderLine(order.value.orderNo, product.id);
+
+  if (result.success) {
+    selectedLine.value = result.data;
+  }
+  else {
+    toast.add({
+      title: "Could not load line detail",
+      description: result.error || "Please try again.",
+      color: "error",
+    });
+    isLineDetailOpen.value = false;
+  }
+
+  isLoadingLine.value = false;
 }
 
 onMounted(async () => {
@@ -227,14 +390,52 @@ onMounted(async () => {
                   Shipping Information
                 </h4>
                 <div class="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div class="font-medium tracking-tight text-slate-950">
-                    {{ order.shippingAddress?.street || "No shipping address provided" }}<br>
-                    <template v-if="order.shippingAddress">
-                      {{ order.shippingAddress.city }},
-                      {{ order.shippingAddress.state }}
-                      {{ order.shippingAddress.zipCode }}
-                    </template>
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div class="font-medium tracking-tight text-slate-950">
+                      <template v-if="order.shippingAddress">
+                        <span>{{ order.shippingAddress.firstName }} {{ order.shippingAddress.lastName }}</span><br>
+                        <span>{{ order.shippingAddress.street || order.shippingAddress.line1 }}</span><br>
+                        <span>
+                          {{ order.shippingAddress.city }},
+                          {{ order.shippingAddress.state }}
+                          {{ order.shippingAddress.zipCode }}
+                        </span>
+                        <div v-if="order.shippingAddress.phoneNumber" class="mt-2 text-sm text-slate-600">
+                          Phone: {{ order.shippingAddress.phoneNumber }}
+                        </div>
+                        <div v-if="order.shippingAddress.notes" class="mt-2 text-sm text-slate-600">
+                          Delivery notes: {{ order.shippingAddress.notes }}
+                        </div>
+                      </template>
+                      <template v-else>No shipping address provided</template>
+                    </div>
+                    <UButton color="neutral" variant="outline" size="sm" @click="isEditingAddress = !isEditingAddress">
+                      <UIcon :name="isEditingAddress ? 'i-lucide-x' : 'i-lucide-pencil'" />
+                      {{ isEditingAddress ? "Cancel" : "Edit address" }}
+                    </UButton>
                   </div>
+
+                  <div v-if="isEditingAddress" class="rounded-lg border border-slate-200 bg-white p-4">
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <UFormField label="First name" required><UInput v-model="shippingForm.first_name" /></UFormField>
+                      <UFormField label="Last name" required><UInput v-model="shippingForm.last_name" /></UFormField>
+                      <UFormField label="Address line 1" required class="md:col-span-2"><UInput v-model="shippingForm.line1" /></UFormField>
+                      <UFormField label="Address line 2"><UInput v-model="shippingForm.line2" /></UFormField>
+                      <UFormField label="Company / line 3"><UInput v-model="shippingForm.line3" /></UFormField>
+                      <UFormField label="City" required><UInput v-model="shippingForm.line4" /></UFormField>
+                      <UFormField label="State / county"><UInput v-model="shippingForm.state" /></UFormField>
+                      <UFormField label="Postcode"><UInput v-model="shippingForm.postcode" /></UFormField>
+                      <UFormField label="Country code"><UInput v-model="shippingForm.country_code" maxlength="2" /></UFormField>
+                      <UFormField label="Phone"><UInput v-model="shippingForm.phone_number" /></UFormField>
+                      <UFormField label="Delivery notes" class="md:col-span-2"><UTextarea v-model="shippingForm.notes" :rows="3" /></UFormField>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                      <UButton color="primary" variant="solid" :loading="isSavingAddress" @click="submitShippingAddress">
+                        Save address
+                      </UButton>
+                    </div>
+                  </div>
+
                   <iframe
                     v-if="order.shippingAddress"
                     class="h-56 w-full rounded-lg border border-slate-200"
@@ -280,6 +481,15 @@ onMounted(async () => {
                     <div class="font-semibold text-slate-950">
                       {{ formatMoney(product.price || 0, "KES") }}
                     </div>
+                    <UTooltip text="View line detail">
+                      <UButton
+                        icon="i-lucide-panel-right-open"
+                        color="neutral"
+                        variant="ghost"
+                        square
+                        @click="openLineDetail(product)"
+                      />
+                    </UTooltip>
                   </div>
                 </div>
               </div>
@@ -365,6 +575,55 @@ onMounted(async () => {
                 >
                   Save update
                 </UButton>
+              </div>
+            </div>
+          </UCard>
+
+          <UCard class="border border-slate-200 bg-white shadow-sm">
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-sticky-note" class="h-5 w-5 text-slate-950" />
+                  <h3 class="text-lg font-bold text-slate-950">Order notes</h3>
+                </div>
+                <UBadge color="neutral" variant="soft">{{ order.notes?.length || 0 }}</UBadge>
+              </div>
+            </template>
+
+            <div class="space-y-4">
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <UFormField label="Type">
+                  <UInput v-model="noteForm.note_type" placeholder="Admin" />
+                </UFormField>
+                <UFormField label="Message" class="md:col-span-2">
+                  <UTextarea v-model="noteForm.message" :rows="3" placeholder="Add an internal order note..." />
+                </UFormField>
+              </div>
+              <div class="flex justify-end">
+                <UButton color="primary" variant="solid" :loading="isSavingNote" @click="submitOrderNote">
+                  Add note
+                </UButton>
+              </div>
+
+              <div v-if="!order.notes?.length" class="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                No order notes recorded.
+              </div>
+              <div v-else class="space-y-3">
+                <div
+                  v-for="note in order.notes"
+                  :key="note.id"
+                  class="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div class="mb-2 flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-semibold text-slate-950">{{ note.note_type || "Note" }}</p>
+                      <p class="text-xs text-slate-500">
+                        {{ note.author || "System" }} · {{ formatDateTime(note.date_created) }}
+                      </p>
+                    </div>
+                  </div>
+                  <p class="whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ note.message }}</p>
+                </div>
               </div>
             </div>
           </UCard>
@@ -522,6 +781,82 @@ onMounted(async () => {
         />
         <p class="text-slate-950">Order not found</p>
       </div>
+    </div>
+
+    <div v-if="isLineDetailOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <UCard class="max-h-[90vh] w-full max-w-2xl overflow-y-auto">
+        <template #header>
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <h3 class="truncate font-semibold text-default">Order line detail</h3>
+              <p class="truncate text-sm text-dimmed">{{ selectedLine?.title || "Loading line information" }}</p>
+            </div>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" square @click="isLineDetailOpen = false" />
+          </div>
+        </template>
+
+        <div v-if="isLoadingLine" class="flex items-center justify-center p-12 text-sm font-semibold text-slate-500">
+          <UIcon name="i-lucide-loader-circle" class="mr-2 animate-spin" />
+          Loading line detail
+        </div>
+
+        <div v-else-if="selectedLine" class="space-y-5">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="truncate text-lg font-black text-slate-950">{{ selectedLine.title }}</p>
+                <p class="mt-1 text-sm text-slate-500">Line #{{ selectedLine.id }}</p>
+              </div>
+              <UBadge :color="statusColor(selectedLine.status)" variant="soft">
+                {{ selectedLine.status || "No status" }}
+              </UBadge>
+            </div>
+          </div>
+
+          <dl class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 p-4">
+              <dt class="text-sm font-semibold text-slate-500">Quantity</dt>
+              <dd class="mt-1 text-slate-950">{{ selectedLine.quantity }}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4">
+              <dt class="text-sm font-semibold text-slate-500">UPC</dt>
+              <dd class="mt-1 break-words text-slate-950">{{ selectedLine.upc || "Not recorded" }}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4">
+              <dt class="text-sm font-semibold text-slate-500">Partner</dt>
+              <dd class="mt-1 break-words text-slate-950">{{ selectedLine.partner_name || "Not recorded" }}</dd>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4">
+              <dt class="text-sm font-semibold text-slate-500">Partner SKU</dt>
+              <dd class="mt-1 break-words text-slate-950">{{ selectedLine.partner_sku || "Not recorded" }}</dd>
+            </div>
+          </dl>
+
+          <div class="overflow-hidden rounded-lg border border-slate-200">
+            <div class="grid grid-cols-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+              <div>Amount</div>
+              <div class="text-right">Excl tax</div>
+              <div class="text-right">Incl tax</div>
+            </div>
+            <div class="grid grid-cols-3 border-t border-slate-100 px-4 py-3 text-sm">
+              <div class="font-semibold text-slate-700">Unit price</div>
+              <div class="text-right text-slate-950">{{ formatMoney(selectedLine.unit_price_excl_tax || 0, selectedLine.currency || "KES") }}</div>
+              <div class="text-right text-slate-950">{{ formatMoney(selectedLine.unit_price_incl_tax || 0, selectedLine.currency || "KES") }}</div>
+            </div>
+            <div class="grid grid-cols-3 border-t border-slate-100 px-4 py-3 text-sm">
+              <div class="font-semibold text-slate-700">Line total</div>
+              <div class="text-right text-slate-950">{{ formatMoney(selectedLine.line_price_excl_tax || 0, selectedLine.currency || "KES") }}</div>
+              <div class="text-right text-slate-950">{{ formatMoney(selectedLine.line_price_incl_tax || 0, selectedLine.currency || "KES") }}</div>
+            </div>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton color="neutral" variant="outline" @click="isLineDetailOpen = false">Close</UButton>
+          </div>
+        </template>
+      </UCard>
     </div>
   </div>
 </template>

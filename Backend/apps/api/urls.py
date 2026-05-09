@@ -185,7 +185,13 @@ from .views import (
     ProductListAPIView,
     QuoteRequestAPIView,
 )
-from .user_views import AdminUserCollectionAPIView, AdminUserDetailAPIView
+from .user_views import (
+    AdminUserCollectionAPIView,
+    AdminUserDetailAPIView,
+    AdminUserPasswordResetAPIView,
+    AdminUserProductAlertCollectionAPIView,
+    AdminUserProductAlertDetailAPIView,
+)
 
 urlpatterns = [
     path('', ApiRootAPIView.as_view(), name='api-root'),
@@ -269,6 +275,9 @@ urlpatterns = [
     path('admin/reviews/<int:review_id>/', AdminReviewDetailAPIView.as_view(), name='admin-review-detail'),
     path('admin/users/', AdminUserCollectionAPIView.as_view(), name='admin-users'),
     path('admin/users/<int:user_id>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
+    path('admin/users/<int:user_id>/password-reset/', AdminUserPasswordResetAPIView.as_view(), name='admin-user-password-reset'),
+    path('admin/users/<int:user_id>/product-alerts/', AdminUserProductAlertCollectionAPIView.as_view(), name='admin-user-product-alerts'),
+    path('admin/users/<int:user_id>/product-alerts/<int:alert_id>/', AdminUserProductAlertDetailAPIView.as_view(), name='admin-user-product-alert-detail'),
     path('admin/media/', AdminMediaCollectionAPIView.as_view(), name='admin-media'),
     path('admin/media/<int:image_id>/', AdminMediaDetailAPIView.as_view(), name='admin-media-detail'),
     path('admin/settings/', AdminSettingsAPIView.as_view(), name='admin-settings'),

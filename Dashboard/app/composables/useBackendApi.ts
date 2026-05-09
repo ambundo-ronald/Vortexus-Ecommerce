@@ -15,8 +15,9 @@ export function useBackendApi() {
   }
 
   async function request<T>(path: string, options: Record<string, any> = {}) {
+    const { redirectOnAuthError = true, ...fetchOptions } = options
     const method = String(options.method || 'GET').toUpperCase()
-    const headers = { ...(options.headers || {}) }
+    const headers = { ...(fetchOptions.headers || {}) }
 
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       headers['X-CSRFToken'] = await ensureCsrfToken()
@@ -25,15 +26,16 @@ export function useBackendApi() {
     try {
       return await $fetch<T>(`${apiBase}${path}`, {
         credentials: 'include',
-        ...options,
+        ...fetchOptions,
         method,
         headers,
       })
     }
     catch (err: any) {
-      if (import.meta.client && [401, 403].includes(Number(err?.status || err?.statusCode))) {
-        const route = useRoute()
-        if (route.path !== '/login')
+      if (redirectOnAuthError && import.meta.client && [401, 403].includes(Number(err?.status || err?.statusCode))) {
+        const auth = useAuth()
+        auth.clearSession()
+        if (window.location.pathname !== '/login')
           await navigateTo('/login')
       }
       throw err

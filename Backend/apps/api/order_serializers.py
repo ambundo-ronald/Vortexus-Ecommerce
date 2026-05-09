@@ -59,6 +59,25 @@ def _order_customer_name(order) -> str:
     return (order.guest_email or '').strip() or 'Guest Customer'
 
 
+def _order_note_payload(note) -> dict:
+    user = getattr(note, 'user', None)
+    author = ''
+    if user:
+        if callable(getattr(user, 'get_full_name', None)):
+            author = (user.get_full_name() or '').strip()
+        if not author:
+            author = (getattr(user, 'email', '') or getattr(user, 'username', '') or '').strip()
+
+    return {
+        'id': note.id,
+        'message': note.message or '',
+        'note_type': note.note_type or '',
+        'author': author,
+        'date_created': note.date_created,
+        'date_updated': note.date_updated,
+    }
+
+
 def _order_company_name(order) -> str:
     user = getattr(order, 'user', None)
     profile = getattr(user, 'customer_profile', None) if user else None
@@ -366,6 +385,15 @@ class AdminOrderDetailSerializer(serializers.Serializer):
             'trackingReference': _order_primary_tracking_reference(order),
             'availableStatuses': [choice[0] for choice in ADMIN_ORDER_STATUS_CHOICES],
             'shippingAddress': {
+                'firstName': getattr(shipping_address, 'first_name', '') or '',
+                'lastName': getattr(shipping_address, 'last_name', '') or '',
+                'line1': getattr(shipping_address, 'line1', '') or '',
+                'line2': getattr(shipping_address, 'line2', '') or '',
+                'line3': getattr(shipping_address, 'line3', '') or '',
+                'line4': getattr(shipping_address, 'line4', '') or '',
+                'notes': getattr(shipping_address, 'notes', '') or '',
+                'phoneNumber': str(getattr(shipping_address, 'phone_number', '') or ''),
+                'countryCode': shipping_country_code(shipping_address),
                 'street': ' '.join(part for part in [
                     getattr(shipping_address, 'line1', '') or '',
                     getattr(shipping_address, 'line2', '') or '',
@@ -406,6 +434,7 @@ class AdminOrderDetailSerializer(serializers.Serializer):
                 'email': customer_email,
                 'phone': customer_phone,
             },
+            'notes': [_order_note_payload(note) for note in order.notes.select_related('user').all()],
         }
 
 
