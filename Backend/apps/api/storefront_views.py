@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
-from apps.inventory.services import sync_basket_line_reservation
+from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 
 from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
 from .order_serializers import OrderSummarySerializer
@@ -277,8 +277,11 @@ class SavedItemMoveToCartAPIView(APIView):
             saved_line = get_object_or_404(wishlist.lines.select_related('product'), id=saved_line_id)
             if not saved_line.product:
                 return Response(status=status.HTTP_404_NOT_FOUND)
-            line, _ = request.basket.add_product(saved_line.product, quantity=saved_line.quantity)
-            sync_basket_line_reservation(line)
+            try:
+                line, _ = request.basket.add_product(saved_line.product, quantity=saved_line.quantity)
+                sync_basket_line_reservation(line)
+            except (InventoryReservationError, ValueError) as exc:
+                raise serializers.ValidationError({'saved_item': str(exc)}) from exc
             saved_line.delete()
             payload = build_checkout_payload(request)
             payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}
@@ -289,8 +292,11 @@ class SavedItemMoveToCartAPIView(APIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
         Product = apps.get_model('catalogue', 'Product')
         product = get_object_or_404(Product, id=item['product_id'])
-        line, _ = request.basket.add_product(product, quantity=item.get('quantity', 1))
-        sync_basket_line_reservation(line)
+        try:
+            line, _ = request.basket.add_product(product, quantity=item.get('quantity', 1))
+            sync_basket_line_reservation(line)
+        except (InventoryReservationError, ValueError) as exc:
+            raise serializers.ValidationError({'saved_item': str(exc)}) from exc
         _save_items(request, [entry for entry in items if entry.get('id') != saved_line_id])
         payload = build_checkout_payload(request)
         payload['saved'] = {'results': _saved_items(request, display_currency=resolve_display_currency(request))}

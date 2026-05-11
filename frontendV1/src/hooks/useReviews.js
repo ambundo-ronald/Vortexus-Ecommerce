@@ -55,11 +55,29 @@ export function useProductReviews(productId, { auto = true } = {}) {
     }
   }, [loadReviews, productId]);
 
+  const voteReview = useCallback(async (reviewId, delta) => {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await reviewsApi.voteProductReview(productId, reviewId, { delta });
+      const updatedReview = response?.review;
+      if (updatedReview) {
+        setReviews((current) => current.map((review) => (review.id === updatedReview.id ? updatedReview : review)));
+      }
+      return updatedReview || null;
+    } catch (error) {
+      setError(messageFromError(error));
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  }, [productId]);
+
   useEffect(() => {
     if (auto) void loadReviews();
   }, [auto, loadReviews]);
 
-  return { reviews, summary, yourReview, loading, saving, error, loadReviews, createReview };
+  return { reviews, summary, yourReview, loading, saving, error, loadReviews, createReview, voteReview };
 }
 
 export function useAccountReviews({ auto = true, status = "" } = {}) {

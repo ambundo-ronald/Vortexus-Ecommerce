@@ -41,6 +41,19 @@ def _order_primary_image_url(product) -> str:
     return ''
 
 
+def _order_line_options(line) -> list[dict]:
+    return [
+        {
+            'id': attribute.id,
+            'option_id': attribute.option_id,
+            'code': attribute.option.code if attribute.option_id else '',
+            'name': attribute.option.name if attribute.option_id else attribute.type,
+            'value': attribute.value,
+        }
+        for attribute in line.attributes.select_related('option').all()
+    ]
+
+
 def _order_customer_name(order) -> str:
     user = getattr(order, 'user', None)
     if user and callable(getattr(user, 'get_full_name', None)):
@@ -211,6 +224,7 @@ class OrderLineSerializer(serializers.Serializer):
             'line_price_excl_tax': float(line.line_price_excl_tax or Decimal('0.00')),
             'line_price_incl_tax': float(line.line_price_incl_tax or Decimal('0.00')),
             'currency': line.order.currency,
+            'options': _order_line_options(line),
         }
 
 

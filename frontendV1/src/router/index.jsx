@@ -22,6 +22,7 @@ import ProductDetailPage from "../pages/public/ProductDetailPage.jsx";
 import ProductListPage from "../pages/public/ProductListPage.jsx";
 import QuoteRequestPage from "../pages/public/QuoteRequestPage.jsx";
 import SearchPage from "../pages/public/SearchPage.jsx";
+import SharedWishlistPage from "../pages/public/SharedWishlistPage.jsx";
 
 export default function AppRouter() {
   return (
@@ -32,6 +33,7 @@ export default function AppRouter() {
       <Route path="/products/:productId" element={<PageWrapper><ProductDetailPage /></PageWrapper>} />
       <Route path="/quote" element={<PageWrapper><QuoteRequestPage /></PageWrapper>} />
       <Route path="/search" element={<PageWrapper><SearchPage /></PageWrapper>} />
+      <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
       <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
       <Route path="/checkout/shipping" element={<PageWrapper><ShippingPage /></PageWrapper>} />
       <Route path="/checkout/payment" element={<PageWrapper><PaymentPage /></PageWrapper>} />

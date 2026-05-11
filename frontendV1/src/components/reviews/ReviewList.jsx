@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import Alert from "../ui/Alert.jsx";
@@ -12,8 +13,11 @@ import { useProductReviews } from "../../hooks/useReviews";
 export default function ReviewList({ productId }) {
   const location = useLocation();
   const { user } = useAuth();
-  const { reviews, summary, yourReview, loading, saving, error, createReview } = useProductReviews(productId);
+  const { reviews, summary, yourReview, loading, saving, error, createReview, voteReview } = useProductReviews(productId);
   const average = summary?.average_score || summary?.product_rating || 0;
+  const [visibleCount, setVisibleCount] = useState(2);
+  const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
+  const hiddenCount = Math.max(reviews.length - visibleReviews.length, 0);
 
   return (
     <section className="content-section reviews-section">
@@ -36,9 +40,25 @@ export default function ReviewList({ productId }) {
       ) : null}
 
       {reviews.length ? (
-        <div className="review-grid">
-          {reviews.map((review) => <ReviewCard key={review.id} review={review} />)}
-        </div>
+        <>
+          <div className="review-grid">
+            {visibleReviews.map((review) => (
+              <ReviewCard key={review.id} review={review} saving={saving} onVote={(reviewId, delta) => voteReview(reviewId, delta)} />
+            ))}
+          </div>
+          {hiddenCount ? (
+            <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount((count) => count + 2)}>
+              <MaterialIcon name="expand_more" size={18} />
+              More reviews
+              <span>{hiddenCount}</span>
+            </button>
+          ) : reviews.length > 2 ? (
+            <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount(2)}>
+              <MaterialIcon name="expand_less" size={18} />
+              Show less
+            </button>
+          ) : null}
+        </>
       ) : null}
 
       {user && yourReview ? (

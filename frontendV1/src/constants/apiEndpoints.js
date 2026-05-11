@@ -43,6 +43,7 @@ export const ENDPOINTS = {
     product: (productId) => `/catalog/products/${productId}/`,
     productReviews: (productId) => `/catalog/products/${productId}/reviews/`,
     productReview: (productId, reviewId) => `/catalog/products/${productId}/reviews/${reviewId}/`,
+    productReviewVote: (productId, reviewId) => `/catalog/products/${productId}/reviews/${reviewId}/vote/`,
     productAlerts: (productId) => `/catalog/products/${productId}/alerts/`,
     productViewed: (productId) => `/catalog/products/${productId}/viewed/`
   },
@@ -69,6 +70,7 @@ export const ENDPOINTS = {
     status: "/account/wishlist/status/",
     lists: "/account/wishlists/",
     list: (wishlistId) => `/account/wishlists/${wishlistId}/`,
+    share: (wishlistId) => `/account/wishlists/${wishlistId}/share/`,
     listItems: (wishlistId) => `/account/wishlists/${wishlistId}/items/`,
     listItem: (wishlistId, productId) => `/account/wishlists/${wishlistId}/items/${productId}/`,
     moveItem: (wishlistId, productId) => `/account/wishlists/${wishlistId}/items/${productId}/move/`,
@@ -94,9 +96,11 @@ export const ENDPOINTS = {
     billing: "/checkout/billing/",
     billingAddress: "/checkout/billing/address/",
     useBillingAddress: "/checkout/billing/use-address/",
+    preview: "/checkout/preview/",
     vouchers: "/checkout/vouchers/",
     voucher: (voucherId) => `/checkout/vouchers/${voucherId}/`,
-    orders: "/checkout/orders/"
+    orders: "/checkout/orders/",
+    thankYou: "/checkout/thank-you/"
   },
   payments: {
     methods: "/checkout/payments/methods/",

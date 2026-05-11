@@ -16,9 +16,15 @@ function basketFromPayload(payload) {
   return payload?.basket || emptyBasket;
 }
 
+function savedFromPayload(payload) {
+  return payload?.saved?.results || payload?.results || [];
+}
+
 export const useCartStore = create((set, get) => ({
   basket: emptyBasket,
+  savedItems: [],
   loading: false,
+  savedLoading: false,
   error: null,
 
   hydrate: async () => {
@@ -33,10 +39,10 @@ export const useCartStore = create((set, get) => ({
     }
   },
 
-  addItem: async (productId, quantity = 1) => {
+  addItem: async (productId, quantity = 1, options = []) => {
     set({ loading: true, error: null });
     try {
-      const payload = await checkoutApi.addItem({ product_id: productId, quantity });
+      const payload = await checkoutApi.addItem({ product_id: productId, quantity, options });
       set({ basket: basketFromPayload(payload), loading: false });
       useUiStore.getState().notify({
         title: "Added to cart",
@@ -77,6 +83,76 @@ export const useCartStore = create((set, get) => ({
       successTitle: "Removed from cart",
       successMessage: "The item was removed."
     });
+  },
+
+  loadSavedItems: async () => {
+    set({ savedLoading: true, error: null });
+    try {
+      const payload = await checkoutApi.savedItems();
+      set({ savedItems: savedFromPayload(payload), savedLoading: false });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, savedLoading: false });
+      throw error;
+    }
+  },
+
+  saveLineForLater: async (lineId) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = await checkoutApi.saveForLater(lineId);
+      set({ basket: basketFromPayload(payload), savedItems: savedFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Saved for later",
+        message: "The item moved out of your cart.",
+        icon: "bookmark_added"
+      });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Could not save item", message });
+      throw error;
+    }
+  },
+
+  moveSavedToCart: async (savedLineId) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = await checkoutApi.moveSavedToCart(savedLineId);
+      set({ basket: basketFromPayload(payload), savedItems: savedFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Moved to cart",
+        message: "The item is ready in your cart.",
+        icon: "add_shopping_cart"
+      });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Could not move item", message });
+      throw error;
+    }
+  },
+
+  removeSavedItem: async (savedLineId) => {
+    set({ savedLoading: true, error: null });
+    try {
+      const payload = await checkoutApi.removeSavedItem(savedLineId);
+      set({ savedItems: savedFromPayload(payload), savedLoading: false });
+      useUiStore.getState().notify({
+        title: "Removed",
+        message: "The saved item was removed.",
+        icon: "bookmark_remove"
+      });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, savedLoading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Could not remove saved item", message });
+      throw error;
+    }
   },
 
   clearError: () => set({ error: null })

@@ -4,7 +4,10 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import StarRating from "./StarRating.jsx";
 import { formatDate } from "../../utils/formatDate";
 
-export default function ReviewCard({ review, account = false, saving = false, onDelete }) {
+export default function ReviewCard({ review, account = false, saving = false, onDelete, onVote }) {
+  const userVote = Number(review.user_vote || 0);
+  const canVote = Boolean(review.can_vote && onVote);
+
   return (
     <article className="review-card">
       <div className="review-card__head">
@@ -19,6 +22,28 @@ export default function ReviewCard({ review, account = false, saving = false, on
         <span>{review.reviewer_name || "Customer"}</span>
         <span>{formatDate(review.date_created)}</span>
       </div>
+      {!account ? (
+        <div className="review-card__votes" aria-label="Review helpful voting">
+          <button
+            type="button"
+            className={userVote === 1 ? "active" : ""}
+            disabled={!canVote || saving}
+            onClick={() => onVote?.(review.id, 1)}
+          >
+            <MaterialIcon name="thumb_up" size={17} />
+            {review.up_votes || 0}
+          </button>
+          <button
+            type="button"
+            className={userVote === -1 ? "active" : ""}
+            disabled={!canVote || saving}
+            onClick={() => onVote?.(review.id, -1)}
+          >
+            <MaterialIcon name="thumb_down" size={17} />
+            {review.down_votes || 0}
+          </button>
+        </div>
+      ) : null}
       {account ? (
         <div className="review-card__actions">
           <Link className="secondary-button" to={review.product_id ? `/products/${review.product_id}` : "/catalog"}>

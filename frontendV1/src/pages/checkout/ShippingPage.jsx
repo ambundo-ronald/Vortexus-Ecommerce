@@ -15,11 +15,19 @@ export default function ShippingPage() {
   const lines = basket?.lines || [];
 
   async function handleAddressSubmit(address) {
-    await saveAddress(address);
+    try {
+      await saveAddress(address);
+    } catch {
+      // Hook state already exposes the normalized message.
+    }
   }
 
   async function handleMethodSelect(methodCode) {
-    await selectMethod(methodCode);
+    try {
+      await selectMethod(methodCode);
+    } catch {
+      // Hook state already exposes the normalized message.
+    }
   }
 
   if (loading) return <Spinner label="Loading checkout" />;

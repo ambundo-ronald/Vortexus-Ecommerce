@@ -15,19 +15,32 @@ export default function PaymentPage() {
   const checkoutState = useCheckout();
   const paymentState = usePayment();
   const notify = useUiStore((state) => state.notify);
-  const { basket, shipping, loading, saving, error, placeOrder } = checkoutState;
+  const { basket, shipping, loading, saving, error, previewCheckout, placeOrder } = checkoutState;
   const paymentError = paymentState.error;
 
   async function handlePaymentSubmit(form) {
     try {
+      const preview = await previewCheckout();
+      if (preview && !preview.ready) {
+        const missing = preview.missing || [];
+        notify({
+          tone: "warning",
+          title: "Checkout needs one more step",
+          message: missing.includes("shipping_address") ? "Add a delivery address before placing the order." : "Select a delivery method before placing the order.",
+          icon: "info"
+        });
+        navigate("/checkout/shipping");
+        return;
+      }
       const payment = await paymentState.initializePayment(form);
       const orderPayload = await placeOrder({
         payment_reference: payment.reference,
         guest_email: form.payerEmail
       });
       sessionStorage.setItem("vortexus:lastOrder", JSON.stringify(orderPayload));
+      const orderNumber = orderPayload?.order?.number || orderPayload?.order?.order_number;
       notify({ title: "Order placed", message: "Your order has been received.", icon: "task_alt" });
-      navigate("/checkout/confirmation", { replace: true, state: { orderPayload } });
+      navigate(`/checkout/confirmation${orderNumber ? `?order_number=${encodeURIComponent(orderNumber)}` : ""}`, { replace: true, state: { orderPayload } });
     } catch {
       // Hook state already exposes the normalized message.
     }

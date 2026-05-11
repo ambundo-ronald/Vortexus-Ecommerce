@@ -10,6 +10,8 @@ export const wishlistApi = {
   lists: () => apiClient.get(ENDPOINTS.wishlist.lists).then((response) => response.data),
   createList: (payload) => apiClient.post(ENDPOINTS.wishlist.lists, payload).then((response) => response.data),
   list: (wishlistId) => apiClient.get(ENDPOINTS.wishlist.list(wishlistId)).then((response) => response.data),
+  share: (wishlistId, payload) => apiClient.post(ENDPOINTS.wishlist.share(wishlistId), payload).then((response) => response.data),
+  shared: (key) => apiClient.get(ENDPOINTS.wishlist.shared(key)).then((response) => response.data),
   addItem: (wishlistId, payload) =>
     apiClient.post(ENDPOINTS.wishlist.listItems(wishlistId), payload).then((response) => response.data),
   removeItem: (wishlistId, productId) =>

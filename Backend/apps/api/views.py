@@ -80,6 +80,8 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         if getattr(image, "original", None):
             images.append(image.original.url or "")
 
+    options = [_serialize_product_option(option) for option in product.options.all()]
+
     return {
         **card,
         "description": product.description or "",
@@ -87,8 +89,27 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         "primary_image": _get_primary_image_url(product),
         "categories": [_serialize_category(category) for category in product.categories.all()],
         "specifications": specs,
+        "options": options,
+        "has_options": bool(options),
         "updated_at": product.date_updated,
         "is_public": product.is_public,
+    }
+
+
+def _serialize_product_option(option) -> dict:
+    choices = [
+        {'value': value, 'label': label}
+        for value, label in option.get_choices()
+        if value not in (None, '')
+    ]
+    return {
+        'id': option.id,
+        'name': option.name,
+        'code': option.code,
+        'type': option.type,
+        'required': option.required,
+        'help_text': option.help_text or '',
+        'choices': choices,
     }
 
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import ProductImageGallery from "../../components/catalog/ProductImageGallery.jsx";
@@ -24,6 +24,13 @@ export default function ProductDetailPage() {
   const cartLoading = useCartStore((state) => state.loading);
   const { user } = useAuth();
   const loadStatus = useWishlistStore((state) => state.loadStatus);
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [optionError, setOptionError] = useState("");
+  const productOptions = useMemo(() => product?.options || product?.product_options || [], [product]);
+  const missingRequiredOptions = useMemo(
+    () => productOptions.filter((option) => option.required && !selectedOptions[option.id || option.code]),
+    [productOptions, selectedOptions]
+  );
 
   useEffect(() => {
     if (user && product?.id) void loadStatus([product.id]);
@@ -40,8 +47,20 @@ export default function ProductDetailPage() {
   const rating = Number(product.rating || product.average_review_score || 0);
 
   async function handleAddToCart() {
+    if (missingRequiredOptions.length) {
+      setOptionError(`Choose ${missingRequiredOptions.map((option) => option.name || option.code).join(", ")} before adding to cart.`);
+      return;
+    }
     try {
-      await addItem(product.id);
+      setOptionError("");
+      const options = productOptions
+        .map((option) => ({
+          option_id: option.id || option.option_id,
+          code: option.code,
+          value: selectedOptions[option.id || option.code] || ""
+        }))
+        .filter((option) => option.value !== "");
+      await addItem(product.id, 1, options);
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -82,6 +101,20 @@ export default function ProductDetailPage() {
             </div>
           </dl>
           <p>{product.description || "No product description has been added yet."}</p>
+          {productOptions.length ? (
+            <div className="product-options">
+              <h2>Choose options</h2>
+              {optionError ? <p className="product-option-error">{optionError}</p> : null}
+              {productOptions.map((option) => (
+                <ProductOptionField
+                  key={option.id || option.code}
+                  option={option}
+                  value={selectedOptions[option.id || option.code] || ""}
+                  onChange={(value) => setSelectedOptions((current) => ({ ...current, [option.id || option.code]: value }))}
+                />
+              ))}
+            </div>
+          ) : null}
           <div className="product-actions">
             <button className="primary-button" type="button" disabled={cartLoading} onClick={() => void handleAddToCart()}>
               <MaterialIcon name="add_shopping_cart" size={19} />
@@ -109,5 +142,38 @@ export default function ProductDetailPage() {
 
       <RelatedProducts products={related} />
     </>
+  );
+}
+
+function ProductOptionField({ option, value, onChange }) {
+  const choices = option.choices || option.values || option.options || [];
+  const label = option.name || option.label || option.code || "Option";
+  const required = Boolean(option.required);
+  const helpText = option.help_text || option.helpText || "";
+
+  return (
+    <label className="product-option-field">
+      <span>
+        {label}
+        {required ? " *" : ""}
+      </span>
+      {helpText ? <small>{helpText}</small> : null}
+      {choices.length ? (
+        <select value={value} required={required} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Select {label.toLowerCase()}</option>
+          {choices.map((choice) => {
+            const choiceValue = choice.value ?? choice.id ?? choice;
+            const choiceLabel = choice.label ?? choice.name ?? choice.value ?? choice;
+            return (
+              <option key={choiceValue} value={choiceValue}>
+                {choiceLabel}
+              </option>
+            );
+          })}
+        </select>
+      ) : (
+        <input value={value} required={required} placeholder={`Enter ${label.toLowerCase()}`} onChange={(event) => onChange(event.target.value)} />
+      )}
+    </label>
   );
 }
