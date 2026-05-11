@@ -348,6 +348,11 @@ class SupplierAdminCollectionAPIView(APIView):
 class SupplierAdminDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
+    def get(self, request, supplier_id: int):
+        SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
+        supplier_profile = get_object_or_404(SupplierProfile.objects.select_related('user', 'partner'), id=supplier_id)
+        return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
+
     def patch(self, request, supplier_id: int):
         SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
         supplier_profile = get_object_or_404(SupplierProfile.objects.select_related('user', 'partner'), id=supplier_id)

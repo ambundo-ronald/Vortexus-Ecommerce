@@ -59,7 +59,7 @@ from .admin_extra_views import (
     AdminWeightBasedShippingDetailAPIView,
 )
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
-from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView
+from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .health_views import LivenessAPIView, ReadinessAPIView
 from .integration_views import (
     ERPNextCatalogImportAPIView,
@@ -92,6 +92,11 @@ from .order_views import (
     CustomerOrderStatusAPIView,
 )
 from .media_views import AdminMediaCollectionAPIView, AdminMediaDetailAPIView
+from .marketing_content_views import (
+    AdminMarketingBlockCollectionAPIView,
+    AdminMarketingBlockDetailAPIView,
+    PublicMarketingBlockCollectionAPIView,
+)
 from .settings_views import AdminSettingsAPIView
 from .storefront_views import (
     AccountAddressCollectionAPIView,
@@ -153,6 +158,7 @@ from .payment_views import (
     PaymentMethodCollectionAPIView,
     PaymentSessionDetailAPIView,
 )
+from .payment_config_views import AdminPaymentConfigurationAPIView
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
 from .supplier_views import (
     SupplierAdminCollectionAPIView,
@@ -185,9 +191,16 @@ from .views import (
     ProductListAPIView,
     QuoteRequestAPIView,
 )
-from .user_views import AdminUserCollectionAPIView, AdminUserDetailAPIView
+from .user_views import (
+    AdminUserCollectionAPIView,
+    AdminUserDetailAPIView,
+    AdminUserPasswordResetAPIView,
+    AdminUserProductAlertCollectionAPIView,
+    AdminUserProductAlertDetailAPIView,
+)
 
 urlpatterns = [
+    path('', ApiRootAPIView.as_view(), name='api-root'),
     path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
     path('docs.json', ApiDocsJsonAPIView.as_view(), name='api-docs-json'),
     path('health/live/', LivenessAPIView.as_view(), name='health-live'),
@@ -268,9 +281,13 @@ urlpatterns = [
     path('admin/reviews/<int:review_id>/', AdminReviewDetailAPIView.as_view(), name='admin-review-detail'),
     path('admin/users/', AdminUserCollectionAPIView.as_view(), name='admin-users'),
     path('admin/users/<int:user_id>/', AdminUserDetailAPIView.as_view(), name='admin-user-detail'),
+    path('admin/users/<int:user_id>/password-reset/', AdminUserPasswordResetAPIView.as_view(), name='admin-user-password-reset'),
+    path('admin/users/<int:user_id>/product-alerts/', AdminUserProductAlertCollectionAPIView.as_view(), name='admin-user-product-alerts'),
+    path('admin/users/<int:user_id>/product-alerts/<int:alert_id>/', AdminUserProductAlertDetailAPIView.as_view(), name='admin-user-product-alert-detail'),
     path('admin/media/', AdminMediaCollectionAPIView.as_view(), name='admin-media'),
     path('admin/media/<int:image_id>/', AdminMediaDetailAPIView.as_view(), name='admin-media-detail'),
     path('admin/settings/', AdminSettingsAPIView.as_view(), name='admin-settings'),
+    path('admin/payments/config/', AdminPaymentConfigurationAPIView.as_view(), name='admin-payment-config'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/statistics/', AdminOrderStatisticsAPIView.as_view(), name='admin-order-statistics'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),
@@ -289,6 +306,8 @@ urlpatterns = [
     path('admin/shipping/weight-based/<int:method_id>/bands/<int:band_id>/', AdminWeightBandDetailAPIView.as_view(), name='admin-shipping-weight-band-detail'),
     path('admin/pages/', AdminPageCollectionAPIView.as_view(), name='admin-pages'),
     path('admin/pages/<int:page_id>/', AdminPageDetailAPIView.as_view(), name='admin-page-detail'),
+    path('admin/marketing-blocks/', AdminMarketingBlockCollectionAPIView.as_view(), name='admin-marketing-blocks'),
+    path('admin/marketing-blocks/<int:block_id>/', AdminMarketingBlockDetailAPIView.as_view(), name='admin-marketing-block-detail'),
     path('admin/communications/', AdminCommunicationCollectionAPIView.as_view(), name='admin-communications'),
     path('admin/communications/<slug:slug>/', AdminCommunicationDetailAPIView.as_view(), name='admin-communication-detail'),
     path('admin/reports/', AdminReportListAPIView.as_view(), name='admin-reports'),
@@ -375,6 +394,7 @@ urlpatterns = [
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/', ProductReviewDetailAPIView.as_view(), name='catalog-product-review-detail'),
     path('catalog/products/<int:product_id>/alerts/', ProductAlertCreateAPIView.as_view(), name='catalog-product-alerts'),
     path('catalog/products/<int:product_id>/viewed/', ProductViewedAPIView.as_view(), name='catalog-product-viewed'),
+    path('content/marketing-blocks/', PublicMarketingBlockCollectionAPIView.as_view(), name='marketing-blocks'),
     path('product-alerts/confirm/<str:key>/', ProductAlertConfirmAPIView.as_view(), name='product-alert-confirm'),
     path('product-alerts/cancel/<str:key>/', ProductAlertCancelAPIView.as_view(), name='product-alert-cancel'),
     path('offers/', OfferCollectionAPIView.as_view(), name='offers'),

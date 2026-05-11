@@ -20,6 +20,19 @@ export interface UserFormPayload {
   password?: string
 }
 
+export interface UserProductAlert {
+  id: number
+  product_id: number
+  product_title: string
+  email: string
+  status: string
+  key: string
+  date_created: string
+  date_confirmed: string | null
+  date_cancelled: string | null
+  date_closed: string | null
+}
+
 function extractApiError(err: any) {
   const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
   const errors = err?.data?.error?.errors || err?.data
@@ -169,9 +182,66 @@ export function useUser() {
     }
   }
 
+  async function generatePasswordReset(id: number | string) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, uid: string, token: string, email: string }>(`/admin/users/${id}/password-reset/`, {
+        method: 'POST',
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = extractApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function getUserProductAlerts(id: number | string) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ results: UserProductAlert[] }>(`/admin/users/${id}/product-alerts/`, {
+        method: 'GET',
+      })
+      return { success: true, data: result.results }
+    }
+    catch (err: any) {
+      error.value = extractApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function cancelUserProductAlert(userId: number | string, alertId: number | string) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ alert: UserProductAlert }>(`/admin/users/${userId}/product-alerts/${alertId}/`, {
+        method: 'DELETE',
+      })
+      return { success: true, data: result.alert }
+    }
+    catch (err: any) {
+      error.value = extractApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
+    cancelUserProductAlert,
     loading,
     error,
+    generatePasswordReset,
+    getUserProductAlerts,
     getUsers,
     getUser,
     createUser,

@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 from django.conf import settings
 
+from .config import get_payment_setting, provider_is_enabled
 from .services import confirm_payment_session
 
 
@@ -20,12 +21,14 @@ class MpesaGatewayError(Exception):
 
 
 def mpesa_is_configured() -> bool:
+    if not provider_is_enabled('mpesa', default=True):
+        return False
     required = [
-        settings.MPESA_CONSUMER_KEY,
-        settings.MPESA_CONSUMER_SECRET,
-        settings.MPESA_SHORTCODE,
-        settings.MPESA_PASSKEY,
-        settings.MPESA_CALLBACK_URL,
+        get_payment_setting('mpesa', 'consumer_key', ''),
+        get_payment_setting('mpesa', 'consumer_secret', ''),
+        get_payment_setting('mpesa', 'shortcode', ''),
+        get_payment_setting('mpesa', 'passkey', ''),
+        get_payment_setting('mpesa', 'callback_url', ''),
     ]
     return all(required)
 
@@ -40,21 +43,21 @@ def initiate_stk_push(payment_session) -> dict:
     phone_number = _normalize_phone_number(payment_session.payer_phone)
 
     payload = {
-        'BusinessShortCode': settings.MPESA_SHORTCODE,
+        'BusinessShortCode': get_payment_setting('mpesa', 'shortcode', ''),
         'Password': password,
         'Timestamp': timestamp,
-        'TransactionType': settings.MPESA_TRANSACTION_TYPE,
+        'TransactionType': get_payment_setting('mpesa', 'transaction_type', 'CustomerPayBillOnline'),
         'Amount': int(Decimal(str(payment_session.amount)).quantize(Decimal('1'))),
         'PartyA': phone_number,
-        'PartyB': settings.MPESA_SHORTCODE,
+        'PartyB': get_payment_setting('mpesa', 'shortcode', ''),
         'PhoneNumber': phone_number,
-        'CallBackURL': settings.MPESA_CALLBACK_URL,
+        'CallBackURL': get_payment_setting('mpesa', 'callback_url', ''),
         'AccountReference': payment_session.reference,
         'TransactionDesc': f'Vortexus payment {payment_session.reference}',
     }
 
     response_data = _post_json(
-        url=f'{settings.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest',
+        url=f'{get_payment_setting("mpesa", "base_url", "https://sandbox.safaricom.co.ke")}/mpesa/stkpush/v1/processrequest',
         payload=payload,
         headers={'Authorization': f'Bearer {access_token}'},
     )
@@ -87,16 +90,59 @@ def query_stk_push_status(payment_session) -> dict:
     access_token = _generate_access_token()
     timestamp = _timestamp()
     payload = {
-        'BusinessShortCode': settings.MPESA_SHORTCODE,
+        'BusinessShortCode': get_payment_setting('mpesa', 'shortcode', ''),
         'Password': _password(timestamp),
         'Timestamp': timestamp,
         'CheckoutRequestID': checkout_request_id,
     }
     return _post_json(
-        url=f'{settings.MPESA_BASE_URL}/mpesa/stkpushquery/v1/query',
+        url=f'{get_payment_setting("mpesa", "base_url", "https://sandbox.safaricom.co.ke")}/mpesa/stkpushquery/v1/query',
         payload=payload,
         headers={'Authorization': f'Bearer {access_token}'},
     )
+
+
+def handle_stk_query_result(payment_session, query_payload: dict):
+    result_code = query_payload.get('ResultCode')
+    if result_code is None:
+        return payment_session
+
+    result_code = str(result_code)
+    result_desc = query_payload.get('ResultDesc', '')
+    checkout_request_id = query_payload.get('CheckoutRequestID', '') or payment_session.provider_payload.get('checkout_request_id', '')
+    merchant_request_id = query_payload.get('MerchantRequestID', '') or payment_session.provider_payload.get('merchant_request_id', '')
+    payment_session.provider_payload = {
+        **payment_session.provider_payload,
+        'query_result_code': result_code,
+        'query_result_desc': result_desc,
+    }
+    payment_session.save(update_fields=['provider_payload', 'updated_at'])
+
+    if result_code == '0':
+        return confirm_payment_session(
+            payment_session,
+            success=True,
+            external_reference=checkout_request_id or merchant_request_id,
+            metadata={
+                'mpesa_result_code': result_code,
+                'mpesa_result_desc': result_desc,
+                'confirmed_via': 'stk_query',
+            },
+        )
+
+    if result_code in {'1', '1032', '1037', '2001'}:
+        return confirm_payment_session(
+            payment_session,
+            success=False,
+            external_reference=checkout_request_id or merchant_request_id,
+            metadata={
+                'mpesa_result_code': result_code,
+                'mpesa_result_desc': result_desc,
+                'confirmed_via': 'stk_query',
+            },
+        )
+
+    return payment_session
 
 
 def handle_callback(payment_session, callback_payload: dict):
@@ -147,9 +193,9 @@ def find_payment_by_callback_reference(PaymentSession, callback_payload: dict):
 
 
 def _generate_access_token() -> str:
-    credentials = f'{settings.MPESA_CONSUMER_KEY}:{settings.MPESA_CONSUMER_SECRET}'.encode('utf-8')
+    credentials = f'{get_payment_setting("mpesa", "consumer_key", "")}:{get_payment_setting("mpesa", "consumer_secret", "")}'.encode('utf-8')
     basic_auth = base64.b64encode(credentials).decode('utf-8')
-    url = f"{settings.MPESA_BASE_URL}/oauth/v1/generate?{urlencode({'grant_type': 'client_credentials'})}"
+    url = f"{get_payment_setting('mpesa', 'base_url', 'https://sandbox.safaricom.co.ke')}/oauth/v1/generate?{urlencode({'grant_type': 'client_credentials'})}"
     response = _request_json(url, headers={'Authorization': f'Basic {basic_auth}'})
     access_token = response.get('access_token', '')
     if not access_token:
@@ -172,7 +218,7 @@ def _request_json(url: str, headers: dict | None = None) -> dict:
 
 def _execute_request(request: Request) -> dict:
     try:
-        with urlopen(request, timeout=settings.MPESA_TIMEOUT_SECONDS) as response:
+        with urlopen(request, timeout=int(get_payment_setting('mpesa', 'timeout_seconds', settings.MPESA_TIMEOUT_SECONDS))) as response:
             return json.loads(response.read().decode('utf-8'))
     except HTTPError as exc:  # pragma: no cover
         body = exc.read().decode('utf-8', errors='ignore')
@@ -186,7 +232,7 @@ def _timestamp() -> str:
 
 
 def _password(timestamp: str) -> str:
-    token = f'{settings.MPESA_SHORTCODE}{settings.MPESA_PASSKEY}{timestamp}'.encode('utf-8')
+    token = f'{get_payment_setting("mpesa", "shortcode", "")}{get_payment_setting("mpesa", "passkey", "")}{timestamp}'.encode('utf-8')
     return base64.b64encode(token).decode('utf-8')
 
 

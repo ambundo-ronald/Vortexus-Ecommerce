@@ -10,6 +10,7 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
+    "test:smoke": "node scripts/smoke-tests.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
     "deploy": "nuxthub deploy"

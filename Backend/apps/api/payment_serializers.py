@@ -1,6 +1,7 @@
 from rest_framework import serializers
+from django.conf import settings
 
-from apps.payments.services import available_payment_methods, get_payment_method
+from apps.payments.services import get_payment_method
 
 from .checkout_utils import get_selected_shipping_method, get_shipping_address
 from .order_serializers import build_order_prices
@@ -12,7 +13,7 @@ class PaymentMethodSerializer(serializers.Serializer):
 
 
 class PaymentInitializationSerializer(serializers.Serializer):
-    method = serializers.ChoiceField(choices=[(method['code'], method['name']) for method in available_payment_methods()])
+    method = serializers.ChoiceField(choices=[(method['code'], method['name']) for method in settings.PAYMENT_METHODS])
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
     payer_email = serializers.EmailField(required=False, allow_blank=True)
 
@@ -25,6 +26,8 @@ class PaymentInitializationSerializer(serializers.Serializer):
 
         if basket.is_empty:
             raise serializers.ValidationError({'basket': 'Your basket is empty.'})
+        if method is None:
+            raise serializers.ValidationError({'method': 'This payment method is not currently available.'})
         if basket.is_shipping_required() and not shipping_address:
             raise serializers.ValidationError({'shipping_address': 'Shipping address is required before payment initialization.'})
         if basket.is_shipping_required() and not shipping_method:

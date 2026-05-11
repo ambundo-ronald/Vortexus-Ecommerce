@@ -2,6 +2,7 @@
 import { getUserTableColumns } from "~/config/userTableColumns";
 import type { SortBy, SortDir } from "~/types/Table";
 import type { UserTableRow } from "~/types/UserTableRow";
+import type { UserProductAlert } from "~/composables/useUser";
 
 const UBadge = resolveComponent("UBadge");
 const UButton = resolveComponent("UButton");
@@ -26,6 +27,8 @@ const isSaving = ref(false);
 const editingUserId = ref<string | null>(null);
 const isEditorOpen = ref(false);
 const selectedUserDetail = ref<Record<string, any> | null>(null);
+const productAlerts = ref<UserProductAlert[]>([]);
+const resetPayload = ref<{ uid: string, token: string, email: string } | null>(null);
 const saveError = ref("");
 const summary = ref({
   total: 0,
@@ -76,7 +79,7 @@ const editableStatusOptions = [
   { label: "Suspended", value: "suspended" },
 ];
 
-const { createUser, getUser, getUsers, updateUser } = useUser();
+const { cancelUserProductAlert, createUser, generatePasswordReset, getUser, getUserProductAlerts, getUsers, updateUser } = useUser();
 const toast = useToast();
 
 const columns = getUserTableColumns({
@@ -89,6 +92,8 @@ const columns = getUserTableColumns({
 function resetForm() {
   editingUserId.value = null;
   selectedUserDetail.value = null;
+  productAlerts.value = [];
+  resetPayload.value = null;
   saveError.value = "";
   userForm.email = "";
   userForm.first_name = "";
@@ -114,6 +119,14 @@ function formatDate(value?: string) {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+const activeAlertCount = computed(() => productAlerts.value.filter(alert => alert.status === "Active").length);
+
+function resetConfirmUrl() {
+  if (!resetPayload.value)
+    return "";
+  return `/password-reset/confirm/${resetPayload.value.uid}/${resetPayload.value.token}/`;
 }
 
 async function loadUsers() {
@@ -181,6 +194,7 @@ async function openEditUser(user: UserTableRow) {
     userForm.role = data.role;
     userForm.status = data.status;
     userForm.isSupplier = data.isSupplier;
+    await loadUserProductAlerts(rowUser.id);
   }
   else {
     isEditorOpen.value = false;
@@ -189,6 +203,44 @@ async function openEditUser(user: UserTableRow) {
       description: result.error || "Please try again.",
       color: "error",
     });
+  }
+}
+
+async function loadUserProductAlerts(userId = editingUserId.value) {
+  if (!userId)
+    return;
+  const result = await getUserProductAlerts(userId);
+  if (result.success)
+    productAlerts.value = result.data || [];
+  else
+    toast.add({ title: "Could not load product alerts", description: result.error || "Please try again.", color: "error" });
+}
+
+async function requestPasswordReset() {
+  if (!editingUserId.value)
+    return;
+  isSaving.value = true;
+  const result = await generatePasswordReset(editingUserId.value);
+  if (result.success && result.data) {
+    resetPayload.value = result.data;
+    toast.add({ title: "Reset token generated", description: "Use the token payload with the password reset confirm endpoint.", color: "success" });
+  }
+  else {
+    toast.add({ title: "Reset failed", description: result.error || "Could not generate reset token.", color: "error" });
+  }
+  isSaving.value = false;
+}
+
+async function cancelAlert(alert: UserProductAlert) {
+  if (!editingUserId.value)
+    return;
+  const result = await cancelUserProductAlert(editingUserId.value, alert.id);
+  if (result.success) {
+    toast.add({ title: "Alert cancelled", description: alert.product_title || `Alert #${alert.id}`, color: "success" });
+    await loadUserProductAlerts();
+  }
+  else {
+    toast.add({ title: "Could not cancel alert", description: result.error || "Please try again.", color: "error" });
   }
 }
 
@@ -478,6 +530,79 @@ watch([roleFilter, statusFilter, pageSize], () => {
             >
               {{ option.label }}
             </UButton>
+          </div>
+        </div>
+
+        <div v-if="editingUserId" class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+          <div class="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h4 class="font-bold text-slate-950">Password reset support</h4>
+              <p class="text-sm text-slate-500">Generate a reset token for the public password reset confirm flow.</p>
+            </div>
+            <UButton color="neutral" variant="outline" :loading="isSaving" @click="requestPasswordReset">
+              <UIcon name="i-lucide-key-round" />
+              Generate reset
+            </UButton>
+          </div>
+          <div v-if="resetPayload" class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+            <p class="font-semibold text-blue-950">Reset payload for {{ resetPayload.email }}</p>
+            <dl class="mt-2 grid grid-cols-1 gap-2 text-blue-900 md:grid-cols-2">
+              <div>
+                <dt class="font-semibold">UID</dt>
+                <dd class="break-all font-mono text-xs">{{ resetPayload.uid }}</dd>
+              </div>
+              <div>
+                <dt class="font-semibold">Token</dt>
+                <dd class="break-all font-mono text-xs">{{ resetPayload.token }}</dd>
+              </div>
+              <div class="md:col-span-2">
+                <dt class="font-semibold">Frontend path</dt>
+                <dd class="break-all font-mono text-xs">{{ resetConfirmUrl() }}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        <div v-if="editingUserId" class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+          <div class="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h4 class="font-bold text-slate-950">Product alerts</h4>
+              <p class="text-sm text-slate-500">{{ activeAlertCount }} active alerts for this account.</p>
+            </div>
+            <UButton color="neutral" variant="outline" @click="loadUserProductAlerts()">
+              <UIcon name="i-lucide-refresh-cw" />
+              Refresh alerts
+            </UButton>
+          </div>
+
+          <div v-if="!productAlerts.length" class="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+            No product alerts recorded for this user.
+          </div>
+          <div v-else class="divide-y divide-slate-100 rounded-lg border border-slate-200">
+            <div
+              v-for="alert in productAlerts"
+              :key="alert.id"
+              class="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between"
+            >
+              <div class="min-w-0">
+                <p class="truncate font-semibold text-slate-950">{{ alert.product_title || `Product #${alert.product_id}` }}</p>
+                <p class="text-xs text-slate-500">{{ alert.email || userForm.email }} - {{ formatDate(alert.date_created) }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <UBadge :color="alert.status === 'Active' ? 'success' : alert.status === 'Unconfirmed' ? 'warning' : 'neutral'" variant="soft">
+                  {{ alert.status }}
+                </UBadge>
+                <UButton
+                  v-if="alert.status === 'Active' || alert.status === 'Unconfirmed'"
+                  color="error"
+                  variant="ghost"
+                  size="sm"
+                  @click="cancelAlert(alert)"
+                >
+                  Cancel
+                </UButton>
+              </div>
+            </div>
           </div>
         </div>
 

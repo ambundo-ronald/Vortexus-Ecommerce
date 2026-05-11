@@ -1,0 +1,70 @@
+from django.apps import apps
+from django.conf import settings
+from django.db import OperationalError, ProgrammingError
+
+
+PROVIDER_SETTINGS = {
+    'mpesa': {
+        'public': {
+            'base_url': 'MPESA_BASE_URL',
+            'shortcode': 'MPESA_SHORTCODE',
+            'callback_url': 'MPESA_CALLBACK_URL',
+            'transaction_type': 'MPESA_TRANSACTION_TYPE',
+            'timeout_seconds': 'MPESA_TIMEOUT_SECONDS',
+        },
+        'secret': {
+            'consumer_key': 'MPESA_CONSUMER_KEY',
+            'consumer_secret': 'MPESA_CONSUMER_SECRET',
+            'passkey': 'MPESA_PASSKEY',
+        },
+    },
+    'airtel_money': {
+        'public': {
+            'provider_name': 'AIRTEL_MONEY_PROVIDER_NAME',
+        },
+        'secret': {},
+    },
+    'card': {
+        'public': {
+            'provider_name': 'CARD_PROVIDER_NAME',
+        },
+        'secret': {},
+    },
+}
+
+
+def get_provider_config(provider: str):
+    PaymentProviderConfiguration = apps.get_model('payments', 'PaymentProviderConfiguration')
+    try:
+        return PaymentProviderConfiguration.objects.filter(provider=provider).first()
+    except (OperationalError, ProgrammingError):
+        return None
+
+
+def provider_is_enabled(provider: str, default: bool = True) -> bool:
+    config = get_provider_config(provider)
+    if config is None:
+        return default
+    return bool(config.is_enabled)
+
+
+def get_payment_setting(provider: str, key: str, default=None):
+    config = get_provider_config(provider)
+    if config:
+        if key in (config.public_config or {}):
+            return config.public_config.get(key)
+        if key in (config.secret_config or {}):
+            return config.secret_config.get(key)
+
+    setting_name = PROVIDER_SETTINGS.get(provider, {}).get('public', {}).get(key)
+    if not setting_name:
+        setting_name = PROVIDER_SETTINGS.get(provider, {}).get('secret', {}).get(key)
+    if not setting_name:
+        return default
+
+    return getattr(settings, setting_name, default)
+
+
+def has_payment_secret(provider: str, key: str) -> bool:
+    value = get_payment_setting(provider, key, '')
+    return bool(value)

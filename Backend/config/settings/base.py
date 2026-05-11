@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.inventory',
     'apps.integrations',
     'apps.marketplace',
+    'apps.content',
     'apps.notifications',
     'apps.payments',
     'apps.search',

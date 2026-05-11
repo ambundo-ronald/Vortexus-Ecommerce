@@ -1,7 +1,11 @@
+from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,6 +15,22 @@ from apps.auditlog.services import record_audit_event
 from .user_serializers import AdminUserDetailSerializer, AdminUserListSerializer, AdminUserWriteSerializer
 
 User = get_user_model()
+
+
+def _admin_product_alert_payload(alert):
+    product = getattr(alert, 'product', None)
+    return {
+        'id': alert.id,
+        'product_id': alert.product_id,
+        'product_title': getattr(product, 'title', '') or '',
+        'email': alert.email or getattr(getattr(alert, 'user', None), 'email', '') or '',
+        'status': alert.status,
+        'key': alert.key,
+        'date_created': alert.date_created,
+        'date_confirmed': alert.date_confirmed,
+        'date_cancelled': alert.date_cancelled,
+        'date_closed': getattr(alert, 'date_closed', None),
+    }
 
 
 def _admin_users_queryset():
@@ -159,3 +179,58 @@ class AdminUserDetailAPIView(APIView):
             },
         )
         return Response({'user': AdminUserDetailSerializer(user).data})
+
+
+class AdminUserPasswordResetAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, user_id: int):
+        user = get_object_or_404(_admin_users_queryset(), id=user_id)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        record_audit_event(
+            event_type='account.admin_user_password_reset_generated',
+            request=request,
+            actor=request.user,
+            target=user,
+            message='Admin generated a password reset token for a user account.',
+            metadata={'email': user.email},
+        )
+        return Response(
+            {
+                'detail': 'Password reset token generated.',
+                'uid': uid,
+                'token': token,
+                'email': user.email,
+            }
+        )
+
+
+class AdminUserProductAlertCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, user_id: int):
+        user = get_object_or_404(_admin_users_queryset(), id=user_id)
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alerts = ProductAlert.objects.filter(user=user).select_related('product').order_by('-date_created')
+        return Response({'results': [_admin_product_alert_payload(alert) for alert in alerts]})
+
+
+class AdminUserProductAlertDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def delete(self, request, user_id: int, alert_id: int):
+        user = get_object_or_404(_admin_users_queryset(), id=user_id)
+        ProductAlert = apps.get_model('customer', 'ProductAlert')
+        alert = get_object_or_404(ProductAlert, id=alert_id, user=user)
+        if alert.can_be_cancelled:
+            alert.cancel()
+        record_audit_event(
+            event_type='account.admin_user_product_alert_cancelled',
+            request=request,
+            actor=request.user,
+            target=user,
+            message='Admin cancelled a user product alert.',
+            metadata={'alert_id': alert.id, 'product_id': alert.product_id, 'status': alert.status},
+        )
+        return Response({'alert': _admin_product_alert_payload(alert)})

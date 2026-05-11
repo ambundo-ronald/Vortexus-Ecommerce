@@ -1,13 +1,16 @@
 import { Link } from "react-router-dom";
 
 import HeroImageCarousel from "../../components/home/HeroImageCarousel.jsx";
+import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks, PromoBannerStrip } from "../../components/home/MarketingBlocks.jsx";
 import ProductCarousel from "../../components/catalog/ProductCarousel.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import Alert from "../../components/ui/Alert.jsx";
+import { useMarketingBlocks } from "../../hooks/useMarketingBlocks";
 import { useProducts } from "../../hooks/useProducts";
 import { useRecommendations } from "../../hooks/useRecommendations";
 
 export default function HomePage() {
+  const { blocks: marketingBlocks, loading: marketingLoading } = useMarketingBlocks();
   const {
     recommendations,
     loading: recommendationsLoading,
@@ -23,11 +26,19 @@ export default function HomePage() {
     page_size: 8
   });
 
+  const marketingByPlacement = marketingBlocks.reduce((groups, block) => {
+    const placement = block.placement || "featured";
+    return { ...groups, [placement]: [...(groups[placement] || []), block] };
+  }, {});
+
   return (
     <>
-      <HeroImageCarousel />
+      <AnnouncementStrip blocks={marketingByPlacement.announcement} />
+      <HeroImageCarousel blocks={marketingByPlacement.home_hero} loading={marketingLoading} />
+      <PromoBannerStrip blocks={marketingByPlacement.promo_banner} />
 
       <ProductCarousel products={recommendations} loading={recommendationsLoading} />
+      <FeaturedMarketingBlocks blocks={marketingByPlacement.featured} />
 
       <section className="content-section">
         <div className="section-heading">
@@ -46,6 +57,8 @@ export default function HomePage() {
         <Alert>{newestError || recommendationsError}</Alert>
         <ProductGrid products={newestProducts.length ? newestProducts : recommendations} loading={newestLoading || recommendationsLoading} skeletonCount={8} />
       </section>
+
+      <BrandStrip blocks={marketingByPlacement.brand_strip} />
     </>
   );
 }

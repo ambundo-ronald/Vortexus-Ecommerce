@@ -34,6 +34,14 @@ export interface IntegrationLog {
   created_at: string
 }
 
+export type ERPNextPreviewResource = 'items' | 'stock' | 'prices'
+
+export interface ERPNextPreviewResult {
+  resource: ERPNextPreviewResource
+  count: number
+  records: Record<string, any>[]
+}
+
 function readApiError(err: any) {
   return err?.data?.error?.detail
     || err?.data?.detail
@@ -116,6 +124,49 @@ export function useIntegrations() {
     }
   }
 
+  async function previewERPNext(connectionId: number, params: { resource: ERPNextPreviewResource, limit?: number }) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<ERPNextPreviewResult>(`/admin/integrations/${connectionId}/erpnext/preview/`, {
+        method: 'GET',
+        query: {
+          resource: params.resource,
+          limit: params.limit || 20,
+        },
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function importERPNextCatalog(connectionId: number, payload: { include_stock?: boolean }) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ summary: Record<string, any> }>(`/admin/integrations/${connectionId}/erpnext/import/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.summary }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -123,5 +174,7 @@ export function useIntegrations() {
     getLogs,
     testConnection,
     syncStock,
+    previewERPNext,
+    importERPNextCatalog,
   }
 }

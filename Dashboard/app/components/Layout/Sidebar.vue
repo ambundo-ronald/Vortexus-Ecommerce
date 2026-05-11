@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { mainNav, settingsNav, supportNav } from '~/config/navigation'
+import { navSections, supportNav } from '~/config/navigation'
 
 const route = useRoute()
 
@@ -30,13 +30,13 @@ const isLinkActive = (item: { to?: string }) => {
       </div>
     </NuxtLink>
 
-    <nav class="space-y-2">
-      <div class="text-xs font-bold uppercase tracking-wide text-slate-400">
-        Manage
-      </div>
-      <div class="w-full space-y-1">
-        <template v-for="item in mainNav" :key="item.label">
-          <NuxtLink v-if="item.to" :to="item.to" block>
+    <nav class="space-y-6">
+      <section v-for="section in navSections" :key="section.label" class="space-y-2">
+        <div class="text-xs font-bold uppercase tracking-wide text-slate-400">
+          {{ section.label }}
+        </div>
+        <div class="w-full space-y-1">
+          <NuxtLink v-for="item in section.items" :key="item.label" :to="item.to" block>
             <UButton
               color="neutral"
               variant="ghost"
@@ -48,17 +48,8 @@ const isLinkActive = (item: { to?: string }) => {
               {{ item.label }}
             </UButton>
           </NuxtLink>
-          <UButton
-            v-else
-            color="neutral"
-            variant="ghost"
-            class="w-full justify-start"
-            :icon="item.icon"
-          >
-            {{ item.label }}
-          </UButton>
-        </template>
-      </div>
+        </div>
+      </section>
     </nav>
 
     <div class="mt-auto">
@@ -82,25 +73,6 @@ const isLinkActive = (item: { to?: string }) => {
         </NuxtLink>
       </template>
 
-      <div class="mt-6 border-t border-slate-200 pt-4">
-        <h3 class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
-          Settings
-        </h3>
-        <template v-for="item in settingsNav" :key="item.label">
-          <NuxtLink v-if="item.to" :to="item.to">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              :active="isLinkActive(item)"
-              active-variant="soft"
-              class="w-full justify-start"
-              :icon="item.icon"
-            >
-              {{ item.label }}
-            </UButton>
-          </NuxtLink>
-        </template>
-      </div>
     </div>
   </div>
 </template>

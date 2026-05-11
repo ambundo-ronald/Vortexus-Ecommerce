@@ -59,3 +59,28 @@ class PaymentSession(models.Model):
     def __str__(self) -> str:
         return f'{self.reference}:{self.method}:{self.status}'
 
+
+class PaymentProviderConfiguration(models.Model):
+    PROVIDER_MPESA = 'mpesa'
+    PROVIDER_AIRTEL_MONEY = 'airtel_money'
+    PROVIDER_CARD = 'card'
+
+    PROVIDER_CHOICES = [
+        (PROVIDER_MPESA, 'M-Pesa'),
+        (PROVIDER_AIRTEL_MONEY, 'Airtel Money'),
+        (PROVIDER_CARD, 'Card'),
+    ]
+
+    provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES, unique=True)
+    is_enabled = models.BooleanField(default=True)
+    public_config = models.JSONField(default=dict, blank=True)
+    secret_config = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='payment_provider_updates')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['provider']
+
+    def __str__(self) -> str:
+        return f'{self.provider}:{"enabled" if self.is_enabled else "disabled"}'

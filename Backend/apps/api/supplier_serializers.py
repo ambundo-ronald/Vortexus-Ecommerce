@@ -11,6 +11,7 @@ from .serializers import ProductWriteSerializer
 class SupplierProfileSerializer(serializers.Serializer):
     def to_representation(self, supplier_profile):
         partner = supplier_profile.partner
+        user = supplier_profile.user
         return {
             'id': supplier_profile.id,
             'status': supplier_profile.status,
@@ -24,6 +25,14 @@ class SupplierProfileSerializer(serializers.Serializer):
                 'id': partner.id,
                 'name': partner.name,
                 'code': partner.code,
+            },
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_active': user.is_active,
             },
             'created_at': supplier_profile.created_at,
             'updated_at': supplier_profile.updated_at,
@@ -101,10 +110,36 @@ class SupplierProfileWriteSerializer(serializers.Serializer):
 
 class SupplierAdminStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['pending', 'approved', 'suspended'])
+    company_name = serializers.CharField(required=False, max_length=255)
+    contact_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    country_code = serializers.CharField(required=False, allow_blank=True, max_length=2)
+    website = serializers.URLField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
 
     def update(self, instance, validated_data):
-        instance.status = validated_data['status']
-        instance.save(update_fields=['status'])
+        dirty_fields = []
+
+        for field in ('status', 'company_name', 'contact_name', 'phone', 'website', 'notes'):
+            if field in validated_data:
+                value = validated_data[field].strip() if isinstance(validated_data[field], str) else validated_data[field]
+                if getattr(instance, field) != value:
+                    setattr(instance, field, value)
+                    dirty_fields.append(field)
+
+        if 'country_code' in validated_data:
+            country_code = (validated_data.get('country_code') or '').strip().upper()
+            if instance.country_code != country_code:
+                instance.country_code = country_code
+                dirty_fields.append('country_code')
+
+        if dirty_fields:
+            instance.save(update_fields=dirty_fields)
+
+        if 'company_name' in dirty_fields and instance.partner.name != instance.company_name:
+            instance.partner.name = instance.company_name
+            instance.partner.save(update_fields=['name'])
+
         return instance
 
 
