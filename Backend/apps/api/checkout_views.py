@@ -39,6 +39,16 @@ from .order_serializers import OrderPlacementSerializer, OrderSummarySerializer,
 logger = logging.getLogger(__name__)
 
 
+def _basket_value_error_message(exc: ValueError) -> str:
+    message = str(exc)
+    if 'same currency' in message and 'Proposed line has currency' in message:
+        return (
+            'This product uses a different currency from the items already in your cart. '
+            'Please checkout or clear the current cart first, then add this product.'
+        )
+    return message
+
+
 class BasketAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -53,11 +63,14 @@ class BasketItemCollectionAPIView(APIView):
     def post(self, request):
         serializer = BasketItemCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        line, _ = request.basket.add_product(
-            serializer.validated_data['product'],
-            quantity=serializer.validated_data['quantity'],
-            options=serializer.validated_data.get('options') or [],
-        )
+        try:
+            line, _ = request.basket.add_product(
+                serializer.validated_data['product'],
+                quantity=serializer.validated_data['quantity'],
+                options=serializer.validated_data.get('options') or [],
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({'basket': _basket_value_error_message(exc)}) from exc
         try:
             sync_basket_line_reservation(line)
         except InventoryReservationError as exc:

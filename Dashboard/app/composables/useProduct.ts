@@ -149,7 +149,7 @@ export function useProduct() {
     loading.value = true
     error.value = null
     try {
-      const result = await request<{ product: any }>('/catalog/products/', {
+      const result = await request<{ product: any }>('/admin/products/', {
         method: 'POST',
         body: mapFormToPayload(data),
       })
@@ -168,7 +168,7 @@ export function useProduct() {
     loading.value = true
     error.value = null
     try {
-      const result = await request<{ product: any }>(`/catalog/products/${id}/`, {
+      const result = await request<{ product: any }>(`/admin/products/${id}/`, {
         method: 'PATCH',
         body: mapFormToPayload(data),
       })
@@ -187,7 +187,7 @@ export function useProduct() {
     loading.value = true
     error.value = null
     try {
-      await request(`/catalog/products/${id}/`, {
+      await request(`/admin/products/${id}/`, {
         method: 'DELETE',
       })
       return { success: true }

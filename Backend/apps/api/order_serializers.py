@@ -5,6 +5,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .checkout_utils import (
+    apply_offers_to_basket,
     basket_currency,
     basket_subtotal_excl_tax,
     get_checkout_session,
@@ -456,6 +457,8 @@ def build_order_prices(basket, shipping_address, shipping_method):
     from oscar.core.prices import Price
 
     from apps.common.taxes import calculate_checkout_taxes
+
+    apply_offers_to_basket(basket, getattr(basket, 'owner', None))
 
     subtotal_excl_tax = basket_subtotal_excl_tax(basket)
     shipping_excl_tax = shipping_charge_for_method(shipping_method, basket)

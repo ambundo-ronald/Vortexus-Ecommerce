@@ -198,7 +198,14 @@ class OfferDetailAPIView(APIView):
 
     def get(self, request, slug: str):
         Offer = apps.get_model('offer', 'ConditionalOffer')
-        offer = get_object_or_404(Offer, slug=slug)
+        now = timezone.now()
+        offer = get_object_or_404(
+            Offer.objects.filter(status=Offer.OPEN).filter(
+                Q(start_datetime__isnull=True) | Q(start_datetime__lte=now),
+                Q(end_datetime__isnull=True) | Q(end_datetime__gte=now),
+            ),
+            slug=slug,
+        )
         return Response({'offer': _offer_payload(offer)})
 
 

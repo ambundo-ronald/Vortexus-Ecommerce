@@ -70,7 +70,7 @@ export default function OrderConfirmationPage() {
     <section className="checkout-page">
       <CheckoutStepper current="done" />
 
-      <div className="checkout-card confirmation-card">
+      <div className="checkout-card confirmation-card printable-order-summary">
         <span className="confirmation-icon">
           <MaterialIcon name="check_circle" size={34} />
         </span>
@@ -121,10 +121,16 @@ export default function OrderConfirmationPage() {
           </div>
         ) : null}
 
-        <Link className="primary-button" to="/catalog">
-          <MaterialIcon name="storefront" size={19} />
-          Continue shopping
-        </Link>
+        <div className="confirmation-actions no-print">
+          <button className="secondary-button" type="button" onClick={() => window.print()}>
+            <MaterialIcon name="print" size={19} />
+            Print summary
+          </button>
+          <Link className="primary-button" to="/catalog">
+            <MaterialIcon name="storefront" size={19} />
+            Continue shopping
+          </Link>
+        </div>
       </div>
     </section>
   );

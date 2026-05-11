@@ -8,5 +8,9 @@ export const authApi = {
   logout: () => apiClient.post(ENDPOINTS.account.logout).then((response) => response.data),
   me: () => apiClient.get(ENDPOINTS.account.me).then((response) => response.data),
   updateProfile: (payload) => apiClient.patch(ENDPOINTS.account.me, payload).then((response) => response.data),
-  changePassword: (payload) => apiClient.post(ENDPOINTS.account.password, payload).then((response) => response.data)
+  changePassword: (payload) => apiClient.post(ENDPOINTS.account.password, payload).then((response) => response.data),
+  requestPasswordReset: (payload) =>
+    apiClient.post(ENDPOINTS.account.passwordResetRequest, payload).then((response) => response.data),
+  confirmPasswordReset: (payload) =>
+    apiClient.post(ENDPOINTS.account.passwordResetConfirm, payload).then((response) => response.data)
 };

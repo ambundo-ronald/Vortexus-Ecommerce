@@ -34,6 +34,11 @@ export default function AccountDashboardPage() {
           <strong>Profile</strong>
           <span>Contact and preferences</span>
         </Link>
+        <Link className="account-action-card" to="/account/addresses">
+          <MaterialIcon name="location_on" size={24} />
+          <strong>Addresses</strong>
+          <span>Delivery and billing details</span>
+        </Link>
         <Link className="account-action-card" to="/account/reviews">
           <MaterialIcon name="reviews" size={24} />
           <strong>Reviews</strong>

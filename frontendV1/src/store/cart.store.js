@@ -12,6 +12,12 @@ const emptyBasket = {
   shipping_required: false
 };
 
+function addItemErrorTitle(message = "") {
+  if (message.toLowerCase().includes("different currency")) return "Cart currency mismatch";
+  if (message.toLowerCase().includes("out of stock") || message.toLowerCase().includes("available")) return "Not enough stock";
+  return "Could not add item";
+}
+
 function basketFromPayload(payload) {
   return payload?.basket || emptyBasket;
 }
@@ -53,7 +59,7 @@ export const useCartStore = create((set, get) => ({
     } catch (error) {
       const message = error.normalized?.message || error.message;
       set({ error: message, loading: false });
-      useUiStore.getState().notify({ tone: "danger", title: "Could not add item", message });
+      useUiStore.getState().notify({ tone: "warning", title: addItemErrorTitle(message), message });
       throw error;
     }
   },
@@ -151,6 +157,44 @@ export const useCartStore = create((set, get) => ({
       const message = error.normalized?.message || error.message;
       set({ error: message, savedLoading: false });
       useUiStore.getState().notify({ tone: "danger", title: "Could not remove saved item", message });
+      throw error;
+    }
+  },
+
+  applyVoucher: async (code) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = await checkoutApi.applyVoucher({ code });
+      set({ basket: basketFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Coupon applied",
+        message: "Your cart has been updated.",
+        icon: "sell"
+      });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "warning", title: "Coupon not applied", message });
+      throw error;
+    }
+  },
+
+  removeVoucher: async (voucherId) => {
+    set({ loading: true, error: null });
+    try {
+      const payload = await checkoutApi.removeVoucher(voucherId);
+      set({ basket: basketFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Coupon removed",
+        message: "Your cart has been updated.",
+        icon: "sell"
+      });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "warning", title: "Could not remove coupon", message });
       throw error;
     }
   },

@@ -19,5 +19,7 @@ export const checkoutApi = {
   savedItems: () => apiClient.get(ENDPOINTS.checkout.saved).then((response) => response.data),
   saveForLater: (lineId) => apiClient.post(ENDPOINTS.checkout.saveForLater(lineId)).then((response) => response.data),
   moveSavedToCart: (savedLineId) => apiClient.post(ENDPOINTS.checkout.moveSavedToCart(savedLineId)).then((response) => response.data),
-  removeSavedItem: (savedLineId) => apiClient.delete(ENDPOINTS.checkout.savedItem(savedLineId)).then((response) => response.data)
+  removeSavedItem: (savedLineId) => apiClient.delete(ENDPOINTS.checkout.savedItem(savedLineId)).then((response) => response.data),
+  applyVoucher: (payload) => apiClient.post(ENDPOINTS.checkout.vouchers, payload).then((response) => response.data),
+  removeVoucher: (voucherId) => apiClient.delete(ENDPOINTS.checkout.voucher(voucherId)).then((response) => response.data)
 };

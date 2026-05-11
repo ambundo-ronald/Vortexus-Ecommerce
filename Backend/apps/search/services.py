@@ -129,11 +129,13 @@ class ProductSearchService:
         results = []
         ids = [hit.get('_source', {}).get('id') for hit in response['hits']['hits'] if hit.get('_source', {}).get('id')]
         review_stats = self._review_stats_for_products(ids)
+        stock_counts = self._stock_counts_for_products(ids)
 
         for hit in response['hits']['hits']:
             source = hit.get('_source', {})
             product_id = source.get('id')
             stats = review_stats.get(product_id, {})
+            stock_count = stock_counts.get(product_id, source.get('stock_count', source.get('num_in_stock', 0)) or 0)
             results.append(
                 convert_product_payload(
                     {
@@ -145,7 +147,9 @@ class ProductSearchService:
                         'currency': source.get('currency', 'USD'),
                         'base_currency': source.get('currency', 'USD'),
                         'thumbnail': source.get('thumbnail', ''),
-                        'in_stock': source.get('in_stock', False),
+                        'in_stock': stock_count > 0,
+                        'stock_count': stock_count,
+                        'num_in_stock': stock_count,
                         'rating': stats.get('rating', source.get('rating')),
                         'review_count': stats.get('review_count', source.get('review_count', 0)),
                         'score': hit.get('_score'),
@@ -279,6 +283,15 @@ class ProductSearchService:
             }
             for row in rows
         }
+
+    def _stock_counts_for_products(self, product_ids: list[int]) -> dict[int, int]:
+        if not product_ids:
+            return {}
+        StockRecord = apps.get_model('partner', 'StockRecord')
+        counts: dict[int, int] = {}
+        for row in StockRecord.objects.filter(product_id__in=product_ids).order_by('product_id', 'id').values('product_id', 'num_in_stock'):
+            counts.setdefault(row['product_id'], int(row['num_in_stock'] or 0))
+        return counts
 
     def _filters_payload(self, query: str, filters: dict[str, Any], sort_by: str) -> dict[str, Any]:
         return {

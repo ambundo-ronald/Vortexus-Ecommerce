@@ -31,7 +31,10 @@ export default function LoginForm({ loading = false, error = "", onSubmit }) {
       </label>
 
       <label>
-        <span>Password</span>
+        <span className="auth-label-row">
+          Password
+          <Link to="/forgot-password">Forgot?</Link>
+        </span>
         <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
       </label>
 

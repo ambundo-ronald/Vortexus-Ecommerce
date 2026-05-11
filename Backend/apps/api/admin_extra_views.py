@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -45,6 +45,117 @@ def _page(request, queryset, serializer, default_page_size=50):
 
 def _payload_fields(request, allowed):
     return {field: request.data[field] for field in allowed if field in request.data}
+
+
+def _clean_blank(value):
+    return None if value in ('', None) else value
+
+
+def _clean_positive_int(value, field_name, *, required=False):
+    value = _clean_blank(value)
+    if value is None:
+        if required:
+            raise serializers.ValidationError({field_name: f'{field_name.replace("_", " ").title()} is required.'})
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise serializers.ValidationError({field_name: 'Enter a valid whole number.'}) from exc
+    if value <= 0:
+        raise serializers.ValidationError({field_name: 'Enter a number greater than zero.'})
+    return value
+
+
+def _clean_nonnegative_int(value, field_name, *, required=False):
+    value = _clean_blank(value)
+    if value is None:
+        if required:
+            raise serializers.ValidationError({field_name: f'{field_name.replace("_", " ").title()} is required.'})
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise serializers.ValidationError({field_name: 'Enter a valid whole number.'}) from exc
+    if value < 0:
+        raise serializers.ValidationError({field_name: 'Enter zero or a greater number.'})
+    return value
+
+
+def _clean_decimal_value(value, field_name, *, required=False):
+    value = _clean_blank(value)
+    if value is None:
+        if required:
+            raise serializers.ValidationError({field_name: f'{field_name.replace("_", " ").title()} is required.'})
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise serializers.ValidationError({field_name: 'Enter a valid number.'}) from exc
+
+
+def _validate_choice(model, field_name, value, choices):
+    valid_values = {choice_value for choice_value, _label in choices}
+    if value not in valid_values:
+        readable = ', '.join(str(choice_value) for choice_value in sorted(valid_values))
+        raise serializers.ValidationError({field_name: f'Choose one of: {readable}.'})
+    return value
+
+
+def _clean_proxy_class(value):
+    value = _clean_blank(value)
+    if value is None:
+        return None
+    if '.' not in str(value):
+        raise serializers.ValidationError(
+            {'proxy_class': 'Enter a full Python import path, or leave proxy class empty.'}
+        )
+    return str(value)
+
+
+def _validate_range(range_id):
+    range_id = _clean_positive_int(range_id, 'range_id')
+    if range_id is None:
+        return None
+    Range = get_model('offer', 'Range')
+    if not Range.objects.filter(id=range_id).exists():
+        raise serializers.ValidationError({'range_id': 'Select an existing product range.'})
+    return range_id
+
+
+def _validate_offer_relation(model_name, field_name, value):
+    object_id = _clean_positive_int(value, field_name, required=True)
+    model = get_model('offer', model_name)
+    if not model.objects.filter(id=object_id).exists():
+        raise serializers.ValidationError({field_name: f'Select an existing {model_name.lower()}.'})
+    return object_id
+
+
+def _validate_offer_status(Offer, status_value):
+    allowed = {Offer.OPEN, Offer.SUSPENDED, Offer.CONSUMED}
+    if status_value not in allowed:
+        raise serializers.ValidationError({'status': f'Choose one of: {", ".join(sorted(allowed))}.'})
+    return status_value
+
+
+def _validate_offer_dates(start_datetime, end_datetime):
+    if start_datetime and end_datetime and end_datetime <= start_datetime:
+        raise serializers.ValidationError({'end_datetime': 'End date must be after the start date.'})
+
+
+def _clean_offer(offer):
+    try:
+        offer.full_clean()
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else exc.messages) from exc
+    _validate_offer_dates(offer.start_datetime, offer.end_datetime)
+    return offer
+
+
+def _safe_offer_component_text(component, fallback):
+    try:
+        return str(component)
+    except Exception:
+        return fallback
 
 
 class AdminDashboardSummaryAPIView(APIView):
@@ -475,6 +586,7 @@ def _offer_payload(offer):
 
 
 def _condition_payload(condition):
+    fallback_name = f'{condition.type} condition'
     return {
         'id': condition.id,
         'type': condition.type,
@@ -482,12 +594,13 @@ def _condition_payload(condition):
         'range_name': condition.range.name if condition.range_id else '',
         'value': _decimal(condition.value),
         'proxy_class': condition.proxy_class or '',
-        'name': str(condition),
-        'description': condition.description,
+        'name': _safe_offer_component_text(condition, fallback_name),
+        'description': _safe_offer_component_text(condition, fallback_name),
     }
 
 
 def _benefit_payload(benefit):
+    fallback_name = f'{benefit.type} benefit'
     return {
         'id': benefit.id,
         'type': benefit.type,
@@ -496,8 +609,8 @@ def _benefit_payload(benefit):
         'value': _decimal(benefit.value),
         'max_affected_items': benefit.max_affected_items,
         'proxy_class': benefit.proxy_class or '',
-        'name': str(benefit),
-        'description': benefit.description,
+        'name': _safe_offer_component_text(benefit, fallback_name),
+        'description': _safe_offer_component_text(benefit, fallback_name),
     }
 
 
@@ -505,8 +618,14 @@ def _save_offer_component(instance, data, allowed_fields):
     for field in allowed_fields:
         if field in data:
             value = data[field]
-            if field in {'range_id', 'value', 'max_affected_items', 'proxy_class'} and value in ('', None):
-                value = None
+            if field == 'range_id':
+                value = _validate_range(value)
+            elif field == 'value':
+                value = _clean_decimal_value(value, field)
+            elif field == 'max_affected_items':
+                value = _clean_positive_int(value, field)
+            elif field == 'proxy_class':
+                value = _clean_proxy_class(value)
             setattr(instance, field, value)
     try:
         instance.full_clean()
@@ -525,11 +644,13 @@ class AdminOfferConditionCollectionAPIView(APIView):
 
     def post(self, request):
         Condition = get_model('offer', 'Condition')
+        condition_type = request.data.get('type', Condition.COUNT)
+        _validate_choice(Condition, 'type', condition_type, Condition.TYPE_CHOICES)
         condition = Condition(
-            type=request.data.get('type', Condition.COUNT),
-            range_id=request.data.get('range_id') or None,
-            value=request.data.get('value') or None,
-            proxy_class=request.data.get('proxy_class') or None,
+            type=condition_type,
+            range_id=_validate_range(request.data.get('range_id')),
+            value=_clean_decimal_value(request.data.get('value'), 'value'),
+            proxy_class=_clean_proxy_class(request.data.get('proxy_class')),
         )
         _save_offer_component(condition, {}, [])
         return Response({'condition': _condition_payload(condition)}, status=status.HTTP_201_CREATED)
@@ -543,6 +664,8 @@ class AdminOfferConditionDetailAPIView(APIView):
 
     def patch(self, request, condition_id: int):
         condition = get_object_or_404(get_model('offer', 'Condition'), id=condition_id)
+        if 'type' in request.data:
+            _validate_choice(type(condition), 'type', request.data.get('type'), type(condition).TYPE_CHOICES)
         _save_offer_component(condition, request.data, ['type', 'range_id', 'value', 'proxy_class'])
         return Response({'condition': _condition_payload(condition)})
 
@@ -560,12 +683,14 @@ class AdminOfferBenefitCollectionAPIView(APIView):
 
     def post(self, request):
         Benefit = get_model('offer', 'Benefit')
+        benefit_type = request.data.get('type', Benefit.PERCENTAGE)
+        _validate_choice(Benefit, 'type', benefit_type, Benefit.TYPE_CHOICES)
         benefit = Benefit(
-            type=request.data.get('type', Benefit.PERCENTAGE),
-            range_id=request.data.get('range_id') or None,
-            value=request.data.get('value') or None,
-            max_affected_items=request.data.get('max_affected_items') or None,
-            proxy_class=request.data.get('proxy_class') or None,
+            type=benefit_type,
+            range_id=_validate_range(request.data.get('range_id')),
+            value=_clean_decimal_value(request.data.get('value'), 'value'),
+            max_affected_items=_clean_positive_int(request.data.get('max_affected_items'), 'max_affected_items'),
+            proxy_class=_clean_proxy_class(request.data.get('proxy_class')),
         )
         _save_offer_component(benefit, {}, [])
         return Response({'benefit': _benefit_payload(benefit)}, status=status.HTTP_201_CREATED)
@@ -579,6 +704,8 @@ class AdminOfferBenefitDetailAPIView(APIView):
 
     def patch(self, request, benefit_id: int):
         benefit = get_object_or_404(get_model('offer', 'Benefit'), id=benefit_id)
+        if 'type' in request.data:
+            _validate_choice(type(benefit), 'type', request.data.get('type'), type(benefit).TYPE_CHOICES)
         _save_offer_component(benefit, request.data, ['type', 'range_id', 'value', 'max_affected_items', 'proxy_class'])
         return Response({'benefit': _benefit_payload(benefit)})
 
@@ -617,29 +744,30 @@ class AdminOfferCollectionAPIView(APIView):
 
     def post(self, request):
         Offer = get_model('offer', 'ConditionalOffer')
-        condition_id = request.data.get('condition_id')
-        benefit_id = request.data.get('benefit_id')
+        condition_id = _validate_offer_relation('Condition', 'condition_id', request.data.get('condition_id'))
+        benefit_id = _validate_offer_relation('Benefit', 'benefit_id', request.data.get('benefit_id'))
         voucher_id = request.data.get('voucher_id')
-        if not condition_id or not benefit_id:
-            raise serializers.ValidationError(
-                {
-                    'condition_id': 'Condition is required to create an offer.',
-                    'benefit_id': 'Benefit is required to create an offer.',
-                }
-            )
-        offer = Offer.objects.create(
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            raise serializers.ValidationError({'name': 'Offer name is required.'})
+        offer_type = request.data.get('offer_type') or (Offer.VOUCHER if voucher_id else Offer.SITE)
+        _validate_choice(Offer, 'offer_type', offer_type, Offer.TYPE_CHOICES)
+        status_value = _validate_offer_status(Offer, request.data.get('status', Offer.OPEN))
+        offer = Offer(
             name=request.data.get('name', ''),
-            slug=request.data.get('slug') or slugify(request.data.get('name', '')),
+            slug=request.data.get('slug') or slugify(name),
             description=request.data.get('description', ''),
-            offer_type=request.data.get('offer_type') or (Offer.VOUCHER if voucher_id else Offer.SITE),
-            status=request.data.get('status', Offer.OPEN),
+            offer_type=offer_type,
+            status=status_value,
             exclusive=bool(request.data.get('exclusive', False)),
             condition_id=condition_id,
             benefit_id=benefit_id,
-            priority=request.data.get('priority') or 0,
+            priority=_clean_nonnegative_int(request.data.get('priority'), 'priority') or 0,
             start_datetime=request.data.get('start_datetime') or None,
             end_datetime=request.data.get('end_datetime') or None,
         )
+        _clean_offer(offer)
+        offer.save()
         if voucher_id:
             voucher = get_object_or_404(get_model('voucher', 'Voucher'), id=voucher_id)
             voucher.offers.add(offer)
@@ -653,13 +781,29 @@ class AdminOfferDetailAPIView(APIView):
         return Response({'offer': _offer_payload(get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id))})
 
     def patch(self, request, offer_id: int):
+        Offer = get_model('offer', 'ConditionalOffer')
         offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id)
         for field in ['name', 'slug', 'description', 'offer_type', 'exclusive', 'status', 'priority', 'start_datetime', 'end_datetime', 'condition_id', 'benefit_id']:
             if field in request.data:
                 value = request.data[field]
-                if field in {'start_datetime', 'end_datetime'} and value in ('', None):
+                if field == 'name':
+                    value = (value or '').strip()
+                    if not value:
+                        raise serializers.ValidationError({'name': 'Offer name is required.'})
+                elif field == 'offer_type':
+                    value = _validate_choice(Offer, 'offer_type', value, Offer.TYPE_CHOICES)
+                elif field == 'status':
+                    value = _validate_offer_status(Offer, value)
+                elif field == 'priority':
+                    value = _clean_nonnegative_int(value, 'priority') or 0
+                elif field == 'condition_id':
+                    value = _validate_offer_relation('Condition', 'condition_id', value)
+                elif field == 'benefit_id':
+                    value = _validate_offer_relation('Benefit', 'benefit_id', value)
+                elif field in {'start_datetime', 'end_datetime'} and value in ('', None):
                     value = None
                 setattr(offer, field, value)
+        _clean_offer(offer)
         offer.save()
         return Response({'offer': _offer_payload(offer)})
 
@@ -672,8 +816,9 @@ class AdminOfferStatusAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def patch(self, request, offer_id: int):
-        offer = get_object_or_404(get_model('offer', 'ConditionalOffer'), id=offer_id)
-        offer.status = request.data.get('status', offer.status)
+        Offer = get_model('offer', 'ConditionalOffer')
+        offer = get_object_or_404(Offer, id=offer_id)
+        offer.status = _validate_offer_status(Offer, request.data.get('status', offer.status))
         offer.save(update_fields=['status'])
         return Response({'offer': _offer_payload(offer)})
 
