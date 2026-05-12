@@ -76,6 +76,33 @@ export function useCheckout({ auto = true } = {}) {
     }
   }, [setBasket]);
 
+  const previewCheckout = useCallback(async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = await checkoutApi.preview();
+      return payload?.preview || null;
+    } catch (error) {
+      setError(messageFromError(error));
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
+  const loadOrderConfirmation = useCallback(async (orderNumber) => {
+    setLoading(true);
+    setError("");
+    try {
+      return await checkoutApi.thankYou(orderNumber);
+    } catch (error) {
+      setError(messageFromError(error));
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (auto) void loadCheckout();
   }, [auto, loadCheckout]);
@@ -91,6 +118,8 @@ export function useCheckout({ auto = true } = {}) {
     loadCheckout,
     saveAddress,
     selectMethod,
-    placeOrder
+    previewCheckout,
+    placeOrder,
+    loadOrderConfirmation
   };
 }

@@ -4,6 +4,7 @@ const STEPS = [
   { key: "cart", label: "Cart", icon: "shopping_cart" },
   { key: "shipping", label: "Shipping", icon: "local_shipping" },
   { key: "payment", label: "Pay", icon: "payments" },
+  { key: "review", label: "Review", icon: "fact_check" },
   { key: "done", label: "Done", icon: "check_circle" }
 ];
 

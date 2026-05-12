@@ -37,6 +37,19 @@ export function productPrice(product) {
 }
 
 export function stockTone(product) {
-  if (product.in_stock) return { tone: "success", label: "In stock" };
-  return { tone: "warning", label: "Check availability" };
+  const stockCount = Number(product?.stock_count ?? product?.num_in_stock ?? product?.stock ?? 0);
+  if (stockCount > 0 || product?.in_stock) {
+    return {
+      tone: "success",
+      label: stockCount > 0 ? `In stock: ${stockCount}` : "In stock",
+      count: stockCount,
+      isAvailable: true
+    };
+  }
+  return {
+    tone: "warning",
+    label: "Sold out",
+    count: 0,
+    isAvailable: false
+  };
 }

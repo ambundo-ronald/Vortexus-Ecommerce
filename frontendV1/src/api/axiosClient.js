@@ -14,6 +14,23 @@ export const apiClient = axios.create({
 
 let csrfToken = "";
 
+function firstValidationMessage(errors) {
+  if (!errors) return "";
+  if (typeof errors === "string") return errors;
+  if (Array.isArray(errors)) {
+    return errors.map(firstValidationMessage).find(Boolean) || "";
+  }
+  if (typeof errors === "object") {
+    for (const [field, value] of Object.entries(errors)) {
+      const message = firstValidationMessage(value);
+      if (!message) continue;
+      if (field === "non_field_errors" || field === "detail" || field === "basket") return message;
+      return `${field.replaceAll("_", " ")}: ${message}`;
+    }
+  }
+  return "";
+}
+
 export function setCsrfToken(token) {
   csrfToken = token || "";
 }
@@ -41,7 +58,13 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     const payload = error.response?.data;
-    const detail = payload?.error?.detail || payload?.detail || error.message || "Request failed.";
+    const detail =
+      firstValidationMessage(payload?.error?.errors) ||
+      firstValidationMessage(payload?.errors) ||
+      payload?.error?.detail ||
+      payload?.detail ||
+      error.message ||
+      "Request failed.";
     error.normalized = {
       message: detail,
       status: payload?.error?.status || error.response?.status,

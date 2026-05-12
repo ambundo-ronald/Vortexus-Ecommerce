@@ -179,6 +179,8 @@ class ImageSearchService:
                     'base_currency': source.get('currency', 'USD'),
                     'thumbnail': source.get('thumbnail', ''),
                     'in_stock': source.get('in_stock', False),
+                    'stock_count': source.get('stock_count', source.get('num_in_stock', 0)),
+                    'num_in_stock': source.get('num_in_stock', source.get('stock_count', 0)),
                     'score': hit.get('_score'),
                 },
                 display_currency,

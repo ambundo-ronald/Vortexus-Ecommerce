@@ -1,9 +1,11 @@
+import logging
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
 from django.conf import settings
 from oscar.apps.checkout.utils import CheckoutSessionData
 from oscar.apps.shipping.methods import FixedPrice, Free, NoShippingRequired
+from oscar.core.loading import get_class
 
 from apps.common.currency import convert_amount, resolve_display_currency
 from apps.common.products import serialize_product_card
@@ -11,6 +13,8 @@ from apps.inventory.services import available_quantity_for_line, reserved_quanti
 from apps.common.taxes import calculate_checkout_taxes
 
 ZERO = Decimal('0.00')
+OfferApplicator = get_class('offer.applicator', 'Applicator')
+logger = logging.getLogger(__name__)
 
 
 def _money(value) -> Decimal:
@@ -457,7 +461,21 @@ def serialize_basket_line(line, display_currency: str | None = None) -> dict:
 def serialize_basket(basket, display_currency: str | None = None) -> dict:
     lines = [serialize_basket_line(line, display_currency=display_currency) for line in basket.all_lines()]
     subtotal = basket_subtotal(basket)
+    subtotal_before_discount = _money(getattr(basket, 'total_excl_tax_excl_discounts', subtotal))
+    discount_total = _money(getattr(basket, 'total_discount', ZERO))
     display_subtotal, output_currency = convert_amount(subtotal, basket_currency(basket), display_currency)
+    display_subtotal_before_discount, _ = convert_amount(subtotal_before_discount, basket_currency(basket), display_currency)
+    display_discount_total, _ = convert_amount(discount_total, basket_currency(basket), display_currency)
+    vouchers = []
+    if getattr(basket, 'id', None):
+        vouchers = [
+            {
+                'id': voucher.id,
+                'name': voucher.name,
+                'code': voucher.code,
+            }
+            for voucher in basket.vouchers.all()
+        ]
     return {
         'id': basket.id,
         'status': basket.status,
@@ -467,17 +485,32 @@ def serialize_basket(basket, display_currency: str | None = None) -> dict:
         'line_count': len(lines),
         'item_count': basket.num_items,
         'lines': lines,
+        'vouchers': vouchers,
         'totals': {
             'subtotal': display_subtotal,
+            'subtotal_before_discount': display_subtotal_before_discount,
+            'discount': display_discount_total,
             'currency': output_currency,
             'base_subtotal': _money_payload(subtotal),
+            'base_subtotal_before_discount': _money_payload(subtotal_before_discount),
+            'base_discount': _money_payload(discount_total),
             'base_currency': basket_currency(basket),
         },
     }
 
 
+def apply_offers_to_basket(basket, user=None, request=None):
+    if not getattr(basket, 'id', None):
+        return
+    try:
+        OfferApplicator().apply(basket, user, request)
+    except Exception:
+        logger.exception('Could not apply basket offers; continuing without offer discounts.')
+
+
 def build_checkout_payload(request) -> dict:
     basket = request.basket
+    apply_offers_to_basket(basket, request.user, request)
     shipping_address = get_shipping_address(request, basket)
     country_code = shipping_country_code(shipping_address)
     display_currency = resolve_display_currency(request, country_code=country_code)

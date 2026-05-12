@@ -32,6 +32,22 @@ def _extract_detail(data, fallback: str) -> str:
     return fallback
 
 
+def _extract_validation_detail(data) -> str:
+    if isinstance(data, dict):
+        for value in data.values():
+            detail = _extract_validation_detail(value)
+            if detail:
+                return detail
+    if isinstance(data, list):
+        for value in data:
+            detail = _extract_validation_detail(value)
+            if detail:
+                return detail
+    if isinstance(data, (str, ErrorDetail)):
+        return str(data)
+    return ''
+
+
 def _error_code(exc, response) -> str:
     if isinstance(exc, ValidationError):
         return 'validation_error'
@@ -54,8 +70,8 @@ def api_exception_handler(exc, context):
     request = context.get('request')
     fallback_detail = HTTPStatus(response.status_code).phrase
     if isinstance(exc, ValidationError):
-        detail = 'Request validation failed.'
         errors = _normalize_error_details(response.data)
+        detail = _extract_validation_detail(errors) or 'Request validation failed.'
     else:
         detail = _extract_detail(response.data, fallback_detail)
         errors = None

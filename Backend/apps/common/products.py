@@ -24,6 +24,12 @@ def stockrecord_currency(stockrecord: Any) -> str:
     return 'USD'
 
 
+def stockrecord_count(stockrecord: Any) -> int:
+    if not stockrecord:
+        return 0
+    return int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+
+
 def serialize_product_card(
     product: Any,
     score: float | None = None,
@@ -33,6 +39,7 @@ def serialize_product_card(
     stockrecord = product.stockrecords.first() if hasattr(product, 'stockrecords') else None
     base_price = stockrecord_price(stockrecord)
     base_currency = stockrecord_currency(stockrecord)
+    stock_count = stockrecord_count(stockrecord)
 
     image_url = ''
     try:
@@ -51,7 +58,9 @@ def serialize_product_card(
         'base_price': base_price,
         'base_currency': base_currency,
         'thumbnail': image_url,
-        'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
+        'in_stock': stock_count > 0,
+        'stock_count': stock_count,
+        'num_in_stock': stock_count,
         'rating': _product_rating(product),
         'review_count': _product_review_count(product),
     }

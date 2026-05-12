@@ -23,7 +23,12 @@ export default function OrderSummaryPanel({ basket, shipping, action, actionTo, 
         {lines.slice(0, 3).map((line) => (
           <div className="checkout-mini-line" key={line.id}>
             <span>{line.quantity}x</span>
-            <strong>{line.product?.title || "Product"}</strong>
+            <strong>
+              {line.product?.title || "Product"}
+              {line.options?.length ? (
+                <small>{line.options.map((option) => `${option.name || option.code}: ${option.value}`).join(" / ")}</small>
+              ) : null}
+            </strong>
             <em>{formatCurrency(line.line_total, line.currency || currency)}</em>
           </div>
         ))}

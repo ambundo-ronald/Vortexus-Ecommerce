@@ -5,9 +5,10 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
+import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productPrice } from "../../utils/productDisplay";
+import { productPrice, stockTone } from "../../utils/productDisplay";
 
 const fallbackSlides = [
   { title: "Borehole pumps", tone: "blue" },
@@ -20,6 +21,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
   const scrollRef = useRef(null);
   const addItem = useCartStore((state) => state.addItem);
   const cartLoading = useCartStore((state) => state.loading);
+  const notify = useUiStore((state) => state.notify);
   const { user } = useAuth();
   const loadStatus = useWishlistStore((state) => state.loadStatus);
 
@@ -40,9 +42,27 @@ export default function ProductCarousel({ products = [], loading = false }) {
     node.scrollBy({ left: direction * Math.min(node.clientWidth, 520), behavior: "smooth" });
   }
 
-  async function handleAddToCart(productId) {
+  async function handleAddToCart(product) {
+    const stock = stockTone(product);
+    const price = productPrice(product);
+    if (!stock.isAvailable) {
+      notify({
+        tone: "warning",
+        title: "Sold out",
+        message: `${product.title} is out of stock right now.`
+      });
+      return;
+    }
+    if (price.isQuote) {
+      notify({
+        tone: "warning",
+        title: "Price unavailable",
+        message: "Request a quote for this product before checkout."
+      });
+      return;
+    }
     try {
-      await addItem(productId);
+      await addItem(product.id);
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -70,7 +90,8 @@ export default function ProductCarousel({ products = [], loading = false }) {
           const hasProduct = Boolean(product.id);
           const image = hasProduct ? productImageUrl(product) : "";
           const price = hasProduct ? productPrice(product) : null;
-          const canAdd = hasProduct && product.in_stock && !price.isQuote;
+          const stock = hasProduct ? stockTone(product) : null;
+          const canAdd = hasProduct && stock.isAvailable && !price.isQuote;
 
           return (
             <article className={`promo-slide promo-slide--${product.tone || "blue"}`} key={product.id || product.title}>
@@ -83,24 +104,21 @@ export default function ProductCarousel({ products = [], loading = false }) {
                   <strong>{product.title}</strong>
                 </Link>
                 {hasProduct ? (
-                  <div className="promo-slide__meta">
-                    <span>{price.label}</span>
-                    {canAdd ? (
+                  <>
+                    <span className={`stock-label stock-label--${stock.isAvailable ? "available" : "sold-out"}`}>{stock.label}</span>
+                    <div className="promo-slide__meta">
+                      <span>{price.label}</span>
                       <button
-                        className="icon-action"
+                        className={`icon-action${canAdd ? "" : " icon-action--muted"}`}
                         type="button"
                         disabled={cartLoading}
-                        onClick={() => void handleAddToCart(product.id)}
-                        aria-label={`Add ${product.title} to cart`}
+                        onClick={() => void handleAddToCart(product)}
+                        aria-label={canAdd ? `Add ${product.title} to cart` : `${product.title} is sold out`}
                       >
                         <MaterialIcon name="add_shopping_cart" size={18} />
                       </button>
-                    ) : (
-                      <Link className="icon-action" to={`/products/${product.id}`} aria-label={`View ${product.title}`}>
-                        <MaterialIcon name="visibility" size={18} />
-                      </Link>
-                    )}
-                  </div>
+                    </div>
+                  </>
                 ) : null}
               </div>
             </article>

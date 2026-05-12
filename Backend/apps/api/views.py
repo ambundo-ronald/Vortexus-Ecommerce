@@ -80,6 +80,8 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         if getattr(image, "original", None):
             images.append(image.original.url or "")
 
+    options = [_serialize_product_option(option) for option in product.options.all()]
+
     return {
         **card,
         "description": product.description or "",
@@ -87,8 +89,27 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         "primary_image": _get_primary_image_url(product),
         "categories": [_serialize_category(category) for category in product.categories.all()],
         "specifications": specs,
+        "options": options,
+        "has_options": bool(options),
         "updated_at": product.date_updated,
         "is_public": product.is_public,
+    }
+
+
+def _serialize_product_option(option) -> dict:
+    choices = [
+        {'value': value, 'label': label}
+        for value, label in option.get_choices()
+        if value not in (None, '')
+    ]
+    return {
+        'id': option.id,
+        'name': option.name,
+        'code': option.code,
+        'type': option.type,
+        'required': option.required,
+        'help_text': option.help_text or '',
+        'choices': choices,
     }
 
 
@@ -182,11 +203,11 @@ class CategoryListAPIView(APIView):
     def get(self, request):
         Category = apps.get_model("catalogue", "Category")
 
-        root_categories = Category.objects.filter(depth=1).order_by("name")
+        root_categories = Category.objects.filter(depth=1, is_public=True).order_by("name")
         results = []
 
         for root in root_categories:
-            children = list(root.get_children().order_by("name")[:24])
+            children = list(root.get_children().filter(is_public=True).order_by("name")[:24])
             results.append(
                 {
                     **_serialize_category(root),
@@ -222,7 +243,7 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         category = params.get("category")
         if category:
-            queryset = queryset.filter(categories__slug=category)
+            queryset = queryset.filter(categories__slug=category, categories__is_public=True)
 
         in_stock = params.get("in_stock")
         if in_stock is True:
@@ -429,6 +450,21 @@ class AdminProductCollectionAPIView(APIView):
                 },
             }
         )
+
+    def post(self, request):
+        serializer = ProductWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = serializer.save()
+        product = get_object_or_404(_product_queryset(include_hidden=True), id=product.id)
+        display_currency = resolve_display_currency(request)
+        record_audit_event(
+            event_type='catalog.product_created',
+            request=request,
+            target=product,
+            message='Admin product created.',
+            metadata={'upc': product.upc, 'title': product.title, 'update_mode': 'admin_post'},
+        )
+        return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)}, status=status.HTTP_201_CREATED)
 
 
 class AdminProductDetailAPIView(APIView):

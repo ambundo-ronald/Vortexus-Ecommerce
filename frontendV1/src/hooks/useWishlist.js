@@ -50,6 +50,30 @@ export function useWishlist({ auto = true } = {}) {
     }
   }, []);
 
+  const shareWishlist = useCallback(async ({ regenerate = false } = {}) => {
+    if (!wishlist?.id) return null;
+    setSaving(true);
+    setError("");
+    try {
+      const payload = await wishlistApi.share(wishlist.id, {
+        visibility: "Shared",
+        regenerate_key: regenerate
+      });
+      setWishlist(payload?.wishlist || wishlist);
+      useUiStore.getState().notify({
+        title: regenerate ? "Share link refreshed" : "Share link ready",
+        message: "You can share this wishlist with customers or your team.",
+        icon: "ios_share"
+      });
+      return payload;
+    } catch (error) {
+      setError(messageFromError(error));
+      throw error;
+    } finally {
+      setSaving(false);
+    }
+  }, [wishlist]);
+
   useEffect(() => {
     if (auto) void loadWishlist();
   }, [auto, loadWishlist]);
@@ -61,6 +85,7 @@ export function useWishlist({ auto = true } = {}) {
     saving,
     error,
     loadWishlist,
-    removeItem
+    removeItem,
+    shareWishlist
   };
 }

@@ -5,6 +5,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .checkout_utils import (
+    apply_offers_to_basket,
     basket_currency,
     basket_subtotal_excl_tax,
     get_checkout_session,
@@ -39,6 +40,19 @@ def _order_primary_image_url(product) -> str:
     if primary and getattr(primary, 'original', None):
         return primary.original.url or ''
     return ''
+
+
+def _order_line_options(line) -> list[dict]:
+    return [
+        {
+            'id': attribute.id,
+            'option_id': attribute.option_id,
+            'code': attribute.option.code if attribute.option_id else '',
+            'name': attribute.option.name if attribute.option_id else attribute.type,
+            'value': attribute.value,
+        }
+        for attribute in line.attributes.select_related('option').all()
+    ]
 
 
 def _order_customer_name(order) -> str:
@@ -230,6 +244,7 @@ class OrderLineSerializer(serializers.Serializer):
             'line_price_excl_tax': float(line.line_price_excl_tax or Decimal('0.00')),
             'line_price_incl_tax': float(line.line_price_incl_tax or Decimal('0.00')),
             'currency': line.order.currency,
+            'options': _order_line_options(line),
         }
 
 
@@ -442,6 +457,8 @@ def build_order_prices(basket, shipping_address, shipping_method):
     from oscar.core.prices import Price
 
     from apps.common.taxes import calculate_checkout_taxes
+
+    apply_offers_to_basket(basket, getattr(basket, 'owner', None))
 
     subtotal_excl_tax = basket_subtotal_excl_tax(basket)
     shipping_excl_tax = shipping_charge_for_method(shipping_method, basket)

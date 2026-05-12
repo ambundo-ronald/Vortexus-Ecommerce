@@ -15,7 +15,7 @@ const methodIcons = {
 
 const reliableMethods = new Set(["cash_on_delivery", "bank_transfer", "credit_card", "debit_card"]);
 
-export default function PaymentMethodSelector({ methods = [], processing = false, onSubmit }) {
+export default function PaymentMethodSelector({ methods = [], processing = false, onSubmit, submitLabel = "Continue to review" }) {
   const sortedMethods = useMemo(() => {
     return [...methods].sort((a, b) => methodRank(a.code) - methodRank(b.code));
   }, [methods]);
@@ -106,7 +106,7 @@ export default function PaymentMethodSelector({ methods = [], processing = false
 
       <button className="primary-button checkout-submit" type="submit" disabled={processing || !method}>
         <MaterialIcon name="shield_lock" size={19} />
-        {processing ? "Processing..." : "Place order"}
+        {processing ? "Processing..." : submitLabel}
       </button>
     </form>
   );

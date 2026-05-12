@@ -17,23 +17,37 @@ export default function PaymentPage() {
   const checkoutState = useCheckout();
   const paymentState = usePayment();
   const notify = useUiStore((state) => state.notify);
-  const { basket, shipping, loading, saving, error, placeOrder } = checkoutState;
+  const { basket, shipping, loading, saving, error, previewCheckout } = checkoutState;
   const paymentError = paymentState.error;
 
   async function handlePaymentSubmit(form) {
     try {
+      const preview = await previewCheckout();
+      if (preview && !preview.ready) {
+        const missing = preview.missing || [];
+        notify({
+          tone: "warning",
+          title: "Checkout needs one more step",
+          message: missing.includes("shipping_address") ? "Add a delivery address before placing the order." : "Select a delivery method before placing the order.",
+          icon: "info"
+        });
+        navigate("/checkout/shipping");
+        return;
+      }
       const payment = await paymentState.initializePayment(form);
       const selectedMethod = paymentState.methods.find((method) => method.code === payment.method);
       const finalPayment = selectedMethod?.requires_prepayment && !COMPLETE_STATUSES.has(payment.status)
         ? await paymentState.waitForPayment(payment)
         : payment;
-      const orderPayload = await placeOrder({
+      const reviewPayload = {
         payment_reference: finalPayment.reference,
+        payment: finalPayment,
+        method: selectedMethod || null,
         guest_email: form.payerEmail
-      });
-      sessionStorage.setItem("vortexus:lastOrder", JSON.stringify(orderPayload));
-      notify({ title: "Order placed", message: "Your order has been received.", icon: "task_alt" });
-      navigate("/checkout/confirmation", { replace: true, state: { orderPayload } });
+      };
+      sessionStorage.setItem("vortexus:pendingCheckout", JSON.stringify(reviewPayload));
+      notify({ title: "Ready to review", message: "Confirm the order details before placing it.", icon: "fact_check" });
+      navigate("/checkout/review", { state: { reviewPayload } });
     } catch {
       // Hook state already exposes the normalized message.
     }
@@ -68,6 +82,7 @@ export default function PaymentPage() {
             methods={paymentState.methods}
             processing={paymentState.processing || saving}
             onSubmit={handlePaymentSubmit}
+            submitLabel="Continue to review"
           />
         </div>
         <OrderSummaryPanel basket={basket} shipping={shipping} loading={paymentState.processing || saving} />

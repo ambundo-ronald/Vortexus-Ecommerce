@@ -9,7 +9,7 @@ from opensearchpy.exceptions import OpenSearchException
 from opensearchpy.helpers import bulk
 
 from apps.common.clients import get_opensearch_client
-from apps.common.products import stockrecord_currency, stockrecord_price
+from apps.common.products import stockrecord_count, stockrecord_currency, stockrecord_price
 
 
 def _build_product_document(product: Any) -> dict[str, Any]:
@@ -48,7 +48,9 @@ def _build_product_document(product: Any) -> dict[str, Any]:
         'price': stockrecord_price(stockrecord),
         'currency': stockrecord_currency(stockrecord),
         'thumbnail': image_url,
-        'in_stock': bool(stockrecord and (stockrecord.num_in_stock or 0) > 0),
+        'in_stock': stockrecord_count(stockrecord) > 0,
+        'stock_count': stockrecord_count(stockrecord),
+        'num_in_stock': stockrecord_count(stockrecord),
         'rating': float(review_stats['rating']) if review_stats['rating'] is not None else None,
         'review_count': review_stats['review_count'] or 0,
         'date_updated': product.date_updated.isoformat() if getattr(product, 'date_updated', None) else None,

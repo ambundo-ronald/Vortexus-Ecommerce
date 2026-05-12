@@ -6,6 +6,8 @@ export const reviewsApi = {
     apiClient.get(ENDPOINTS.catalog.productReviews(productId), { params }).then((response) => response.data),
   createProductReview: (productId, payload) =>
     apiClient.post(ENDPOINTS.catalog.productReviews(productId), payload).then((response) => response.data),
+  voteProductReview: (productId, reviewId, payload) =>
+    apiClient.post(ENDPOINTS.catalog.productReviewVote(productId, reviewId), payload).then((response) => response.data),
   accountReviews: (params) => apiClient.get(ENDPOINTS.reviews.account, { params }).then((response) => response.data),
   accountReview: (reviewId) => apiClient.get(ENDPOINTS.reviews.accountReview(reviewId)).then((response) => response.data),
   updateAccountReview: (reviewId, payload) =>
