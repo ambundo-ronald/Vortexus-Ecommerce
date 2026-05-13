@@ -66,6 +66,9 @@ export const ENDPOINTS = {
   },
   recommendations: "/recommendations/",
   quotes: "/quotes/",
+  analytics: {
+    events: "/analytics/events/"
+  },
   wishlist: {
     default: "/account/wishlist/",
     defaultItems: "/account/wishlist/items/",

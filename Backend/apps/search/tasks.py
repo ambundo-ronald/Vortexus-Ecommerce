@@ -9,7 +9,13 @@ from opensearchpy.exceptions import OpenSearchException
 from opensearchpy.helpers import bulk
 
 from apps.common.clients import get_opensearch_client
-from apps.common.products import stockrecord_count, stockrecord_currency, stockrecord_price
+from apps.common.products import (
+    stockrecord_count,
+    stockrecord_currency,
+    stockrecord_previous_currency,
+    stockrecord_previous_price,
+    stockrecord_price,
+)
 
 
 def _build_product_document(product: Any) -> dict[str, Any]:
@@ -47,6 +53,8 @@ def _build_product_document(product: Any) -> dict[str, Any]:
         'category_slug': category_slug,
         'price': stockrecord_price(stockrecord),
         'currency': stockrecord_currency(stockrecord),
+        'previous_price': stockrecord_previous_price(stockrecord),
+        'previous_currency': stockrecord_previous_currency(stockrecord),
         'thumbnail': image_url,
         'in_stock': stockrecord_count(stockrecord) > 0,
         'stock_count': stockrecord_count(stockrecord),

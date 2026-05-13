@@ -18,6 +18,7 @@ from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.auditlog.services import record_audit_event
 from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
@@ -36,6 +37,22 @@ from .wishlist_serializers import (
 
 SAVED_ITEMS_SESSION_KEY = 'storefront_saved_items'
 RECENTLY_VIEWED_SESSION_KEY = 'storefront_recently_viewed_product_ids'
+
+ALLOWED_STOREFRONT_ANALYTICS_EVENTS = {
+    'storefront.page_view',
+    'storefront.product_view',
+    'storefront.search_submitted',
+    'storefront.image_search_submitted',
+    'storefront.cart_item_added',
+    'storefront.cart_line_updated',
+    'storefront.cart_item_removed',
+    'storefront.saved_for_later',
+    'storefront.saved_moved_to_cart',
+    'storefront.saved_item_removed',
+    'storefront.voucher_applied',
+    'storefront.voucher_removed',
+    'storefront.order_confirmation_viewed',
+}
 
 
 def _money_payload(value) -> float:
@@ -114,6 +131,8 @@ def _save_items(request, items: list[dict]):
 
 
 def _offer_payload(offer) -> dict:
+    condition = getattr(offer, 'condition', None)
+    benefit = getattr(offer, 'benefit', None)
     return {
         'id': offer.id,
         'name': offer.name,
@@ -126,6 +145,8 @@ def _offer_payload(offer) -> dict:
         'start_datetime': offer.start_datetime.isoformat() if offer.start_datetime else None,
         'end_datetime': offer.end_datetime.isoformat() if offer.end_datetime else None,
         'redirect_url': offer.redirect_url or '',
+        'condition': _offer_component_payload(condition) if condition else None,
+        'benefit': _offer_component_payload(benefit) if benefit else None,
     }
 
 
@@ -138,6 +159,27 @@ def _range_payload(range_obj) -> dict:
         'is_public': range_obj.is_public,
         'includes_all_products': range_obj.includes_all_products,
         'num_products': range_obj.num_products(),
+    }
+
+
+def _offer_component_payload(component) -> dict:
+    fallback_name = f'{component.type} offer rule'
+    range_obj = getattr(component, 'range', None)
+    try:
+        name = component.name
+    except Exception:
+        name = fallback_name
+    try:
+        description = component.description
+    except Exception:
+        description = fallback_name
+    return {
+        'id': component.id,
+        'type': component.type,
+        'value': _money_payload(component.value),
+        'name': name or fallback_name,
+        'description': description or fallback_name,
+        'range': _range_payload(range_obj) if range_obj else None,
     }
 
 
@@ -605,8 +647,13 @@ class AccountNotificationArchiveAPIView(APIView):
         return Response({'results': [_email_payload(email) for email in emails]})
 
 
-class AccountNotificationDetailAPIView(AccountEmailDetailAPIView):
-    pass
+class AccountNotificationDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, notification_id: int):
+        EmailNotification = apps.get_model('notifications', 'EmailNotification')
+        notification = get_object_or_404(EmailNotification, id=notification_id, recipient__iexact=request.user.email)
+        return Response({'notification': _email_payload(notification)})
 
 
 class AccountNotificationStateAPIView(APIView):
@@ -631,8 +678,8 @@ class AccountNotificationReadAllAPIView(APIView):
         return Response({'detail': 'Notifications marked as read.'})
 
 
-def _product_alert_payload(alert) -> dict:
-    return {
+def _product_alert_payload(alert, display_currency: str | None = None) -> dict:
+    payload = {
         'id': alert.id,
         'product_id': alert.product_id,
         'email': alert.email,
@@ -642,6 +689,9 @@ def _product_alert_payload(alert) -> dict:
         'date_confirmed': alert.date_confirmed.isoformat() if alert.date_confirmed else None,
         'date_cancelled': alert.date_cancelled.isoformat() if alert.date_cancelled else None,
     }
+    if getattr(alert, 'product', None):
+        payload['product'] = serialize_product_card(alert.product, display_currency=display_currency)
+    return payload
 
 
 class AccountProductAlertCollectionAPIView(APIView):
@@ -649,8 +699,14 @@ class AccountProductAlertCollectionAPIView(APIView):
 
     def get(self, request):
         ProductAlert = apps.get_model('customer', 'ProductAlert')
-        alerts = ProductAlert.objects.filter(user=request.user).select_related('product').order_by('-date_created')
-        return Response({'results': [_product_alert_payload(alert) for alert in alerts]})
+        display_currency = resolve_display_currency(request)
+        alerts = (
+            ProductAlert.objects.filter(user=request.user)
+            .select_related('product')
+            .prefetch_related('product__stockrecords', 'product__images', 'product__reviews')
+            .order_by('-date_created')
+        )
+        return Response({'results': [_product_alert_payload(alert, display_currency=display_currency) for alert in alerts]})
 
 
 class ProductAlertCreateAPIView(APIView):
@@ -668,7 +724,7 @@ class ProductAlertCreateAPIView(APIView):
             email=email,
             defaults={'user': request.user if request.user.is_authenticated else None},
         )
-        return Response({'alert': _product_alert_payload(alert)}, status=status.HTTP_201_CREATED)
+        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))}, status=status.HTTP_201_CREATED)
 
 
 class ProductAlertConfirmAPIView(APIView):
@@ -679,7 +735,7 @@ class ProductAlertConfirmAPIView(APIView):
         alert = get_object_or_404(ProductAlert, key=key)
         if alert.can_be_confirmed:
             alert.confirm()
-        return Response({'alert': _product_alert_payload(alert)})
+        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))})
 
 
 class ProductAlertCancelAPIView(APIView):
@@ -690,7 +746,7 @@ class ProductAlertCancelAPIView(APIView):
         alert = get_object_or_404(ProductAlert, key=key)
         if alert.can_be_cancelled:
             alert.cancel()
-        return Response({'alert': _product_alert_payload(alert)})
+        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))})
 
 
 class AccountProductAlertDetailAPIView(APIView):
@@ -781,6 +837,65 @@ class ProductViewedAPIView(APIView):
         request.session[RECENTLY_VIEWED_SESSION_KEY] = [product_id, *product_ids][:24]
         request.session.modified = True
         return Response({'product_id': product_id})
+
+
+class StorefrontAnalyticsEventAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        raw_event = str(request.data.get('event_type') or request.data.get('event') or '').strip()
+        if not raw_event:
+            raise serializers.ValidationError({'event_type': 'Event type is required.'})
+        event_type = raw_event if raw_event.startswith('storefront.') else f'storefront.{raw_event}'
+        if event_type not in ALLOWED_STOREFRONT_ANALYTICS_EVENTS:
+            raise serializers.ValidationError({'event_type': 'Unsupported storefront analytics event.'})
+
+        metadata = request.data.get('metadata') or {}
+        if not isinstance(metadata, dict):
+            raise serializers.ValidationError({'metadata': 'Metadata must be an object.'})
+        metadata = _analytics_metadata(metadata)
+        product_id = metadata.get('product_id')
+        target = None
+        if product_id:
+            target = public_product_queryset().filter(id=product_id).first()
+
+        record_audit_event(
+            event_type=event_type,
+            request=request,
+            target=target,
+            message='Storefront analytics event.',
+            metadata=metadata,
+        )
+        return Response({'detail': 'Event recorded.'}, status=status.HTTP_201_CREATED)
+
+
+def _analytics_metadata(metadata: dict) -> dict:
+    allowed_keys = {
+        'path',
+        'title',
+        'referrer',
+        'search',
+        'product_id',
+        'product_title',
+        'quantity',
+        'line_id',
+        'saved_line_id',
+        'voucher_id',
+        'code',
+        'order_number',
+        'currency',
+        'total',
+        'source',
+    }
+    clean = {}
+    for key, value in metadata.items():
+        if key not in allowed_keys:
+            continue
+        if isinstance(value, str):
+            clean[key] = value[:255]
+        elif isinstance(value, (int, float, bool)) or value is None:
+            clean[key] = value
+    return clean
 
 
 class ProductReviewDetailAPIView(APIView):

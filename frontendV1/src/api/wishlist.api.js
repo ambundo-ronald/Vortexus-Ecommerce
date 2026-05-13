@@ -10,10 +10,15 @@ export const wishlistApi = {
   lists: () => apiClient.get(ENDPOINTS.wishlist.lists).then((response) => response.data),
   createList: (payload) => apiClient.post(ENDPOINTS.wishlist.lists, payload).then((response) => response.data),
   list: (wishlistId) => apiClient.get(ENDPOINTS.wishlist.list(wishlistId)).then((response) => response.data),
+  updateList: (wishlistId, payload) =>
+    apiClient.patch(ENDPOINTS.wishlist.list(wishlistId), payload).then((response) => response.data),
+  deleteList: (wishlistId) => apiClient.delete(ENDPOINTS.wishlist.list(wishlistId)).then((response) => response.data),
   share: (wishlistId, payload) => apiClient.post(ENDPOINTS.wishlist.share(wishlistId), payload).then((response) => response.data),
   shared: (key) => apiClient.get(ENDPOINTS.wishlist.shared(key)).then((response) => response.data),
   addItem: (wishlistId, payload) =>
     apiClient.post(ENDPOINTS.wishlist.listItems(wishlistId), payload).then((response) => response.data),
   removeItem: (wishlistId, productId) =>
-    apiClient.delete(ENDPOINTS.wishlist.listItem(wishlistId, productId)).then((response) => response.data)
+    apiClient.delete(ENDPOINTS.wishlist.listItem(wishlistId, productId)).then((response) => response.data),
+  moveItem: (wishlistId, productId, payload) =>
+    apiClient.post(ENDPOINTS.wishlist.moveItem(wishlistId, productId), payload).then((response) => response.data)
 };

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { searchApi } from "../../api/search.api";
+import { trackStorefrontEvent } from "../../utils/analytics";
 
 export default function SearchBar({ initialValue = "", compact = false }) {
   const [query, setQuery] = useState(initialValue);
@@ -46,6 +47,7 @@ export default function SearchBar({ initialValue = "", compact = false }) {
     event.preventDefault();
     const trimmed = query.trim();
     setSuggestionsOpen(false);
+    trackStorefrontEvent("search_submitted", { search: trimmed, path: window.location.pathname });
     navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   }
 
@@ -59,6 +61,7 @@ export default function SearchBar({ initialValue = "", compact = false }) {
     const file = event.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    trackStorefrontEvent("image_search_submitted", { source: "search_bar", path: window.location.pathname });
     try {
       const formData = new FormData();
       formData.append("image", file);

@@ -8,7 +8,13 @@ from opensearchpy import NotFoundError
 from opensearchpy.exceptions import OpenSearchException
 
 from apps.common.clients import get_opensearch_client
-from apps.common.products import stockrecord_count, stockrecord_currency, stockrecord_price
+from apps.common.products import (
+    stockrecord_count,
+    stockrecord_currency,
+    stockrecord_previous_currency,
+    stockrecord_previous_price,
+    stockrecord_price,
+)
 
 from .services import ImageEmbeddingService
 
@@ -57,6 +63,8 @@ def _index_document(product, embedding: list[float], file_field) -> dict[str, An
         'category_slug': _category_slug(product),
         'price': stockrecord_price(stockrecord),
         'currency': stockrecord_currency(stockrecord),
+        'previous_price': stockrecord_previous_price(stockrecord),
+        'previous_currency': stockrecord_previous_currency(stockrecord),
         'thumbnail': _safe_file_url(file_field),
         'in_stock': stockrecord_count(stockrecord) > 0,
         'stock_count': stockrecord_count(stockrecord),

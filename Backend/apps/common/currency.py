@@ -120,9 +120,23 @@ def convert_product_payload(payload: dict, target_currency: str | None) -> dict:
     base_price = payload.get('base_price', payload.get('price'))
     base_currency = payload.get('base_currency', payload.get('currency'))
     display_price, display_currency = convert_amount(base_price, base_currency, target_currency)
+    base_previous_price = payload.get('base_previous_price', payload.get('previous_price'))
+    base_previous_currency = payload.get(
+        'base_previous_currency',
+        payload.get('previous_currency', base_currency),
+    )
+    display_previous_price, display_previous_currency = convert_amount(
+        base_previous_price,
+        base_previous_currency,
+        target_currency,
+    )
 
     payload['base_price'] = base_price
     payload['base_currency'] = base_currency
     payload['price'] = display_price
     payload['currency'] = display_currency
+    payload['base_previous_price'] = base_previous_price
+    payload['base_previous_currency'] = base_previous_currency
+    payload['previous_price'] = display_previous_price
+    payload['previous_currency'] = display_previous_currency
     return payload

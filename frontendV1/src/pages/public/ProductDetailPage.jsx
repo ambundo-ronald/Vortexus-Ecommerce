@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
 import ProductImageGallery from "../../components/catalog/ProductImageGallery.jsx";
+import ProductAlertForm from "../../components/catalog/ProductAlertForm.jsx";
 import ProductSpecifications from "../../components/catalog/ProductSpecifications.jsx";
 import RelatedProducts from "../../components/catalog/RelatedProducts.jsx";
 import ReviewList from "../../components/reviews/ReviewList.jsx";
@@ -16,6 +18,7 @@ import { useProductDetail } from "../../hooks/useProductDetail";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { productPrice, stockTone } from "../../utils/productDisplay";
 
 export default function ProductDetailPage() {
@@ -29,6 +32,7 @@ export default function ProductDetailPage() {
   const [selectedOptions, setSelectedOptions] = useState({});
   const [optionError, setOptionError] = useState("");
   const [copiedShare, setCopiedShare] = useState(false);
+  const [alertSaving, setAlertSaving] = useState(false);
   const productOptions = useMemo(() => product?.options || product?.product_options || [], [product]);
   const missingRequiredOptions = useMemo(
     () => productOptions.filter((option) => option.required && !selectedOptions[option.id || option.code]),
@@ -43,6 +47,15 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (user && product?.id) void loadStatus([product.id]);
   }, [loadStatus, product?.id, user]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    trackStorefrontEvent("product_view", {
+      product_id: product.id,
+      product_title: product.title,
+      path: `/products/${product.id}`
+    });
+  }, [product?.id, product?.title]);
 
   if (loading) return <Spinner label="Loading product" />;
   if (error) return <Alert>{error}</Alert>;
@@ -125,6 +138,27 @@ export default function ProductDetailPage() {
     }
   }
 
+  async function handleCreateProductAlert(payload) {
+    setAlertSaving(true);
+    try {
+      await storefrontExtrasApi.productAlerts.create(product.id, payload);
+      notify({
+        title: "Alert created",
+        message: "We will notify you when this product is back in stock.",
+        icon: "notifications_active"
+      });
+    } catch (requestError) {
+      notify({
+        tone: "warning",
+        title: "Could not create alert",
+        message: requestError?.normalized?.message || "Try again with a valid email address.",
+        icon: "info"
+      });
+    } finally {
+      setAlertSaving(false);
+    }
+  }
+
   return (
     <>
       <Link className="back-link" to="/catalog">
@@ -189,6 +223,13 @@ export default function ProductDetailPage() {
               Request quote
             </Link>
           </div>
+          {!stock.isAvailable ? (
+            <ProductAlertForm
+              defaultEmail={user?.email || ""}
+              loading={alertSaving}
+              onSubmit={handleCreateProductAlert}
+            />
+          ) : null}
           <ProductSharePanel
             product={product}
             shareUrl={shareUrl}

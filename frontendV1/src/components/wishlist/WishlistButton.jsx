@@ -34,7 +34,7 @@ export default function WishlistButton({ productId, productTitle = "product", va
 
   return (
     <button className={`${className} ${inWishlist ? "active" : ""}`} type="button" disabled={saving} onClick={handleClick} aria-label={label}>
-      <MaterialIcon name={inWishlist ? "favorite" : "favorite_border"} size={variant === "detail" ? 20 : 19} />
+      <MaterialIcon name="favorite" size={variant === "detail" ? 20 : 19} filled={inWishlist} />
       {variant === "detail" ? <span>{inWishlist ? "Saved" : "Save"}</span> : null}
     </button>
   );

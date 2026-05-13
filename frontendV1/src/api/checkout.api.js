@@ -8,10 +8,18 @@ export const checkoutApi = {
     apiClient.patch(ENDPOINTS.checkout.basketLine(lineId), payload).then((response) => response.data),
   removeLine: (lineId) => apiClient.delete(ENDPOINTS.checkout.basketLine(lineId)).then((response) => response.data),
   shipping: () => apiClient.get(ENDPOINTS.checkout.shipping).then((response) => response.data),
+  addresses: () => apiClient.get(ENDPOINTS.checkout.addresses).then((response) => response.data),
   saveShippingAddress: (payload) =>
     apiClient.put(ENDPOINTS.checkout.shippingAddress, payload).then((response) => response.data),
+  useShippingAddress: (payload) =>
+    apiClient.post(ENDPOINTS.checkout.useShippingAddress, payload).then((response) => response.data),
   selectShippingMethod: (payload) =>
     apiClient.post(ENDPOINTS.checkout.shippingSelect, payload).then((response) => response.data),
+  billing: () => apiClient.get(ENDPOINTS.checkout.billing).then((response) => response.data),
+  saveBillingAddress: (payload) =>
+    apiClient.put(ENDPOINTS.checkout.billingAddress, payload).then((response) => response.data),
+  useBillingAddress: (payload) =>
+    apiClient.post(ENDPOINTS.checkout.useBillingAddress, payload).then((response) => response.data),
   preview: () => apiClient.get(ENDPOINTS.checkout.preview).then((response) => response.data),
   placeOrder: (payload) => apiClient.post(ENDPOINTS.checkout.orders, payload).then((response) => response.data),
   thankYou: (orderNumber) =>
