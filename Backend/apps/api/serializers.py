@@ -51,7 +51,10 @@ class ProductImageUploadSerializer(serializers.Serializer):
 class ProductWriteSerializer(serializers.Serializer):
     upc = serializers.CharField(required=False, max_length=128)
     title = serializers.CharField(required=False, max_length=255)
+    slug = serializers.SlugField(required=False, allow_blank=True, max_length=255)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    meta_title = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=255)
+    meta_description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     is_public = serializers.BooleanField(required=False)
     category_ids = serializers.ListField(
         required=False,
@@ -68,6 +71,11 @@ class ProductWriteSerializer(serializers.Serializer):
     attributes = serializers.DictField(
         required=False,
         child=serializers.CharField(required=False, allow_blank=True, allow_null=True),
+    )
+    recommended_product_ids = serializers.ListField(
+        required=False,
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=True,
     )
 
     DEFAULT_PRODUCT_CLASS = 'Industrial Product'
@@ -106,6 +114,19 @@ class ProductWriteSerializer(serializers.Serializer):
                 )
             attrs['resolved_categories'] = categories
 
+        if 'recommended_product_ids' in attrs:
+            recommended_ids = list(dict.fromkeys(attrs['recommended_product_ids']))
+            if self.instance is not None:
+                recommended_ids = [product_id for product_id in recommended_ids if product_id != self.instance.pk]
+            products = list(Product.objects.filter(id__in=recommended_ids).order_by('id'))
+            found_ids = {product.id for product in products}
+            missing_ids = [product_id for product_id in recommended_ids if product_id not in found_ids]
+            if missing_ids:
+                raise serializers.ValidationError(
+                    {'recommended_product_ids': f"Unknown product ids: {', '.join(str(product_id) for product_id in missing_ids)}"}
+                )
+            attrs['resolved_recommended_products'] = products
+
         if 'product_class' in attrs or is_create:
             attrs['resolved_product_class_name'] = attrs.get('product_class') or self.DEFAULT_PRODUCT_CLASS
 
@@ -126,14 +147,19 @@ class ProductWriteSerializer(serializers.Serializer):
         product_class_name = validated_data.pop('resolved_product_class_name', self.DEFAULT_PRODUCT_CLASS)
         product_class = self._get_or_create_product_class(product_class_name)
         attributes = validated_data.pop('attributes', {})
+        recommended_products = validated_data.pop('resolved_recommended_products', None)
         stock_requested = validated_data.pop('stock_requested', False)
 
         validated_data.pop('product_class', None)
+        validated_data.pop('recommended_product_ids', None)
 
         product = Product.objects.create(
             upc=validated_data['upc'],
             title=validated_data['title'],
+            slug=validated_data.get('slug') or slugify(validated_data['title']),
             description=validated_data.get('description') or '',
+            meta_title=validated_data.get('meta_title') or '',
+            meta_description=validated_data.get('meta_description') or '',
             is_public=validated_data.get('is_public', True),
             product_class=product_class,
             structure=getattr(Product, 'STANDALONE', 'standalone'),
@@ -147,6 +173,8 @@ class ProductWriteSerializer(serializers.Serializer):
             self._save_stockrecord(product=product, partner=partner, payload=validated_data)
 
         self._save_attributes(product=product, product_class=product_class, attributes=attributes)
+        if recommended_products is not None:
+            self._save_recommendations(product=product, recommended_products=recommended_products)
         return product
 
     @transaction.atomic
@@ -154,14 +182,16 @@ class ProductWriteSerializer(serializers.Serializer):
         categories = validated_data.pop('resolved_categories', None)
         product_class_name = validated_data.pop('resolved_product_class_name', None)
         attributes = validated_data.pop('attributes', None)
+        recommended_products = validated_data.pop('resolved_recommended_products', None)
         stock_requested = validated_data.pop('stock_requested', False)
 
         validated_data.pop('product_class', None)
+        validated_data.pop('recommended_product_ids', None)
 
         product_class = self._get_or_create_product_class(product_class_name) if product_class_name else instance.product_class
         dirty_fields = []
 
-        for field in ('upc', 'title', 'is_public'):
+        for field in ('upc', 'title', 'slug', 'meta_title', 'meta_description', 'is_public'):
             if field in validated_data and getattr(instance, field) != validated_data[field]:
                 setattr(instance, field, validated_data[field])
                 dirty_fields.append(field)
@@ -193,6 +223,9 @@ class ProductWriteSerializer(serializers.Serializer):
 
         if attributes is not None:
             self._save_attributes(product=instance, product_class=product_class, attributes=attributes)
+
+        if recommended_products is not None:
+            self._save_recommendations(product=instance, recommended_products=recommended_products)
 
         return instance
 
@@ -284,6 +317,18 @@ class ProductWriteSerializer(serializers.Serializer):
                 continue
 
             attribute.save_value(product, value)
+
+    def _save_recommendations(self, product, recommended_products):
+        ProductRecommendation = apps.get_model('catalogue', 'ProductRecommendation')
+
+        ProductRecommendation.objects.filter(primary=product).delete()
+        rows = [
+            ProductRecommendation(primary=product, recommendation=recommended_product, ranking=index)
+            for index, recommended_product in enumerate(recommended_products, start=1)
+            if recommended_product.pk != product.pk
+        ]
+        if rows:
+            ProductRecommendation.objects.bulk_create(rows)
 
     @staticmethod
     def _normalize_attribute_code(raw_code) -> str:

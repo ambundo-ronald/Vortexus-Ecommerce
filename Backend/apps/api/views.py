@@ -49,7 +49,7 @@ def _product_queryset(include_hidden: bool = False):
     Product = apps.get_model("catalogue", "Product")
     queryset = (
         Product.objects.exclude(structure="parent")
-        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images")
+        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images", "recommended_products")
         .distinct()
     )
     if include_hidden:
@@ -175,7 +175,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'currency': detail.get('currency'),
         'status': 'active' if product.is_public else 'draft',
         'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'slug': product.slug or '',
         'description': product.description or '',
+        'metaTitle': product.meta_title or '',
+        'metaDescription': product.meta_description or '',
         'imageUrl': detail.get('primary_image', ''),
         'images': [_serialize_product_image(image, fallback_alt=product.title) for image in product.images.all()],
         'category': str(detail['categories'][0]['id']) if detail.get('categories') else '',
@@ -186,6 +189,15 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'dimensions': attributes.get('dimensions', ''),
         'weight': float(attributes['weight_grams']) if attributes.get('weight_grams') not in (None, '') and str(attributes.get('weight_grams')).replace('.', '', 1).isdigit() else None,
         'chargeTax': True,
+        'recommendedProducts': [
+            {
+                'id': recommended.id,
+                'name': recommended.title,
+                'sku': recommended.upc,
+            }
+            for recommended in product.sorted_recommended_products
+        ],
+        'recommendedProductIds': [recommended.id for recommended in product.sorted_recommended_products],
         'specifications': detail.get('specifications', []),
         'updatedAt': detail.get('updated_at'),
         'isPublic': product.is_public,

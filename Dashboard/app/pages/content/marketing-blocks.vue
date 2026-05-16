@@ -51,6 +51,7 @@ const placementOptions = computed(() => placements.value.length
       { value: 'promo_banner', label: 'Promo banner' },
       { value: 'featured', label: 'Featured block' },
       { value: 'brand_strip', label: 'Brand strip' },
+      { value: 'top_category', label: 'Top Category' },
     ])
 
 const inactiveCount = computed(() => Math.max(totalItems.value - activeCount.value, 0))
