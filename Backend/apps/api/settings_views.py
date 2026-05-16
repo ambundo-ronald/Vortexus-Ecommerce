@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.notifications.config import configured_from_email, configured_reply_to_email
 
 from .account_serializers import AccountProfileUpdateSerializer, AccountSummarySerializer
 
@@ -45,8 +46,8 @@ def _serialize_store_settings(site):
         'site_domain': site.domain,
         'default_currency': getattr(settings, 'OSCAR_DEFAULT_CURRENCY', ''),
         'shop_name': getattr(settings, 'OSCAR_SHOP_NAME', ''),
-        'support_email': getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
-        'reply_to_email': getattr(settings, 'NOTIFICATION_REPLY_TO_EMAIL', ''),
+        'support_email': configured_from_email(),
+        'reply_to_email': configured_reply_to_email(),
         'payment_methods': payment_methods,
         'async_enabled': bool(getattr(settings, 'ENABLE_ASYNC_TASKS', False)),
         'search_host': getattr(settings, 'OPENSEARCH', {}).get('HOST', ''),

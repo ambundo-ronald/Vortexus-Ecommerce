@@ -1206,6 +1206,9 @@ class AdminCommunicationCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
+        from apps.notifications.templates import ensure_custom_communication_templates
+
+        ensure_custom_communication_templates()
         CommunicationEventType = get_model('communication', 'CommunicationEventType')
         return Response({'results': [_communication_payload(row) for row in CommunicationEventType.objects.order_by('category', 'code')]})
 
@@ -1214,10 +1217,16 @@ class AdminCommunicationDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, slug: str):
+        from apps.notifications.templates import ensure_custom_communication_templates
+
+        ensure_custom_communication_templates()
         template = get_object_or_404(get_model('communication', 'CommunicationEventType'), code=slug)
         return Response({'communication': _communication_payload(template)})
 
     def patch(self, request, slug: str):
+        from apps.notifications.templates import ensure_custom_communication_templates
+
+        ensure_custom_communication_templates()
         template = get_object_or_404(get_model('communication', 'CommunicationEventType'), code=slug)
         for field in ['name', 'category', 'email_subject_template', 'email_body_template', 'email_body_html_template', 'sms_template']:
             if field in request.data:

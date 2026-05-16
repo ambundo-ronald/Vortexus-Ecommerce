@@ -11,23 +11,15 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [resetLink, setResetLink] = useState("");
 
   async function submit(event) {
     event.preventDefault();
     setLoading(true);
     setError("");
     setMessage("");
-    setResetLink("");
     try {
       const payload = await authApi.requestPasswordReset({ email });
       setMessage(payload?.detail || "If that email exists, password reset instructions will be sent.");
-      if (payload?.uid && payload?.token) {
-        const url = new URL("/reset-password", window.location.origin);
-        url.searchParams.set("uid", payload.uid);
-        url.searchParams.set("token", payload.token);
-        setResetLink(url.pathname + url.search);
-      }
     } catch (requestError) {
       setError(normalizeApiError(requestError, "Could not request a password reset.").message);
     } finally {
@@ -42,7 +34,7 @@ export default function ForgotPasswordPage() {
           <span><MaterialIcon name="lock_reset" size={24} /></span>
           <div>
             <h1>Reset password</h1>
-            <p>Enter your account email and we will prepare a reset link.</p>
+            <p>Enter your account email and we will send a reset link.</p>
           </div>
         </div>
 
@@ -58,17 +50,6 @@ export default function ForgotPasswordPage() {
           <MaterialIcon name="mail" size={19} />
           {loading ? "Sending..." : "Send reset link"}
         </button>
-
-        {resetLink ? (
-          <div className="auth-inline-panel">
-            <strong>Reset link ready</strong>
-            <span>Use this link to set a new password.</span>
-            <Link className="secondary-button" to={resetLink}>
-              <MaterialIcon name="arrow_forward" size={18} />
-              Open reset page
-            </Link>
-          </div>
-        ) : null}
 
         <p className="auth-switch">
           Remembered it? <Link to="/login">Sign in</Link>

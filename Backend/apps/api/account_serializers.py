@@ -46,6 +46,11 @@ class AccountSummarySerializer(serializers.Serializer):
             'settings': {
                 'receive_order_updates': profile.receive_order_updates,
                 'receive_marketing_emails': profile.receive_marketing_emails,
+                'two_factor_email_enabled': profile.two_factor_email_enabled,
+            },
+            'email_verification': {
+                'is_verified': profile.email_verified_at is not None,
+                'verified_at': profile.email_verified_at,
             },
             'supplier': {
                 'is_supplier': supplier_profile is not None,
@@ -165,6 +170,7 @@ class AccountProfileUpdateSerializer(serializers.Serializer):
     preferred_currency = serializers.CharField(required=False, allow_blank=True, max_length=3)
     receive_order_updates = serializers.BooleanField(required=False)
     receive_marketing_emails = serializers.BooleanField(required=False)
+    two_factor_email_enabled = serializers.BooleanField(required=False)
 
     def validate_email(self, value):
         user = self.context['request'].user
@@ -184,6 +190,13 @@ class AccountProfileUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError('Unsupported currency.')
         return normalized
 
+    def validate(self, attrs):
+        user = self.context['request'].user
+        profile = get_or_create_customer_profile(user)
+        if attrs.get('two_factor_email_enabled') and profile.email_verified_at is None:
+            raise serializers.ValidationError({'two_factor_email_enabled': 'Verify your email before enabling email 2FA.'})
+        return attrs
+
     @transaction.atomic
     def update(self, instance, validated_data):
         profile = get_or_create_customer_profile(instance)
@@ -196,6 +209,12 @@ class AccountProfileUpdateSerializer(serializers.Serializer):
                 if getattr(instance, field) != new_value:
                     setattr(instance, field, new_value)
                     user_dirty_fields.append(field)
+                    if field == 'email' and profile.email_verified_at is not None:
+                        profile.email_verified_at = None
+                        profile_dirty_fields.append('email_verified_at')
+                    if field == 'email' and profile.two_factor_email_enabled:
+                        profile.two_factor_email_enabled = False
+                        profile_dirty_fields.append('two_factor_email_enabled')
 
         for field in ('phone', 'company'):
             if field in validated_data:
@@ -221,7 +240,7 @@ class AccountProfileUpdateSerializer(serializers.Serializer):
                 profile.preferred_currency = preferred_currency
                 profile_dirty_fields.append('preferred_currency')
 
-        for field in ('receive_order_updates', 'receive_marketing_emails'):
+        for field in ('receive_order_updates', 'receive_marketing_emails', 'two_factor_email_enabled'):
             if field in validated_data and getattr(profile, field) != validated_data[field]:
                 setattr(profile, field, validated_data[field])
                 profile_dirty_fields.append(field)

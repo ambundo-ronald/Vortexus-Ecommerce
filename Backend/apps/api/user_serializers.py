@@ -45,6 +45,9 @@ class AdminUserListSerializer(serializers.Serializer):
             'joined': user.date_joined,
             'company': profile.company or '',
             'phone': profile.phone or '',
+            'email_verified': profile.email_verified_at is not None,
+            'email_verified_at': profile.email_verified_at,
+            'two_factor_email_enabled': profile.two_factor_email_enabled,
         }
 
 
@@ -72,6 +75,9 @@ class AdminUserDetailSerializer(serializers.Serializer):
             'preferred_currency': profile.preferred_currency or '',
             'receive_order_updates': profile.receive_order_updates,
             'receive_marketing_emails': profile.receive_marketing_emails,
+            'email_verified': profile.email_verified_at is not None,
+            'email_verified_at': profile.email_verified_at,
+            'two_factor_email_enabled': profile.two_factor_email_enabled,
             'supplier': {
                 'is_supplier': supplier_profile is not None,
                 'status': supplier_profile.status if supplier_profile else '',
@@ -191,6 +197,9 @@ class AdminUserWriteSerializer(serializers.Serializer):
 
         profile = get_or_create_customer_profile(instance)
         profile_dirty_fields = []
+        if 'email' in dirty_fields and profile.email_verified_at is not None:
+            profile.email_verified_at = None
+            profile_dirty_fields.append('email_verified_at')
         if phone is not None:
             phone = phone.strip()
             if profile.phone != phone:

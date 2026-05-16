@@ -20,6 +20,7 @@ import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage.jsx";
 import LoginPage from "../pages/auth/LoginPage.jsx";
 import RegisterPage from "../pages/auth/RegisterPage.jsx";
 import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
+import VerifyEmailPage from "../pages/auth/VerifyEmailPage.jsx";
 import CategoryPage from "../pages/public/CategoryPage.jsx";
 import HomePage from "../pages/public/HomePage.jsx";
 import ProductDetailPage from "../pages/public/ProductDetailPage.jsx";
@@ -47,6 +48,7 @@ export default function AppRouter() {
       <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />
       <Route path="/forgot-password" element={<PageWrapper><ForgotPasswordPage /></PageWrapper>} />
       <Route path="/reset-password" element={<PageWrapper><ResetPasswordPage /></PageWrapper>} />
+      <Route path="/account/verify-email" element={<PageWrapper><VerifyEmailPage /></PageWrapper>} />
       <Route path="/unauthorized" element={<PageWrapper><UnauthorizedPage /></PageWrapper>} />
       <Route path="/account" element={<PageWrapper><ProtectedRoute><AccountDashboardPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/addresses" element={<PageWrapper><ProtectedRoute><AddressesPage /></ProtectedRoute></PageWrapper>} />

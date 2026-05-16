@@ -12,6 +12,7 @@ env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
 
 SECRET_KEY = env('DJANGO_SECRET_KEY', default='change-me')
+EMAIL_SECRET_KEY = env('EMAIL_SECRET_KEY', default='')
 DEBUG = env('DJANGO_DEBUG', default=False)
 ALLOWED_HOSTS = [
     host.strip()
@@ -137,6 +138,9 @@ REST_FRAMEWORK = {
         'account_register_identity': '3/hour',
         'account_login': '20/hour',
         'account_login_identity': '8/hour',
+        'account_login_2fa': '10/hour',
+        'account_email_verify': '20/hour',
+        'account_email_verify_resend': '5/hour',
         'account_password': '10/hour',
         'quote_request': '8/hour',
         'public_search': '120/hour',
@@ -395,6 +399,7 @@ DISPLAY_CURRENCY_RATES = json.loads(
 
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
 NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
+STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://localhost:5173')
 SALES_NOTIFICATION_RECIPIENTS = [
     recipient.strip()
     for recipient in env('SALES_NOTIFICATION_RECIPIENTS', default='sales@vortexus.local').split(',')

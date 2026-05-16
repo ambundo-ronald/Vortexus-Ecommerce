@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth import password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -9,9 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.encoding import force_bytes
 from django.utils.encoding import force_str
-from django.utils.http import urlsafe_base64_encode
 from django.utils.http import urlsafe_base64_decode
 from oscar.core.loading import get_model
 from rest_framework import permissions, serializers, status
@@ -21,6 +20,7 @@ from rest_framework.views import APIView
 from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
+from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
 
 from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
 from .order_serializers import OrderSummarySerializer
@@ -566,7 +566,7 @@ class AccountEmailCollectionAPIView(APIView):
 
     def get(self, request):
         EmailNotification = apps.get_model('notifications', 'EmailNotification')
-        emails = EmailNotification.objects.filter(recipient__iexact=request.user.email)[:100]
+        emails = EmailNotification.objects.filter(recipient__iexact=request.user.email).exclude(metadata__archived=True)[:100]
         return Response({'results': [_email_payload(email) for email in emails]})
 
 
@@ -587,6 +587,9 @@ def _email_payload(email) -> dict:
         'recipient': email.recipient,
         'subject': email.subject,
         'metadata': email.metadata,
+        'read': bool((email.metadata or {}).get('read')),
+        'archived': bool((email.metadata or {}).get('archived')),
+        'error_message': email.error_message,
         'sent_at': email.sent_at.isoformat() if email.sent_at else None,
         'created_at': email.created_at.isoformat(),
     }
@@ -713,8 +716,7 @@ class PasswordResetRequestAPIView(APIView):
         user = User.objects.filter(email__iexact=email).first()
         payload = {'detail': 'If that email exists, password reset instructions will be sent.'}
         if user:
-            payload['uid'] = urlsafe_base64_encode(force_bytes(user.pk))
-            payload['token'] = default_token_generator.make_token(user)
+            queue_password_reset_email(user)
         return Response(payload)
 
 
@@ -737,8 +739,10 @@ class PasswordResetConfirmAPIView(APIView):
         user = get_object_or_404(get_user_model(), pk=user_id)
         if not default_token_generator.check_token(user, token):
             raise serializers.ValidationError({'token': 'Invalid or expired reset token.'})
+        password_validation.validate_password(password, user=user)
         user.set_password(password)
         user.save(update_fields=['password'])
+        queue_password_changed_email(user)
         return Response({'detail': 'Password reset successfully.'})
 
 
@@ -866,27 +870,31 @@ class AccountPreferenceAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        profile = getattr(request.user, 'customer_profile', None)
+        CustomerProfile = apps.get_model('accounts', 'CustomerProfile')
+        profile, _ = CustomerProfile.objects.get_or_create(user=request.user)
         return Response(
             {
                 'preferences': {
-                    'receive_order_updates': getattr(profile, 'receive_order_updates', True),
-                    'receive_marketing_emails': getattr(profile, 'receive_marketing_emails', False),
-                    'preferred_currency': getattr(profile, 'preferred_currency', ''),
-                    'country_code': getattr(profile, 'country_code', ''),
-                    'phone': getattr(profile, 'phone', ''),
-                    'company': getattr(profile, 'company', ''),
+                    'receive_order_updates': profile.receive_order_updates,
+                    'receive_marketing_emails': profile.receive_marketing_emails,
+                    'two_factor_email_enabled': profile.two_factor_email_enabled,
+                    'email_verified': profile.email_verified_at is not None,
+                    'email_verified_at': profile.email_verified_at.isoformat() if profile.email_verified_at else None,
+                    'preferred_currency': profile.preferred_currency,
+                    'country_code': profile.country_code,
+                    'phone': profile.phone,
+                    'company': profile.company,
                 }
             }
         )
 
     def patch(self, request):
-        profile = getattr(request.user, 'customer_profile', None)
-        if profile is None:
-            return Response({'preferences': request.data})
+        CustomerProfile = apps.get_model('accounts', 'CustomerProfile')
+        profile, _ = CustomerProfile.objects.get_or_create(user=request.user)
         allowed_fields = {
             'receive_order_updates',
             'receive_marketing_emails',
+            'two_factor_email_enabled',
             'preferred_currency',
             'country_code',
             'phone',
@@ -895,6 +903,8 @@ class AccountPreferenceAPIView(APIView):
         update_fields = []
         for field in allowed_fields:
             if field in request.data:
+                if field == 'two_factor_email_enabled' and request.data[field] and profile.email_verified_at is None:
+                    raise serializers.ValidationError({'two_factor_email_enabled': 'Verify your email before enabling email 2FA.'})
                 setattr(profile, field, request.data[field])
                 update_fields.append(field)
         if update_fields:

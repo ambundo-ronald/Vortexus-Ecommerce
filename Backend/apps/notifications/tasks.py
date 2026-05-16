@@ -4,8 +4,11 @@ from django.contrib.auth import get_user_model
 
 from .services import (
     send_account_registration_email,
+    send_email_two_factor_code,
+    send_email_verification_email,
     send_order_confirmation_email,
     send_password_changed_email,
+    send_password_reset_email,
     send_quote_request_notifications,
     send_shipping_update_email,
 )
@@ -21,12 +24,39 @@ def send_account_registration_email_task(self, user_id: int) -> bool:
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_email_verification_email_task(self, user_id: int) -> bool:
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return False
+    return send_email_verification_email(user, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_email_two_factor_code_task(self, user_id: int, code: str) -> bool:
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return False
+    return send_email_two_factor_code(user, code=code, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
 def send_password_changed_email_task(self, user_id: int) -> bool:
     User = get_user_model()
     user = User.objects.filter(id=user_id).first()
     if not user:
         return False
     return send_password_changed_email(user, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_password_reset_email_task(self, user_id: int) -> bool:
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return False
+    return send_password_reset_email(user, raise_on_failure=True)
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})

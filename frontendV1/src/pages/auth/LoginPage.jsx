@@ -10,7 +10,13 @@ export default function LoginPage() {
   const next = location.state?.from?.pathname || "/account";
 
   async function handleLogin(payload) {
-    await auth.login(payload);
+    const response = await auth.login(payload);
+    if (response?.requires_2fa) return;
+    navigate(next, { replace: true });
+  }
+
+  async function handleTwoFactor(payload) {
+    await auth.verifyLoginTwoFactor(payload);
     navigate(next, { replace: true });
   }
 
@@ -18,7 +24,14 @@ export default function LoginPage() {
 
   return (
     <section className="auth-page">
-      <LoginForm loading={auth.loading} error={auth.error} onSubmit={handleLogin} />
+      <LoginForm
+        loading={auth.loading}
+        error={auth.error}
+        pendingTwoFactor={auth.pendingTwoFactor}
+        onSubmit={handleLogin}
+        onVerifyTwoFactor={handleTwoFactor}
+        onCancelTwoFactor={auth.clearPendingTwoFactor}
+      />
     </section>
   );
 }

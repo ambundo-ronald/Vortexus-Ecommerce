@@ -129,6 +129,16 @@ export const navSections: NavSection[] = [
         icon: 'i-lucide-list-checks',
         to: '/audit-logs',
       },
+      {
+        label: 'Email Logs',
+        icon: 'i-lucide-mail-search',
+        to: '/email-logs',
+      },
+      {
+        label: 'Email Suppressions',
+        icon: 'i-lucide-mail-x',
+        to: '/email-suppressions',
+      },
     ],
   },
   {
@@ -153,6 +163,11 @@ export const navSections: NavSection[] = [
         label: 'Communications',
         icon: 'i-lucide-send',
         to: '/content/communications',
+      },
+      {
+        label: 'Email Templates',
+        icon: 'i-lucide-mail-pen',
+        to: '/content/email-templates',
       },
     ],
   },
