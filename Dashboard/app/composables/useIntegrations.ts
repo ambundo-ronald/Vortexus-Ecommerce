@@ -15,10 +15,27 @@ export interface IntegrationConnection {
   poll_interval_minutes?: number
   status: string
   is_active: boolean
+  metadata?: Record<string, any>
   last_successful_sync_at?: string | null
   last_failed_sync_at?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface IntegrationConnectionPayload {
+  name: string
+  connection_type?: string
+  base_url: string
+  auth_type?: string
+  credential_source?: string
+  secret_env_prefix?: string
+  api_key?: string
+  api_secret?: string
+  default_company?: string
+  default_warehouse?: string
+  poll_interval_minutes?: number
+  is_active?: boolean
+  metadata?: Record<string, any>
 }
 
 export interface IntegrationLog {
@@ -124,6 +141,46 @@ export function useIntegrations() {
     }
   }
 
+  async function createConnection(payload: IntegrationConnectionPayload) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ connection: IntegrationConnection }>('/admin/integrations/', {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.connection }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function updateConnection(connectionId: number, payload: Partial<IntegrationConnectionPayload>) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ connection: IntegrationConnection }>(`/admin/integrations/${connectionId}/`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      return { success: true, data: result.connection }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   async function previewERPNext(connectionId: number, params: { resource: ERPNextPreviewResource, limit?: number }) {
     loading.value = true
     error.value = null
@@ -171,6 +228,8 @@ export function useIntegrations() {
     loading,
     error,
     getConnections,
+    createConnection,
+    updateConnection,
     getLogs,
     testConnection,
     syncStock,

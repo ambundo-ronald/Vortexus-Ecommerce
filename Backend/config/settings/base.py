@@ -104,6 +104,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(env('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
+SERVE_MEDIA_FILES = env.bool('DJANGO_SERVE_MEDIA_FILES', default=False)
 FILE_UPLOAD_MAX_MEMORY_SIZE = env.int('FILE_UPLOAD_MAX_MEMORY_SIZE', default=5 * 1024 * 1024)
 DATA_UPLOAD_MAX_MEMORY_SIZE = env.int('DATA_UPLOAD_MAX_MEMORY_SIZE', default=15 * 1024 * 1024)
 MAX_IMAGE_UPLOAD_BYTES = env.int('MAX_IMAGE_UPLOAD_BYTES', default=5 * 1024 * 1024)

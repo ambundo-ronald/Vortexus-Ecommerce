@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 
 from .serializers import ProductImageUploadSerializer
+from .media_utils import delete_product_image_with_file
 from .views import _product_queryset
 
 
@@ -123,12 +124,13 @@ class AdminMediaDetailAPIView(APIView):
         ProductImage = apps.get_model('catalogue', 'ProductImage')
         image = get_object_or_404(ProductImage.objects.select_related('product'), id=image_id)
         product = image.product
+        image_id = image.id
+        filename = delete_product_image_with_file(image)
         metadata = {
-            'image_id': image.id,
+            'image_id': image_id,
             'product_id': product.id,
-            'filename': getattr(getattr(image, 'original', None), 'name', ''),
+            'filename': filename,
         }
-        image.delete()
         record_audit_event(
             event_type='catalog.media_deleted',
             request=request,

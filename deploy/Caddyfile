@@ -1,0 +1,25 @@
+{$STOREFRONT_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy frontend:80
+}
+
+{$DASHBOARD_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy dashboard:80
+}
+
+{$API_DOMAIN} {
+    encode zstd gzip
+
+    handle_path /static/* {
+        root * /srv/backend/static
+        file_server
+    }
+
+    handle_path /media/* {
+        root * /srv/backend/media
+        file_server
+    }
+
+    reverse_proxy backend:8000
+}

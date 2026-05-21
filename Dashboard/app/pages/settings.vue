@@ -13,6 +13,11 @@ const isEmailSaving = ref(false);
 const isEmailTesting = ref(false);
 const isPaymentLoading = ref(false);
 const isPaymentSaving = ref(false);
+const themeOptions = [
+  { label: "Light", value: "light", icon: "i-lucide-sun" },
+  { label: "Dark", value: "dark", icon: "i-lucide-moon" },
+  { label: "System", value: "system", icon: "i-lucide-monitor" },
+];
 
 const store = ref({
   site_name: "",
@@ -178,6 +183,14 @@ function changeTheme(value: string) {
   colorMode.preference = value;
 }
 
+watch(
+  () => colorMode.preference,
+  (value) => {
+    if (["light", "dark", "system"].includes(value))
+      theme.value = value;
+  },
+);
+
 async function saveSettings() {
   isSaving.value = true;
   const result = await updateSettings({
@@ -284,6 +297,27 @@ async function savePaymentConfig() {
 function setEmailSecurityMode(mode: "tls" | "ssl" | "none") {
   emailConfig.value.use_tls = mode === "tls";
   emailConfig.value.use_ssl = mode === "ssl";
+
+  if (mode === "tls" && Number(emailConfig.value.port || 0) === 465)
+    emailConfig.value.port = 587;
+  if (mode === "ssl" && Number(emailConfig.value.port || 0) === 587)
+    emailConfig.value.port = 465;
+}
+
+function applyGmailSmtpPreset() {
+  emailConfig.value = {
+    ...emailConfig.value,
+    is_enabled: true,
+    host: "smtp.gmail.com",
+    port: 587,
+    use_tls: true,
+    use_ssl: false,
+  };
+
+  if (!emailConfig.value.from_email && emailConfig.value.username)
+    emailConfig.value.from_email = emailConfig.value.username;
+  if (!emailConfig.value.reply_to_email && emailConfig.value.username)
+    emailConfig.value.reply_to_email = emailConfig.value.username;
 }
 
 async function saveEmailConfig() {
@@ -396,18 +430,20 @@ onMounted(() => {
         </template>
 
         <div class="space-y-4">
-          <UButtonGroup class="w-full">
-            <UButton icon="i-lucide-sun" color="neutral" :variant="theme === 'light' ? 'solid' : 'subtle'" @click="changeTheme('light')">
-              Light
+          <div class="grid grid-cols-3 overflow-hidden rounded-md border border-default">
+            <UButton
+              v-for="option in themeOptions"
+              :key="option.value"
+              :icon="option.icon"
+              color="neutral"
+              :variant="theme === option.value ? 'solid' : 'ghost'"
+              class="justify-center rounded-none"
+              @click="changeTheme(option.value)"
+            >
+              {{ option.label }}
             </UButton>
-            <UButton icon="i-lucide-moon" color="neutral" :variant="theme === 'dark' ? 'solid' : 'subtle'" @click="changeTheme('dark')">
-              Dark
-            </UButton>
-            <UButton icon="i-lucide-computer" color="neutral" :variant="theme === 'system' ? 'solid' : 'subtle'" @click="changeTheme('system')">
-              System
-            </UButton>
-          </UButtonGroup>
-          <p class="text-xs text-(--ui-text-muted)">Theme is frontend-only for now; backend settings remain operational.</p>
+          </div>
+          <p class="text-xs text-(--ui-text-muted)">Current mode: {{ colorMode.value === 'dark' ? 'Dark' : 'Light' }}</p>
         </div>
       </UCard>
 
@@ -469,6 +505,9 @@ onMounted(() => {
               <UBadge :color="emailConfig.is_configured ? 'success' : 'warning'" variant="soft">
                 {{ emailConfig.is_configured ? "Configured" : "Incomplete" }}
               </UBadge>
+              <UButton color="neutral" variant="outline" icon="i-lucide-mail" @click="applyGmailSmtpPreset">
+                Use Gmail SMTP
+              </UButton>
               <UButton color="primary" icon="i-lucide-save" :loading="isEmailSaving" @click="saveEmailConfig">
                 Save Email Settings
               </UButton>
@@ -488,10 +527,10 @@ onMounted(() => {
               <UInput v-model.number="emailConfig.port" :loading="isEmailLoading" type="number" min="1" max="65535" />
             </UFormField>
             <UFormField label="Username">
-              <UInput v-model="emailConfig.username" :loading="isEmailLoading" autocomplete="username" />
+              <UInput v-model="emailConfig.username" :loading="isEmailLoading" autocomplete="username" placeholder="yourname@gmail.com" />
             </UFormField>
             <UFormField label="Password / API key">
-              <UInput v-model="emailConfig.password" :loading="isEmailLoading" type="password" :placeholder="emailConfig.has_password ? 'Saved' : 'Optional'" autocomplete="new-password" />
+              <UInput v-model="emailConfig.password" :loading="isEmailLoading" type="password" :placeholder="emailConfig.has_password ? 'Saved' : 'Google app password'" autocomplete="new-password" />
             </UFormField>
             <UFormField label="From email">
               <UInput v-model="emailConfig.from_email" :loading="isEmailLoading" type="email" placeholder="no-reply@example.com" />

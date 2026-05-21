@@ -166,7 +166,7 @@ export const navSections: NavSection[] = [
       },
       {
         label: 'Email Templates',
-        icon: 'i-lucide-mail-pen',
+        icon: 'i-lucide-mail-plus',
         to: '/content/email-templates',
       },
     ],

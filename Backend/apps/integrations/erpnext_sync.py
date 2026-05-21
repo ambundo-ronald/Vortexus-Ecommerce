@@ -128,6 +128,11 @@ class ERPNextSyncService:
         self.product_class = _resolve_product_class(connection)
         self.default_currency = connection.metadata.get('default_currency') or settings.OSCAR_DEFAULT_CURRENCY
         self.default_price_list = connection.metadata.get('price_list') or getattr(settings, 'ERPNEXT_DEFAULT_PRICE_LIST', 'Standard Selling')
+        self.selected_item_groups = {
+            str(group).strip()
+            for group in connection.metadata.get('item_groups', [])
+            if str(group).strip()
+        }
 
     def _log_event(self, job: SyncJob, entity_type: str, status: str, external_reference: str = '', payload_excerpt: dict | None = None, error_message: str = ''):
         SyncEventLog.objects.create(
@@ -229,6 +234,9 @@ class ERPNextSyncService:
 
                     category = None
                     item_group = (item.get('item_group') or '').strip()
+                    if self.selected_item_groups and item_group not in self.selected_item_groups:
+                        continue
+
                     if item_group:
                         segments = _normalize_category_segments(item_group, groups_by_name)
                         category, created_count = _get_or_create_category_path(segments)

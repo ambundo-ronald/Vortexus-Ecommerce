@@ -1,8 +1,16 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const disableNuxtHub = process.env.DISABLE_NUXT_HUB === 'true' || process.env.NITRO_PRESET === 'node-server'
+
 export default defineNuxtConfig({
   devtools: { enabled: false },
+  ssr: process.env.NUXT_SSR !== 'false',
 
-  modules: ['@nuxt/ui', '@nuxt/eslint', 'nuxt-charts', '@nuxthub/core'],
+  modules: [
+    '@nuxt/ui',
+    '@nuxt/eslint',
+    'nuxt-charts',
+    ...(!disableNuxtHub ? ['@nuxthub/core'] : []),
+  ],
 
   css: ['~/assets/css/main.css'],
 
@@ -26,7 +34,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    preset: 'cloudflare-pages',
+    preset: process.env.NITRO_PRESET || 'cloudflare-pages',
   },
 
   vite: {

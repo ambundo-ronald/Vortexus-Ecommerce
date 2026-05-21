@@ -14,17 +14,17 @@ const isLinkActive = (item: { to?: string }) => {
 
 <template>
   <div
-    class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex"
+    class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex dark:border-slate-800 dark:bg-slate-950"
   >
     <NuxtLink to="/" class="mb-8 flex items-center gap-3">
       <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
         VX
       </div>
       <div>
-        <p class="text-lg font-black leading-tight text-slate-950">
+        <p class="text-lg font-black leading-tight text-slate-950 dark:text-slate-100">
           Vortexus
         </p>
-        <p class="text-xs text-slate-500">
+        <p class="text-xs text-slate-500 dark:text-slate-400">
           Operations
         </p>
       </div>

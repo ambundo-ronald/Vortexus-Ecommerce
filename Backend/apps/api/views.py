@@ -19,6 +19,7 @@ from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
 from .serializers import ProductImageUploadSerializer, ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
+from .media_utils import delete_product_image_with_file
 
 logger = logging.getLogger(__name__)
 
@@ -576,12 +577,13 @@ class AdminProductImageDetailAPIView(APIView):
     def delete(self, request, product_id: int, image_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
         image = get_object_or_404(product.images.all(), id=image_id)
+        image_id = image.id
+        filename = delete_product_image_with_file(image)
         metadata = {
-            'image_id': image.id,
+            'image_id': image_id,
             'product_id': product.id,
-            'filename': getattr(getattr(image, 'original', None), 'name', ''),
+            'filename': filename,
         }
-        image.delete()
         record_audit_event(
             event_type='catalog.product_image_deleted',
             request=request,
