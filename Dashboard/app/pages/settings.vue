@@ -26,7 +26,7 @@ const store = ref({
   shop_name: "",
   support_email: "",
   reply_to_email: "",
-  payment_methods: [] as Array<{ code: string; name: string; type: string; requires_prepayment: boolean }>,
+  payment_methods: [] as Array<{ code: string; name: string; type: string; requires_prepayment: boolean; is_configured?: boolean }>,
   async_enabled: false,
   search_host: "",
 });
@@ -89,6 +89,16 @@ const paymentConfig = ref({
     sandbox_enabled: false,
   },
 });
+
+function useMpesaSandboxPreset() {
+  paymentConfig.value.mpesa.base_url = "https://sandbox.safaricom.co.ke";
+  paymentConfig.value.mpesa.transaction_type = paymentConfig.value.mpesa.transaction_type || "CustomerPayBillOnline";
+}
+
+function useMpesaLivePreset() {
+  paymentConfig.value.mpesa.base_url = "https://api.safaricom.co.ke";
+  paymentConfig.value.mpesa.transaction_type = paymentConfig.value.mpesa.transaction_type || "CustomerPayBillOnline";
+}
 
 function applySettings(data: any) {
   store.value = {
@@ -598,6 +608,14 @@ onMounted(() => {
 
             <div class="space-y-4">
               <UCheckbox v-model="paymentConfig.mpesa.is_enabled" label="Enable M-Pesa at checkout" :disabled="isPaymentLoading" />
+              <div class="grid grid-cols-2 gap-2">
+                <UButton color="neutral" variant="outline" block size="sm" @click="useMpesaSandboxPreset">
+                  Sandbox URL
+                </UButton>
+                <UButton color="neutral" variant="outline" block size="sm" @click="useMpesaLivePreset">
+                  Live URL
+                </UButton>
+              </div>
               <UFormField label="Base URL">
                 <UInput v-model="paymentConfig.mpesa.base_url" :loading="isPaymentLoading" placeholder="https://sandbox.safaricom.co.ke" />
               </UFormField>
@@ -624,6 +642,9 @@ onMounted(() => {
                   <UInput v-model.number="paymentConfig.mpesa.timeout_seconds" :loading="isPaymentLoading" type="number" min="1" max="120" />
                 </UFormField>
               </div>
+              <p class="text-xs text-(--ui-text-muted)">
+                M-Pesa appears at checkout only when enabled and all Daraja credentials, shortcode, passkey, and callback URL are saved.
+              </p>
             </div>
           </div>
 
@@ -644,7 +665,7 @@ onMounted(() => {
                 <UInput v-model="paymentConfig.airtel_money.provider_name" :loading="isPaymentLoading" placeholder="sandbox_airtel_money" />
               </UFormField>
               <p class="text-xs text-(--ui-text-muted)">
-                Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}
+                Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}. This provider remains hidden from checkout unless its backend integration is enabled.
               </p>
             </div>
           </div>
@@ -666,7 +687,7 @@ onMounted(() => {
                 <UInput v-model="paymentConfig.card.provider_name" :loading="isPaymentLoading" placeholder="sandbox_card" />
               </UFormField>
               <p class="text-xs text-(--ui-text-muted)">
-                Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}
+                Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}. Real card payments require adding a PCI/tokenization provider before enabling this in production.
               </p>
             </div>
           </div>

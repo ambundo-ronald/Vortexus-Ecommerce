@@ -61,10 +61,10 @@ export default function AppRouter() {
       <Route path="/product-alerts/cancel/:key" element={<PageWrapper><ProductAlertActionPage action="cancel" /></PageWrapper>} />
       <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
       <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
-      <Route path="/checkout/shipping" element={<PageWrapper><ShippingPage /></PageWrapper>} />
-      <Route path="/checkout/payment" element={<PageWrapper><PaymentPage /></PageWrapper>} />
-      <Route path="/checkout/review" element={<PageWrapper><CheckoutReviewPage /></PageWrapper>} />
-      <Route path="/checkout/confirmation" element={<PageWrapper><OrderConfirmationPage /></PageWrapper>} />
+      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><ShippingPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><PaymentPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><CheckoutReviewPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/confirmation" element={<PageWrapper><ProtectedRoute><OrderConfirmationPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/login" element={<PageWrapper><LoginPage /></PageWrapper>} />
       <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />
       <Route path="/forgot-password" element={<PageWrapper><ForgotPasswordPage /></PageWrapper>} />

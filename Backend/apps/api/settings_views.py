@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
 from apps.notifications.config import configured_from_email, configured_reply_to_email
+from apps.payments.services import available_payment_methods
 
 from .account_serializers import AccountProfileUpdateSerializer, AccountSummarySerializer
 
@@ -38,8 +39,9 @@ def _serialize_store_settings(site):
             'name': method.get('name', ''),
             'type': method.get('type', ''),
             'requires_prepayment': bool(method.get('requires_prepayment', False)),
+            'is_configured': bool(method.get('is_configured', True)),
         }
-        for method in getattr(settings, 'PAYMENT_METHODS', [])
+        for method in available_payment_methods()
     ]
     return {
         'site_name': site.name,

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
-from apps.payments.config import get_payment_setting, has_payment_secret, provider_is_enabled
+from apps.payments.config import get_payment_setting, has_payment_secret, provider_is_configured, provider_is_enabled
 from apps.payments.models import PaymentProviderConfiguration
 
 
@@ -34,15 +34,7 @@ def _serialize_provider(provider: str) -> dict:
     if provider == 'mpesa':
         return {
             'is_enabled': provider_is_enabled('mpesa', default=True),
-            'is_configured': all(
-                [
-                    has_payment_secret('mpesa', 'consumer_key'),
-                    has_payment_secret('mpesa', 'consumer_secret'),
-                    bool(get_payment_setting('mpesa', 'shortcode', '')),
-                    has_payment_secret('mpesa', 'passkey'),
-                    bool(get_payment_setting('mpesa', 'callback_url', '')),
-                ]
-            ),
+            'is_configured': provider_is_configured('mpesa'),
             'base_url': get_payment_setting('mpesa', 'base_url', settings.MPESA_BASE_URL),
             'has_consumer_key': has_payment_secret('mpesa', 'consumer_key'),
             'has_consumer_secret': has_payment_secret('mpesa', 'consumer_secret'),
@@ -55,13 +47,13 @@ def _serialize_provider(provider: str) -> dict:
     if provider == 'airtel_money':
         return {
             'is_enabled': provider_is_enabled('airtel_money', default=True),
-            'is_configured': bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED and provider_is_enabled('airtel_money', default=True)),
+            'is_configured': bool(provider_is_configured('airtel_money') and provider_is_enabled('airtel_money', default=True)),
             'provider_name': get_payment_setting('airtel_money', 'provider_name', settings.AIRTEL_MONEY_PROVIDER_NAME),
             'sandbox_enabled': bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED),
         }
     return {
         'is_enabled': provider_is_enabled('card', default=True),
-        'is_configured': bool(settings.CARD_SANDBOX_ENABLED and provider_is_enabled('card', default=True)),
+        'is_configured': bool(provider_is_configured('card') and provider_is_enabled('card', default=True)),
         'provider_name': get_payment_setting('card', 'provider_name', settings.CARD_PROVIDER_NAME),
         'sandbox_enabled': bool(settings.CARD_SANDBOX_ENABLED),
     }

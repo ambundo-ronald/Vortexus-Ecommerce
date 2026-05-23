@@ -962,7 +962,7 @@ class SearchFacetAPIView(APIView):
 
 
 class BillingStateAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         fields = get_checkout_session(request).new_billing_address_fields()
@@ -970,7 +970,7 @@ class BillingStateAPIView(APIView):
 
 
 class BillingAddressAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
         serializer = AddressSerializer(data=request.data)

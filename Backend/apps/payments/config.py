@@ -68,3 +68,20 @@ def get_payment_setting(provider: str, key: str, default=None):
 def has_payment_secret(provider: str, key: str) -> bool:
     value = get_payment_setting(provider, key, '')
     return bool(value)
+
+
+def provider_is_configured(provider: str) -> bool:
+    if provider == 'mpesa':
+        required = [
+            get_payment_setting('mpesa', 'consumer_key', ''),
+            get_payment_setting('mpesa', 'consumer_secret', ''),
+            get_payment_setting('mpesa', 'shortcode', ''),
+            get_payment_setting('mpesa', 'passkey', ''),
+            get_payment_setting('mpesa', 'callback_url', ''),
+        ]
+        return all(required)
+    if provider == 'airtel_money':
+        return bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED)
+    if provider == 'card':
+        return bool(settings.CARD_SANDBOX_ENABLED)
+    return True

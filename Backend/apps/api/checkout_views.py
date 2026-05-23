@@ -61,6 +61,8 @@ class BasketItemCollectionAPIView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        if request.basket.pk is None:
+            request.basket.save()
         serializer = BasketItemCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         try:
@@ -113,14 +115,14 @@ class BasketLineDetailAPIView(APIView):
 
 
 class ShippingStateAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         return Response(build_checkout_payload(request))
 
 
 class ShippingAddressAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def put(self, request):
         serializer = ShippingAddressSerializer(data=request.data)
@@ -132,7 +134,7 @@ class ShippingAddressAPIView(APIView):
 
 
 class ShippingMethodSelectionAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         serializer = ShippingMethodSelectionSerializer(data=request.data)
@@ -161,7 +163,7 @@ class ShippingMethodSelectionAPIView(APIView):
 
 
 class CheckoutPreviewAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         basket = request.basket
@@ -195,7 +197,7 @@ class CheckoutPreviewAPIView(APIView):
 
 
 class CheckoutThankYouAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         order_number = request.query_params.get('order_number') or get_checkout_session(request).get_order_number()
@@ -211,7 +213,7 @@ class CheckoutThankYouAPIView(APIView):
 
 
 class OrderPlacementAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):

@@ -5,15 +5,20 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 
-from .config import provider_is_enabled
+from .config import provider_is_configured, provider_is_enabled
+
+
+OFFLINE_PAYMENT_PROVIDERS = {'bank_transfer', 'cash_on_delivery'}
 
 
 def available_payment_methods() -> list[dict]:
     methods = []
     for method in settings.PAYMENT_METHODS:
         provider = method.get('provider') or method.get('code')
-        if provider_is_enabled(provider, default=True):
-            methods.append(method.copy())
+        if _payment_method_is_available(provider):
+            payload = method.copy()
+            payload['is_configured'] = provider_is_configured(provider)
+            methods.append(payload)
     return methods
 
 
@@ -22,10 +27,20 @@ def get_payment_method(code: str) -> dict | None:
     for method in settings.PAYMENT_METHODS:
         if method['code'] == normalized:
             provider = method.get('provider') or method.get('code')
-            if not provider_is_enabled(provider, default=True):
+            if not _payment_method_is_available(provider):
                 return None
-            return method.copy()
+            payload = method.copy()
+            payload['is_configured'] = provider_is_configured(provider)
+            return payload
     return None
+
+
+def _payment_method_is_available(provider: str) -> bool:
+    if not provider_is_enabled(provider, default=True):
+        return False
+    if provider in OFFLINE_PAYMENT_PROVIDERS:
+        return True
+    return provider_is_configured(provider)
 
 
 def payment_requires_prepayment(method_code: str) -> bool:

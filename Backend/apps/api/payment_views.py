@@ -42,6 +42,14 @@ from .payment_serializers import (
 )
 
 
+def _payment_session_queryset_for_request(request):
+    PaymentSession = apps.get_model('payments', 'PaymentSession')
+    queryset = PaymentSession.objects.all()
+    if request.user.is_staff:
+        return queryset
+    return queryset.filter(user=request.user)
+
+
 class PaymentMethodCollectionAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -51,7 +59,7 @@ class PaymentMethodCollectionAPIView(APIView):
 
 
 class PaymentInitializationAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -78,16 +86,15 @@ class PaymentInitializationAPIView(APIView):
 
 
 class PaymentSessionDetailAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, reference: str):
-        PaymentSession = apps.get_model('payments', 'PaymentSession')
-        payment_session = get_object_or_404(PaymentSession, reference=reference)
+        payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference)
         return Response({'payment': serialize_payment_session(payment_session)})
 
 
 class PaymentConfirmationAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, reference: str):
         PaymentSession = apps.get_model('payments', 'PaymentSession')
@@ -104,7 +111,7 @@ class PaymentConfirmationAPIView(APIView):
 
 
 class MpesaInitializationAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -114,7 +121,7 @@ class MpesaInitializationAPIView(APIView):
                 {
                     'error': {
                         'code': 'mpesa_not_configured',
-                        'detail': 'M-Pesa sandbox credentials are not configured on the backend.',
+                        'detail': 'M-Pesa Daraja credentials are not configured on the backend.',
                         'status': 503,
                     }
                 },
@@ -162,11 +169,10 @@ class MpesaInitializationAPIView(APIView):
 
 
 class MpesaStatusAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, reference: str):
-        PaymentSession = apps.get_model('payments', 'PaymentSession')
-        payment_session = get_object_or_404(PaymentSession, reference=reference, method='mpesa')
+        payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='mpesa')
         if mpesa_is_configured():
             try:
                 query_data = query_stk_push_status(payment_session)
@@ -205,7 +211,7 @@ class MpesaCallbackAPIView(APIView):
 
 
 class CardInitializationAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -256,7 +262,7 @@ class CardInitializationAPIView(APIView):
 
 
 class AirtelMoneyInitializationAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -314,11 +320,10 @@ class AirtelMoneyInitializationAPIView(APIView):
 
 
 class AirtelMoneyStatusAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, reference: str):
-        PaymentSession = apps.get_model('payments', 'PaymentSession')
-        payment_session = get_object_or_404(PaymentSession, reference=reference, method='airtel_money')
+        payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='airtel_money')
         return Response({'payment': serialize_payment_session(payment_session)})
 
 
