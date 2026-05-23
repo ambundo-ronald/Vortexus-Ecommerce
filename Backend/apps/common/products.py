@@ -1,5 +1,7 @@
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
+
 from apps.common.currency import convert_product_payload
 
 
@@ -24,6 +26,35 @@ def stockrecord_currency(stockrecord: Any) -> str:
     return 'USD'
 
 
+def stockrecord_previous_price(stockrecord: Any) -> float | None:
+    if not stockrecord:
+        return None
+
+    try:
+        snapshot = stockrecord.price_snapshot
+    except ObjectDoesNotExist:
+        return None
+
+    if not snapshot or snapshot.previous_price is None:
+        return None
+
+    return float(snapshot.previous_price)
+
+
+def stockrecord_previous_currency(stockrecord: Any) -> str:
+    if not stockrecord:
+        return 'USD'
+
+    try:
+        snapshot = stockrecord.price_snapshot
+    except ObjectDoesNotExist:
+        return stockrecord_currency(stockrecord)
+
+    if snapshot and snapshot.previous_currency:
+        return snapshot.previous_currency
+    return stockrecord_currency(stockrecord)
+
+
 def stockrecord_count(stockrecord: Any) -> int:
     if not stockrecord:
         return 0
@@ -39,6 +70,8 @@ def serialize_product_card(
     stockrecord = product.stockrecords.first() if hasattr(product, 'stockrecords') else None
     base_price = stockrecord_price(stockrecord)
     base_currency = stockrecord_currency(stockrecord)
+    base_previous_price = stockrecord_previous_price(stockrecord)
+    base_previous_currency = stockrecord_previous_currency(stockrecord)
     stock_count = stockrecord_count(stockrecord)
 
     image_url = ''
@@ -57,6 +90,10 @@ def serialize_product_card(
         'currency': base_currency,
         'base_price': base_price,
         'base_currency': base_currency,
+        'previous_price': base_previous_price,
+        'previous_currency': base_previous_currency,
+        'base_previous_price': base_previous_price,
+        'base_previous_currency': base_previous_currency,
         'thumbnail': image_url,
         'in_stock': stock_count > 0,
         'stock_count': stock_count,

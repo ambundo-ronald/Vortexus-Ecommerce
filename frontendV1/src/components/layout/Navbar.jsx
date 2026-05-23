@@ -11,6 +11,8 @@ import { useUiStore } from "../../store/ui.store";
 const navItems = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/catalog", label: "Shop", icon: "storefront" },
+  { to: "/offers", label: "Offers", icon: "local_offer" },
+  { to: "/orders/track", label: "Track", icon: "local_shipping" },
 ];
 
 export default function Navbar() {

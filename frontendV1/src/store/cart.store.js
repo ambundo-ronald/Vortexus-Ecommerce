@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { checkoutApi } from "../api/checkout.api";
+import { trackStorefrontEvent } from "../utils/analytics";
 import { useUiStore } from "./ui.store";
 
 const emptyBasket = {
@@ -55,6 +56,7 @@ export const useCartStore = create((set, get) => ({
         message: "The product is ready in your cart.",
         icon: "add_shopping_cart"
       });
+      trackStorefrontEvent("cart_item_added", { product_id: Number(productId), quantity });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -74,6 +76,7 @@ export const useCartStore = create((set, get) => ({
         message: options.successMessage || "Your cart has been updated.",
         icon: quantity > 0 ? "shopping_cart" : "remove_shopping_cart"
       });
+      trackStorefrontEvent(quantity > 0 ? "cart_line_updated" : "cart_item_removed", { line_id: Number(lineId), quantity });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -114,6 +117,7 @@ export const useCartStore = create((set, get) => ({
         message: "The item moved out of your cart.",
         icon: "bookmark_added"
       });
+      trackStorefrontEvent("saved_for_later", { line_id: Number(lineId) });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -133,6 +137,7 @@ export const useCartStore = create((set, get) => ({
         message: "The item is ready in your cart.",
         icon: "add_shopping_cart"
       });
+      trackStorefrontEvent("saved_moved_to_cart", { saved_line_id: Number(savedLineId) });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -152,6 +157,7 @@ export const useCartStore = create((set, get) => ({
         message: "The saved item was removed.",
         icon: "bookmark_remove"
       });
+      trackStorefrontEvent("saved_item_removed", { saved_line_id: Number(savedLineId) });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -171,6 +177,7 @@ export const useCartStore = create((set, get) => ({
         message: "Your cart has been updated.",
         icon: "sell"
       });
+      trackStorefrontEvent("voucher_applied", { code });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;
@@ -190,6 +197,7 @@ export const useCartStore = create((set, get) => ({
         message: "Your cart has been updated.",
         icon: "sell"
       });
+      trackStorefrontEvent("voucher_removed", { voucher_id: Number(voucherId) });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;

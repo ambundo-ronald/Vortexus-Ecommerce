@@ -1,34 +1,72 @@
 :root {
   --color-primary: #3d7cff;
+  --color-primary-50: #eef5ff;
+  --color-primary-100: #dbe9ff;
+  --color-primary-500: #3d7cff;
   --color-primary-600: #2f6df6;
   --color-primary-700: #1a56d9;
-  --color-accent: #4f5d73;
+  --color-primary-800: #123fa8;
+  --color-primary-900: #112f78;
+  --color-primary-soft: #eaf1ff;
 
-  --color-bg: #f6f8fc;
+  --color-accent: #4f5d73;
+  --color-accent-green: #22c55e;
+  --color-accent-green-700: #15803d;
+  --color-accent-green-soft: #dcfce7;
+  --color-accent-orange: #f97316;
+  --color-accent-orange-700: #c2410c;
+  --color-accent-orange-soft: #ffedd5;
+  --color-accent-yellow: #facc15;
+  --color-accent-yellow-soft: #fef9c3;
+  --color-accent-red: #ef4444;
+  --color-accent-red-soft: #fee2e2;
+
+  --color-bg: #f5f7fb;
   --color-bg-soft: #eef3fb;
   --color-surface: #ffffff;
-  --color-surface-muted: #f9fbff;
-  --color-border: #dce5f2;
-  --color-border-strong: #c8d5e6;
-  --color-text: #132033;
-  --color-text-muted: #66758a;
-  --color-text-soft: #8a96a8;
+  --color-surface-muted: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-border: #dbe4f0;
+  --color-border-strong: #c4d3e5;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-text-soft: #94a3b8;
+  --color-text-inverse: #ffffff;
 
-  --color-success: #168253;
-  --color-warning: #b96a05;
-  --color-danger: #b4233a;
-  --color-info-bg: #edf4ff;
-  --color-success-bg: #edf9f3;
-  --color-warning-bg: #fff7e8;
-  --color-danger-bg: #fff0f2;
+  --color-success: var(--color-accent-green-700);
+  --color-warning: var(--color-accent-orange-700);
+  --color-danger: #b91c1c;
+  --color-info-bg: var(--color-primary-soft);
+  --color-success-bg: var(--color-accent-green-soft);
+  --color-warning-bg: var(--color-accent-orange-soft);
+  --color-danger-bg: #fff1f2;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --color-price: #0f172a;
+  --color-price-subtle: #64748b;
+  --color-sale-price: #e60023;
+  --color-stock: var(--color-success);
+  --color-stock-bg: var(--color-success-bg);
+  --color-sold-out: var(--color-warning);
+  --color-sold-out-bg: var(--color-warning-bg);
+  --color-offer: var(--color-accent-orange);
+  --color-offer-bg: var(--color-accent-orange-soft);
+  --color-rating: var(--color-accent-yellow);
+  --color-favorite: #6d28d9;
+  --color-favorite-bg: #f3e8ff;
+  --color-favorite-shadow: rgba(109, 40, 217, 0.28);
+
+  --shadow-xs: 0 1px 1px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.05);
   --shadow-md: 0 12px 28px rgba(29, 57, 98, 0.1);
+  --shadow-lg: 0 18px 46px rgba(15, 23, 42, 0.14);
+  --shadow-focus: 0 0 0 4px rgba(37, 99, 235, 0.16);
 
   --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -36,12 +74,81 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
 
-  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Poppins", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Poppins", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-body: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+  --font-weight-heading: 600;
+  --line-height-body: 1.5;
+  --line-height-heading: 1.08;
 
   --container-max: 1200px;
   --nav-height: 64px;
   --bottom-nav-height: 78px;
+  --z-header: 40;
+  --z-bottom-nav: 80;
+  --z-dropdown: 90;
+  --z-toast: 120;
+  --breakpoint-mobile: 720px;
+  --breakpoint-tablet: 960px;
+  --breakpoint-desktop: 1200px;
+
+  --button-radius: var(--radius-md);
+  --button-height-sm: 40px;
+  --button-height: 46px;
+  --button-font-weight: 700;
+  --button-primary-bg: var(--color-primary);
+  --button-primary-bg-hover: var(--color-primary-700);
+  --button-primary-color: var(--color-text-inverse);
+  --button-secondary-bg: var(--color-surface);
+  --button-secondary-bg-hover: var(--color-primary-50);
+  --button-secondary-color: var(--color-text);
+  --button-secondary-border: var(--color-border-strong);
+
+  --input-height: 46px;
+  --input-radius: var(--radius-md);
+  --input-bg: var(--color-surface);
+  --input-border: var(--color-border);
+  --input-border-focus: var(--color-primary);
+
+  --card-radius: var(--radius-md);
+  --card-border: var(--color-border);
+  --card-bg: var(--color-surface);
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: 0 14px 32px rgba(15, 23, 42, 0.1);
+  --surface-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  --badge-radius: var(--radius-pill);
+  --product-card-radius: 10px;
+  --product-card-media-bg: linear-gradient(180deg, var(--color-surface-muted), var(--color-surface));
+  --product-card-media-ratio: 1 / 0.78;
+  --product-card-gap: 6px;
+  --product-placeholder-bg: linear-gradient(135deg, var(--color-primary-100), var(--color-bg-soft));
+  --share-panel-bg: var(--color-surface-muted);
+  --share-icon-bg: var(--color-info-bg);
+  --skeleton-shimmer: rgba(255, 255, 255, 0.72);
+
+  --footer-bg: var(--color-primary-900);
+  --footer-bg-soft: #173f93;
+  --footer-text: rgba(255, 255, 255, 0.88);
+  --footer-text-muted: rgba(255, 255, 255, 0.64);
+  --footer-border: rgba(255, 255, 255, 0.16);
+  --footer-link-hover: var(--color-accent-orange-soft);
+  --footer-accent: var(--color-accent-orange);
+  --footer-accent-alt: var(--color-accent-green);
+
+  --share-whatsapp: #128c7e;
+  --share-facebook: #1877f2;
+  --share-x: #111827;
+  --share-linkedin: #0a66c2;
+
+  --transition-fast: 140ms ease;
+  --transition-base: 180ms ease;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 
@@ -16,8 +16,22 @@ const defaultAddress = {
   notes: ""
 };
 
-export default function ShippingAddressForm({ address, countries = [], saving = false, onSubmit }) {
+export default function ShippingAddressForm({
+  address,
+  countries = [],
+  saving = false,
+  title = "Delivery details",
+  description = "Where should we send your order?",
+  icon = "location_on",
+  submitLabel = "Save delivery details",
+  requirePhone = true,
+  onSubmit
+}) {
   const [form, setForm] = useState(() => ({ ...defaultAddress, ...(address || {}) }));
+
+  useEffect(() => {
+    setForm({ ...defaultAddress, ...(address || {}) });
+  }, [address]);
 
   const countryOptions = useMemo(() => {
     if (!countries.length) return [{ code: "KE", name: "Kenya" }];
@@ -43,10 +57,10 @@ export default function ShippingAddressForm({ address, countries = [], saving = 
   return (
     <form className="checkout-card shipping-form" onSubmit={handleSubmit}>
       <div className="checkout-card__title">
-        <span><MaterialIcon name="location_on" size={20} /></span>
+        <span><MaterialIcon name={icon} size={20} /></span>
         <div>
-          <h2>Delivery details</h2>
-          <p>Where should we send your order?</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
         </div>
       </div>
 
@@ -63,7 +77,7 @@ export default function ShippingAddressForm({ address, countries = [], saving = 
 
       <label>
         <span>Phone number</span>
-        <input name="phone_number" value={form.phone_number} onChange={updateField} required placeholder="+254700000001" autoComplete="tel" />
+        <input name="phone_number" value={form.phone_number} onChange={updateField} required={requirePhone} placeholder="+254700000001" autoComplete="tel" />
       </label>
 
       <label>
@@ -115,7 +129,7 @@ export default function ShippingAddressForm({ address, countries = [], saving = 
 
       <button className="primary-button checkout-submit" type="submit" disabled={saving}>
         <MaterialIcon name="check" size={19} />
-        {saving ? "Saving..." : "Save delivery details"}
+        {saving ? "Saving..." : submitLabel}
       </button>
     </form>
   );

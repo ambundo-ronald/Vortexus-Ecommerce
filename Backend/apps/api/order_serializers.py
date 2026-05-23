@@ -231,10 +231,14 @@ class OrderPlacementSerializer(serializers.Serializer):
 
 class OrderLineSerializer(serializers.Serializer):
     def to_representation(self, line):
+        product = getattr(line, 'product', None)
         return {
             'id': line.id,
+            'product_id': product.id if product else None,
             'title': line.title,
+            'product_title': getattr(product, 'title', '') or line.title,
             'upc': line.upc,
+            'thumbnail': _order_primary_image_url(product),
             'quantity': line.quantity,
             'partner_name': line.partner_name,
             'partner_sku': line.partner_sku,

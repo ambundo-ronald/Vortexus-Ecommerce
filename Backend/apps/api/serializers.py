@@ -280,6 +280,8 @@ class ProductWriteSerializer(serializers.Serializer):
             stockrecord = StockRecord(product=product, partner=partner)
 
         is_create = stockrecord.pk is None
+        previous_price = getattr(stockrecord, 'price', None)
+        previous_currency = getattr(stockrecord, 'price_currency', None) or self.DEFAULT_CURRENCY
 
         if 'partner_sku' in payload or is_create:
             stockrecord.partner_sku = payload.get('partner_sku') or product.upc
@@ -291,7 +293,51 @@ class ProductWriteSerializer(serializers.Serializer):
             stockrecord.num_in_stock = payload.get('num_in_stock', 0)
 
         stockrecord.save()
+        self._save_price_snapshot(
+            stockrecord=stockrecord,
+            previous_price=previous_price,
+            previous_currency=previous_currency,
+            is_create=is_create,
+        )
         return stockrecord
+
+    def _save_price_snapshot(self, stockrecord, previous_price, previous_currency, is_create: bool) -> None:
+        PriceSnapshot = apps.get_model('inventory', 'StockRecordPriceSnapshot')
+        current_price = getattr(stockrecord, 'price', None)
+        current_currency = getattr(stockrecord, 'price_currency', None) or self.DEFAULT_CURRENCY
+
+        if current_price is None:
+            return
+
+        if is_create or previous_price is None:
+            PriceSnapshot.objects.update_or_create(
+                stockrecord=stockrecord,
+                defaults={
+                    'current_price': current_price,
+                    'current_currency': current_currency,
+                },
+            )
+            return
+
+        if previous_price == current_price and (previous_currency or '') == (current_currency or ''):
+            PriceSnapshot.objects.update_or_create(
+                stockrecord=stockrecord,
+                defaults={
+                    'current_price': current_price,
+                    'current_currency': current_currency,
+                },
+            )
+            return
+
+        PriceSnapshot.objects.update_or_create(
+            stockrecord=stockrecord,
+            defaults={
+                'previous_price': previous_price,
+                'previous_currency': previous_currency or current_currency,
+                'current_price': current_price,
+                'current_currency': current_currency,
+            },
+        )
 
     def _save_attributes(self, product, product_class, attributes):
         ProductAttribute = apps.get_model('catalogue', 'ProductAttribute')

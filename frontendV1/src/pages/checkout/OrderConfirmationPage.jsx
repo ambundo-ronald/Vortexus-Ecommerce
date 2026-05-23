@@ -6,6 +6,7 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
 
 function readStoredOrder() {
@@ -43,6 +44,15 @@ export default function OrderConfirmationPage() {
   const payment = payload?.payment;
   const address = order?.shipping_address;
   const lines = order?.lines || [];
+
+  useEffect(() => {
+    if (!order) return;
+    trackStorefrontEvent("order_confirmation_viewed", {
+      order_number: order.number || order.order_number,
+      currency: order.currency || "USD",
+      total: order.totals?.total_incl_tax || order.total_incl_tax || order.total || order.order_total
+    });
+  }, [order]);
 
   if (loading && !order) return <Spinner label="Loading order confirmation" />;
 

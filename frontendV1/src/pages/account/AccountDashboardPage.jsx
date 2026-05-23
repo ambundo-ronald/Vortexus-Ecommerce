@@ -45,15 +45,45 @@ export default function AccountDashboardPage() {
           <strong>Profile</strong>
           <span>Contact and preferences</span>
         </Link>
+        <Link className="account-action-card" to="/account/preferences">
+          <MaterialIcon name="tune" size={24} />
+          <strong>Preferences</strong>
+          <span>Store communication settings</span>
+        </Link>
+        <Link className="account-action-card" to="/account/delete">
+          <MaterialIcon name="person_remove" size={24} />
+          <strong>Delete account</strong>
+          <span>Deactivate your customer account</span>
+        </Link>
         <Link className="account-action-card" to="/account/addresses">
           <MaterialIcon name="location_on" size={24} />
           <strong>Addresses</strong>
           <span>Delivery and billing details</span>
         </Link>
+        <Link className="account-action-card" to="/account/recently-viewed">
+          <MaterialIcon name="history" size={24} />
+          <strong>Recently viewed</strong>
+          <span>Products you checked lately</span>
+        </Link>
+        <Link className="account-action-card" to="/account/notifications">
+          <MaterialIcon name="notifications" size={24} />
+          <strong>Notifications</strong>
+          <span>Inbox and archived messages</span>
+        </Link>
+        <Link className="account-action-card" to="/account/messages">
+          <MaterialIcon name="mail" size={24} />
+          <strong>Messages</strong>
+          <span>Email history from the store</span>
+        </Link>
         <Link className="account-action-card" to="/account/reviews">
           <MaterialIcon name="reviews" size={24} />
           <strong>Reviews</strong>
           <span>Your product feedback</span>
+        </Link>
+        <Link className="account-action-card" to="/account/product-alerts">
+          <MaterialIcon name="notifications_active" size={24} />
+          <strong>Stock alerts</strong>
+          <span>Availability notifications</span>
         </Link>
       </div>
 

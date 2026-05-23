@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 
+import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { mediaUrl } from "../../utils/media";
 
 function blockStyle(block) {
@@ -62,26 +64,41 @@ export function PromoBannerStrip({ blocks = [] }) {
 }
 
 export function FeaturedMarketingBlocks({ blocks = [] }) {
+  const trackRef = useRef(null);
+
   if (!blocks.length) return null;
 
+  function scrollTrack(direction) {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollBy({
+      left: direction * Math.max(220, track.clientWidth * 0.72),
+      behavior: "smooth"
+    });
+  }
+
   return (
-    <section className="content-section">
-      <div className="section-heading">
-        <h2>Featured</h2>
-        <Link to="/catalog">View catalog</Link>
-      </div>
-      <div className="marketing-feature-grid">
-        {blocks.slice(0, 4).map((block) => (
+    <section className="marketing-feature-section" aria-label="Featured promotions">
+      <button className="marketing-feature-nav marketing-feature-nav--prev" type="button" aria-label="Previous promotions" onClick={() => scrollTrack(-1)}>
+        <MaterialIcon name="chevron_left" size={34} />
+      </button>
+      <div className="marketing-feature-grid" ref={trackRef}>
+        {blocks.map((block) => (
           <MarketingLink block={block} className="marketing-feature-card" key={block.id || block.slug} style={blockStyle(block)}>
+            <span className="marketing-feature-card__label">{block.eyebrow || block.headline || block.title}</span>
             {block.image_url ? <img src={mediaUrl(block.image_url)} alt={block.image_alt || block.title} loading="lazy" /> : null}
-            <div>
-              {block.eyebrow ? <span>{block.eyebrow}</span> : null}
+            {!block.image_url ? (
+              <div className="marketing-feature-card__fallback">
               <strong>{block.headline || block.title}</strong>
               {block.body ? <p>{block.body}</p> : null}
-            </div>
+              </div>
+            ) : null}
           </MarketingLink>
         ))}
       </div>
+      <button className="marketing-feature-nav marketing-feature-nav--next" type="button" aria-label="Next promotions" onClick={() => scrollTrack(1)}>
+        <MaterialIcon name="chevron_right" size={34} />
+      </button>
     </section>
   );
 }
@@ -90,13 +107,16 @@ export function BrandStrip({ blocks = [] }) {
   if (!blocks.length) return null;
 
   return (
-    <section className="marketing-brand-strip" aria-label="Featured brands">
+    <section className="marketing-brand-section" aria-label="Featured brands">
+      <h2>Brand You Love</h2>
+      <div className="marketing-brand-strip">
       {blocks.slice(0, 8).map((block) => (
         <MarketingLink block={block} className="marketing-brand-pill" key={block.id || block.slug} style={blockStyle(block)}>
           {block.image_url ? <img src={mediaUrl(block.image_url)} alt={block.image_alt || block.title} loading="lazy" /> : null}
           <span>{block.headline || block.title}</span>
         </MarketingLink>
       ))}
+      </div>
     </section>
   );
 }
