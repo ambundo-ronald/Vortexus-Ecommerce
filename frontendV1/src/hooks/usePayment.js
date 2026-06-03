@@ -56,6 +56,8 @@ export function usePayment({ auto = true } = {}) {
         });
       } else if (method === "mpesa") {
         payload = await paymentsApi.initializeMpesa({ phone_number: phoneNumber, payer_email: payerEmail });
+      } else if (method === "pesapal") {
+        payload = await paymentsApi.initializePesapal({ phone_number: phoneNumber, payer_email: payerEmail });
       } else if (method === "airtel_money") {
         payload = await paymentsApi.initializeAirtel({ phone_number: phoneNumber, payer_email: payerEmail });
       } else {
@@ -83,6 +85,8 @@ export function usePayment({ auto = true } = {}) {
     let payload;
     if (method === "mpesa") {
       payload = await paymentsApi.mpesaStatus(reference);
+    } else if (method === "pesapal") {
+      payload = await paymentsApi.pesapalStatus(reference);
     } else if (method === "airtel_money") {
       payload = await paymentsApi.airtelStatus(reference);
     } else {

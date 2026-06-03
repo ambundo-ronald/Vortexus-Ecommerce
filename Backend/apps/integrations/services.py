@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urljoin
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -60,6 +60,54 @@ class ERPNextClient:
             raise ERPNextIntegrationError(f'Could not reach ERPNext: {exc.reason}') from exc
         except Exception as exc:
             raise ERPNextIntegrationError(f'ERPNext request failed: {exc}') from exc
+
+    def fetch_file_bytes(self, file_url: str, *, max_bytes: int | None = None) -> bytes:
+        cleaned = (file_url or '').strip()
+        if not cleaned:
+            raise ERPNextIntegrationError('ERPNext file URL is empty.')
+
+        url = cleaned if cleaned.startswith(('http://', 'https://')) else urljoin(f'{self.base_url}/', cleaned.lstrip('/'))
+        request = Request(url=url, headers=self._headers(), method='GET')
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                if max_bytes:
+                    content = response.read(max_bytes + 1)
+                    if len(content) > max_bytes:
+                        raise ERPNextIntegrationError('ERPNext image exceeds the configured maximum size.')
+                    return content
+                return response.read()
+        except HTTPError as exc:
+            body = exc.read().decode('utf-8', errors='ignore')
+            raise ERPNextIntegrationError(f'ERPNext file HTTP {exc.code}: {body or exc.reason}') from exc
+        except URLError as exc:
+            raise ERPNextIntegrationError(f'Could not fetch ERPNext file: {exc.reason}') from exc
+        except ERPNextIntegrationError:
+            raise
+        except Exception as exc:
+            raise ERPNextIntegrationError(f'ERPNext file request failed: {exc}') from exc
+
+    def fetch_all(self, path: str, query: dict[str, Any] | None = None, page_length: int = 1000) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        limit = max(1, int(page_length or 1000))
+        offset = 0
+
+        while True:
+            page_query = {
+                **(query or {}),
+                'limit_start': offset,
+                'limit_page_length': limit,
+            }
+            payload = self._request(path, query=page_query)
+            page_records = payload.get('data') or []
+            if not isinstance(page_records, list):
+                raise ERPNextIntegrationError('ERPNext returned an unexpected response shape.')
+
+            records.extend(page_records)
+            if len(page_records) < limit:
+                break
+            offset += limit
+
+        return records
 
     def test_connection(self) -> dict[str, Any]:
         payload = self._request('/api/method/frappe.auth.get_logged_user')

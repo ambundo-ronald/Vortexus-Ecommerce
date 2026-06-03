@@ -118,6 +118,8 @@ export const ENDPOINTS = {
     confirm: (reference) => `/checkout/payments/${reference}/confirm/`,
     mpesaInit: "/checkout/payments/mpesa/initiate/",
     mpesaStatus: (reference) => `/checkout/payments/mpesa/${reference}/status/`,
+    pesapalInit: "/checkout/payments/pesapal/initiate/",
+    pesapalStatus: (reference) => `/checkout/payments/pesapal/${reference}/status/`,
     airtelInit: "/checkout/payments/airtel-money/initiate/",
     airtelStatus: (reference) => `/checkout/payments/airtel-money/${reference}/status/`,
     cardInit: "/checkout/payments/cards/initiate/"

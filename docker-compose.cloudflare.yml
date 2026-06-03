@@ -1,0 +1,12 @@
+services:
+  backend:
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+  dashboard:
+    ports: !reset []
+
+  caddy:
+    ports: !reset []

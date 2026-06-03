@@ -4,6 +4,7 @@ from django.db import models
 
 class PaymentSession(models.Model):
     METHOD_MPESA = 'mpesa'
+    METHOD_PESAPAL = 'pesapal'
     METHOD_AIRTEL_MONEY = 'airtel_money'
     METHOD_CREDIT_CARD = 'credit_card'
     METHOD_DEBIT_CARD = 'debit_card'
@@ -12,6 +13,7 @@ class PaymentSession(models.Model):
 
     METHOD_CHOICES = [
         (METHOD_MPESA, 'M-Pesa'),
+        (METHOD_PESAPAL, 'Pesapal'),
         (METHOD_AIRTEL_MONEY, 'Airtel Money'),
         (METHOD_CREDIT_CARD, 'Credit Card'),
         (METHOD_DEBIT_CARD, 'Debit Card'),
@@ -62,11 +64,13 @@ class PaymentSession(models.Model):
 
 class PaymentProviderConfiguration(models.Model):
     PROVIDER_MPESA = 'mpesa'
+    PROVIDER_PESAPAL = 'pesapal'
     PROVIDER_AIRTEL_MONEY = 'airtel_money'
     PROVIDER_CARD = 'card'
 
     PROVIDER_CHOICES = [
         (PROVIDER_MPESA, 'M-Pesa'),
+        (PROVIDER_PESAPAL, 'Pesapal'),
         (PROVIDER_AIRTEL_MONEY, 'Airtel Money'),
         (PROVIDER_CARD, 'Card'),
     ]

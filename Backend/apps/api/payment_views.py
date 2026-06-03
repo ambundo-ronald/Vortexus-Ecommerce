@@ -15,6 +15,15 @@ from apps.payments.mpesa import (
     mpesa_is_configured,
     query_stk_push_status,
 )
+from apps.payments.pesapal import (
+    PesapalConfigurationError,
+    PesapalGatewayError,
+    find_payment_by_order_tracking_id,
+    handle_transaction_status,
+    pesapal_is_configured,
+    query_transaction_status,
+    submit_order_request,
+)
 from apps.payments.card import CardGatewayError, authorize_card_payment
 from apps.payments.airtel_money import (
     AirtelMoneyGatewayError,
@@ -39,6 +48,8 @@ from .payment_serializers import (
     PaymentConfirmationSerializer,
     PaymentInitializationSerializer,
     PaymentMethodSerializer,
+    PesapalInitializationSerializer,
+    PesapalNotificationSerializer,
 )
 
 
@@ -208,6 +219,128 @@ class MpesaCallbackAPIView(APIView):
 
         payment_session = handle_callback(payment_session, serializer.validated_data)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', 'payment': serialize_payment_session(payment_session)})
+
+
+class PesapalInitializationAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request):
+        if not pesapal_is_configured():
+            return Response(
+                {
+                    'error': {
+                        'code': 'pesapal_not_configured',
+                        'detail': 'Pesapal credentials and callback settings are not configured on the backend.',
+                        'status': 503,
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        serializer = PesapalInitializationSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        pricing = serializer.validated_data['pricing']
+        payment_session = initialize_payment_session(
+            basket=request.basket,
+            user=request.user,
+            method_code='pesapal',
+            amount=pricing['order_total'].incl_tax,
+            currency=pricing['order_total'].currency,
+            payer_email=serializer.validated_data['payer_email'],
+            payer_phone=serializer.validated_data['phone_number'],
+            metadata={
+                'basket_id': request.basket.id,
+                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
+                'country_code': pricing['tax_breakdown']['country_code'],
+                'integration': 'pesapal_api_3',
+            },
+        )
+        try:
+            provider_payload = submit_order_request(
+                payment_session,
+                customer_name=serializer.validated_data.get('customer_name', ''),
+            )
+        except (PesapalConfigurationError, PesapalGatewayError) as exc:
+            payment_session.status = payment_session.STATUS_FAILED
+            payment_session.metadata = {**payment_session.metadata, 'gateway_error': str(exc)}
+            payment_session.save(update_fields=['status', 'metadata', 'updated_at'])
+            return Response(
+                {
+                    'error': {
+                        'code': 'pesapal_gateway_error',
+                        'detail': str(exc),
+                        'status': 502,
+                    }
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        payload = serialize_payment_session(payment_session)
+        payload['provider_payload'] = provider_payload
+        payload['redirect_url'] = provider_payload.get('redirect_url', '')
+        return Response({'payment': payload}, status=status.HTTP_201_CREATED)
+
+
+class PesapalStatusAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, reference: str):
+        payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='pesapal')
+        try:
+            status_payload = query_transaction_status(payment_session)
+            payment_session = handle_transaction_status(payment_session, status_payload)
+        except (PesapalConfigurationError, PesapalGatewayError):
+            pass
+        return Response({'payment': serialize_payment_session(payment_session)})
+
+
+class PesapalNotificationAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return self._handle_notification(request)
+
+    def post(self, request):
+        return self._handle_notification(request)
+
+    def _handle_notification(self, request):
+        serializer = PesapalNotificationSerializer(data=request.data or {}, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        PaymentSession = apps.get_model('payments', 'PaymentSession')
+        payment_session = find_payment_by_order_tracking_id(PaymentSession, serializer.validated_data['order_tracking_id'])
+        if payment_session is None:
+            return Response(
+                {
+                    'error': {
+                        'code': 'pesapal_payment_not_found',
+                        'detail': 'No Pesapal payment session matched the notification identifiers.',
+                        'status': 404,
+                    }
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            status_payload = query_transaction_status(payment_session)
+            payment_session = handle_transaction_status(payment_session, status_payload)
+        except (PesapalConfigurationError, PesapalGatewayError) as exc:
+            payment_session.metadata = {**payment_session.metadata, 'ipn_verification_error': str(exc)}
+            payment_session.save(update_fields=['metadata', 'updated_at'])
+            return Response({'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': serializer.validated_data['order_tracking_id'], 'status': 500})
+
+        return Response(
+            {
+                'orderNotificationType': 'IPNCHANGE',
+                'orderTrackingId': serializer.validated_data['order_tracking_id'],
+                'orderMerchantReference': serializer.validated_data.get('merchant_reference', ''),
+                'status': 200,
+                'payment': serialize_payment_session(payment_session),
+            }
+        )
 
 
 class CardInitializationAPIView(APIView):

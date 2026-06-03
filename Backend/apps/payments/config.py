@@ -18,6 +18,23 @@ PROVIDER_SETTINGS = {
             'passkey': 'MPESA_PASSKEY',
         },
     },
+    'pesapal': {
+        'public': {
+            'base_url': 'PESAPAL_BASE_URL',
+            'callback_url': 'PESAPAL_CALLBACK_URL',
+            'cancellation_url': 'PESAPAL_CANCELLATION_URL',
+            'ipn_url': 'PESAPAL_IPN_URL',
+            'ipn_id': 'PESAPAL_IPN_ID',
+            'notification_type': 'PESAPAL_IPN_NOTIFICATION_TYPE',
+            'branch': 'PESAPAL_BRANCH',
+            'redirect_mode': 'PESAPAL_REDIRECT_MODE',
+            'timeout_seconds': 'PESAPAL_TIMEOUT_SECONDS',
+        },
+        'secret': {
+            'consumer_key': 'PESAPAL_CONSUMER_KEY',
+            'consumer_secret': 'PESAPAL_CONSUMER_SECRET',
+        },
+    },
     'airtel_money': {
         'public': {
             'provider_name': 'AIRTEL_MONEY_PROVIDER_NAME',
@@ -78,6 +95,15 @@ def provider_is_configured(provider: str) -> bool:
             get_payment_setting('mpesa', 'shortcode', ''),
             get_payment_setting('mpesa', 'passkey', ''),
             get_payment_setting('mpesa', 'callback_url', ''),
+        ]
+        return all(required)
+    if provider == 'pesapal':
+        required = [
+            get_payment_setting('pesapal', 'consumer_key', ''),
+            get_payment_setting('pesapal', 'consumer_secret', ''),
+            get_payment_setting('pesapal', 'base_url', ''),
+            get_payment_setting('pesapal', 'callback_url', ''),
+            get_payment_setting('pesapal', 'ipn_id', ''),
         ]
         return all(required)
     if provider == 'airtel_money':

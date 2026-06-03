@@ -29,6 +29,8 @@ yarn-error.log*
 !.env.example
 !.env.production.example
 !.env.docker.local.example
+!.env.cloudflare.example
+!.env.cloudflare.app.example
 
 # Local generated assets/data
 Backend/media/

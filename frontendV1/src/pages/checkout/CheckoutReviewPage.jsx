@@ -7,6 +7,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
+import { paymentsApi } from "../../api/payments.api";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
 
@@ -71,8 +72,23 @@ export default function CheckoutReviewPage() {
       return;
     }
     try {
+      let paymentReference = pending.payment_reference;
+      if (pending?.payment?.method === "pesapal") {
+        const statusPayload = await paymentsApi.pesapalStatus(pending.payment_reference);
+        const verifiedPayment = statusPayload?.payment;
+        if (!["authorized", "paid"].includes(verifiedPayment?.status)) {
+          notify({
+            tone: "warning",
+            title: "Payment not verified",
+            message: "Pesapal has not confirmed this payment yet.",
+            icon: "hourglass_top"
+          });
+          return;
+        }
+        paymentReference = verifiedPayment.reference;
+      }
       const orderPayload = await placeOrder({
-        payment_reference: pending.payment_reference,
+        payment_reference: paymentReference,
         guest_email: pending.guest_email
       });
       sessionStorage.removeItem("vortexus:pendingCheckout");

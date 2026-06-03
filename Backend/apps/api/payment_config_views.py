@@ -20,6 +20,21 @@ class MpesaConfigSerializer(serializers.Serializer):
     timeout_seconds = serializers.IntegerField(required=False, min_value=1, max_value=120)
 
 
+class PesapalConfigSerializer(serializers.Serializer):
+    is_enabled = serializers.BooleanField(required=False)
+    base_url = serializers.URLField(required=False, allow_blank=True)
+    consumer_key = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=255)
+    consumer_secret = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=255)
+    callback_url = serializers.URLField(required=False, allow_blank=True)
+    cancellation_url = serializers.URLField(required=False, allow_blank=True)
+    ipn_url = serializers.URLField(required=False, allow_blank=True)
+    ipn_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    notification_type = serializers.ChoiceField(required=False, choices=['GET', 'POST'])
+    branch = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    redirect_mode = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    timeout_seconds = serializers.IntegerField(required=False, min_value=1, max_value=120)
+
+
 class AirtelMoneyConfigSerializer(serializers.Serializer):
     is_enabled = serializers.BooleanField(required=False)
     provider_name = serializers.CharField(required=False, allow_blank=True, max_length=80)
@@ -43,6 +58,22 @@ def _serialize_provider(provider: str) -> dict:
             'callback_url': get_payment_setting('mpesa', 'callback_url', settings.MPESA_CALLBACK_URL),
             'transaction_type': get_payment_setting('mpesa', 'transaction_type', settings.MPESA_TRANSACTION_TYPE),
             'timeout_seconds': int(get_payment_setting('mpesa', 'timeout_seconds', settings.MPESA_TIMEOUT_SECONDS)),
+        }
+    if provider == 'pesapal':
+        return {
+            'is_enabled': provider_is_enabled('pesapal', default=True),
+            'is_configured': bool(provider_is_configured('pesapal') and provider_is_enabled('pesapal', default=True)),
+            'base_url': get_payment_setting('pesapal', 'base_url', settings.PESAPAL_BASE_URL),
+            'has_consumer_key': has_payment_secret('pesapal', 'consumer_key'),
+            'has_consumer_secret': has_payment_secret('pesapal', 'consumer_secret'),
+            'callback_url': get_payment_setting('pesapal', 'callback_url', settings.PESAPAL_CALLBACK_URL),
+            'cancellation_url': get_payment_setting('pesapal', 'cancellation_url', settings.PESAPAL_CANCELLATION_URL),
+            'ipn_url': get_payment_setting('pesapal', 'ipn_url', settings.PESAPAL_IPN_URL),
+            'ipn_id': get_payment_setting('pesapal', 'ipn_id', settings.PESAPAL_IPN_ID),
+            'notification_type': get_payment_setting('pesapal', 'notification_type', settings.PESAPAL_IPN_NOTIFICATION_TYPE),
+            'branch': get_payment_setting('pesapal', 'branch', settings.PESAPAL_BRANCH),
+            'redirect_mode': get_payment_setting('pesapal', 'redirect_mode', settings.PESAPAL_REDIRECT_MODE),
+            'timeout_seconds': int(get_payment_setting('pesapal', 'timeout_seconds', settings.PESAPAL_TIMEOUT_SECONDS)),
         }
     if provider == 'airtel_money':
         return {
@@ -86,6 +117,7 @@ class AdminPaymentConfigurationAPIView(APIView):
         return Response(
             {
                 'mpesa': _serialize_provider('mpesa'),
+                'pesapal': _serialize_provider('pesapal'),
                 'airtel_money': _serialize_provider('airtel_money'),
                 'card': _serialize_provider('card'),
             }
@@ -114,6 +146,37 @@ class AdminPaymentConfigurationAPIView(APIView):
                 user=request.user,
             )
             changed.append('mpesa')
+
+        if 'pesapal' in request.data:
+            serializer = PesapalConfigSerializer(data=request.data.get('pesapal') or {}, partial=True)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            _upsert_provider(
+                'pesapal',
+                is_enabled=data.get('is_enabled'),
+                public_config={
+                    key: data[key]
+                    for key in [
+                        'base_url',
+                        'callback_url',
+                        'cancellation_url',
+                        'ipn_url',
+                        'ipn_id',
+                        'notification_type',
+                        'branch',
+                        'redirect_mode',
+                        'timeout_seconds',
+                    ]
+                    if key in data
+                },
+                secret_config={
+                    key: data[key]
+                    for key in ['consumer_key', 'consumer_secret']
+                    if key in data
+                },
+                user=request.user,
+            )
+            changed.append('pesapal')
 
         if 'airtel_money' in request.data:
             serializer = AirtelMoneyConfigSerializer(data=request.data.get('airtel_money') or {}, partial=True)
@@ -154,6 +217,7 @@ class AdminPaymentConfigurationAPIView(APIView):
         return Response(
             {
                 'mpesa': _serialize_provider('mpesa'),
+                'pesapal': _serialize_provider('pesapal'),
                 'airtel_money': _serialize_provider('airtel_money'),
                 'card': _serialize_provider('card'),
             }

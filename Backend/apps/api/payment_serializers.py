@@ -71,6 +71,56 @@ class MpesaCallbackSerializer(serializers.Serializer):
     Body = serializers.DictField()
 
 
+class PesapalInitializationSerializer(serializers.Serializer):
+    payer_email = serializers.EmailField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    customer_name = serializers.CharField(required=False, allow_blank=True, max_length=160)
+
+    def validate(self, attrs):
+        data = PaymentInitializationSerializer(
+            data={
+                'method': 'pesapal',
+                'phone_number': attrs.get('phone_number', ''),
+                'payer_email': attrs.get('payer_email', ''),
+            },
+            context=self.context,
+        )
+        data.is_valid(raise_exception=True)
+        attrs.update(data.validated_data)
+        attrs['phone_number'] = (attrs.get('phone_number') or '').strip()
+        attrs['customer_name'] = (attrs.get('customer_name') or '').strip()
+        return attrs
+
+
+class PesapalNotificationSerializer(serializers.Serializer):
+    OrderTrackingId = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    OrderMerchantReference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    orderTrackingId = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    orderMerchantReference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    notification_type = serializers.CharField(required=False, allow_blank=True, max_length=64)
+
+    def validate(self, attrs):
+        order_tracking_id = (
+            attrs.get('OrderTrackingId')
+            or attrs.get('orderTrackingId')
+            or self.context.get('request').query_params.get('OrderTrackingId')
+            or self.context.get('request').query_params.get('orderTrackingId')
+            or ''
+        ).strip()
+        merchant_reference = (
+            attrs.get('OrderMerchantReference')
+            or attrs.get('orderMerchantReference')
+            or self.context.get('request').query_params.get('OrderMerchantReference')
+            or self.context.get('request').query_params.get('orderMerchantReference')
+            or ''
+        ).strip()
+        if not order_tracking_id:
+            raise serializers.ValidationError({'OrderTrackingId': 'Pesapal order tracking ID is required.'})
+        attrs['order_tracking_id'] = order_tracking_id
+        attrs['merchant_reference'] = merchant_reference
+        return attrs
+
+
 class CardInitializationSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=[('credit_card', 'Credit Card'), ('debit_card', 'Debit Card')])
     payer_email = serializers.EmailField(required=False, allow_blank=True)

@@ -172,6 +172,9 @@ from .payment_views import (
     PaymentInitializationAPIView,
     PaymentMethodCollectionAPIView,
     PaymentSessionDetailAPIView,
+    PesapalInitializationAPIView,
+    PesapalNotificationAPIView,
+    PesapalStatusAPIView,
 )
 from .payment_config_views import AdminPaymentConfigurationAPIView
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
@@ -377,8 +380,11 @@ urlpatterns = [
     path('checkout/payments/cards/initiate/', CardInitializationAPIView.as_view(), name='checkout-payment-card-initiate'),
     path('checkout/payments/mpesa/initiate/', MpesaInitializationAPIView.as_view(), name='checkout-payment-mpesa-initiate'),
     path('checkout/payments/mpesa/<str:reference>/status/', MpesaStatusAPIView.as_view(), name='checkout-payment-mpesa-status'),
+    path('checkout/payments/pesapal/initiate/', PesapalInitializationAPIView.as_view(), name='checkout-payment-pesapal-initiate'),
+    path('checkout/payments/pesapal/<str:reference>/status/', PesapalStatusAPIView.as_view(), name='checkout-payment-pesapal-status'),
     path('payments/airtel-money/callback/', AirtelMoneyCallbackAPIView.as_view(), name='payment-airtel-callback'),
     path('payments/mpesa/callback/', MpesaCallbackAPIView.as_view(), name='payment-mpesa-callback'),
+    path('payments/pesapal/ipn/', PesapalNotificationAPIView.as_view(), name='payment-pesapal-ipn'),
     path('checkout/orders/', OrderPlacementAPIView.as_view(), name='checkout-orders'),
     path('checkout/thank-you/', CheckoutThankYouAPIView.as_view(), name='checkout-thank-you'),
     path('orders/guest/lookup/', GuestOrderLookupAPIView.as_view(), name='guest-order-lookup'),

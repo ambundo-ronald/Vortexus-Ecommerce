@@ -9,6 +9,8 @@ export const paymentsApi = {
     apiClient.post(ENDPOINTS.payments.confirm(reference), payload).then((response) => response.data),
   initializeMpesa: (payload) => apiClient.post(ENDPOINTS.payments.mpesaInit, payload).then((response) => response.data),
   mpesaStatus: (reference) => apiClient.get(ENDPOINTS.payments.mpesaStatus(reference)).then((response) => response.data),
+  initializePesapal: (payload) => apiClient.post(ENDPOINTS.payments.pesapalInit, payload).then((response) => response.data),
+  pesapalStatus: (reference) => apiClient.get(ENDPOINTS.payments.pesapalStatus(reference)).then((response) => response.data),
   initializeAirtel: (payload) => apiClient.post(ENDPOINTS.payments.airtelInit, payload).then((response) => response.data),
   airtelStatus: (reference) => apiClient.get(ENDPOINTS.payments.airtelStatus(reference)).then((response) => response.data),
   initializeCard: (payload) => apiClient.post(ENDPOINTS.payments.cardInit, payload).then((response) => response.data)

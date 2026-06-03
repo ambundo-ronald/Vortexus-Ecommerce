@@ -408,6 +408,7 @@ SALES_NOTIFICATION_RECIPIENTS = [
 ]
 
 PAYMENT_METHODS = [
+    {'code': 'pesapal', 'name': 'Pesapal', 'provider': 'pesapal', 'requires_phone': False, 'requires_prepayment': True},
     {'code': 'mpesa', 'name': 'M-Pesa', 'provider': 'mpesa', 'requires_phone': True, 'requires_prepayment': True},
     {'code': 'airtel_money', 'name': 'Airtel Money', 'provider': 'airtel_money', 'requires_phone': True, 'requires_prepayment': True},
     {'code': 'credit_card', 'name': 'Credit Card', 'provider': 'card', 'requires_phone': False, 'requires_prepayment': True},
@@ -424,10 +425,21 @@ MPESA_PASSKEY = env('MPESA_PASSKEY', default='')
 MPESA_CALLBACK_URL = env('MPESA_CALLBACK_URL', default='')
 MPESA_TRANSACTION_TYPE = env('MPESA_TRANSACTION_TYPE', default='CustomerPayBillOnline')
 MPESA_TIMEOUT_SECONDS = env.int('MPESA_TIMEOUT_SECONDS', default=30)
+PESAPAL_BASE_URL = env('PESAPAL_BASE_URL', default='https://cybqa.pesapal.com/pesapalv3/api')
+PESAPAL_CONSUMER_KEY = env('PESAPAL_CONSUMER_KEY', default='')
+PESAPAL_CONSUMER_SECRET = env('PESAPAL_CONSUMER_SECRET', default='')
+PESAPAL_CALLBACK_URL = env('PESAPAL_CALLBACK_URL', default='')
+PESAPAL_CANCELLATION_URL = env('PESAPAL_CANCELLATION_URL', default='')
+PESAPAL_IPN_URL = env('PESAPAL_IPN_URL', default='')
+PESAPAL_IPN_ID = env('PESAPAL_IPN_ID', default='')
+PESAPAL_IPN_NOTIFICATION_TYPE = env('PESAPAL_IPN_NOTIFICATION_TYPE', default='POST')
+PESAPAL_BRANCH = env('PESAPAL_BRANCH', default='')
+PESAPAL_REDIRECT_MODE = env('PESAPAL_REDIRECT_MODE', default='TOP_WINDOW')
+PESAPAL_TIMEOUT_SECONDS = env.int('PESAPAL_TIMEOUT_SECONDS', default=30)
 AIRTEL_MONEY_SANDBOX_ENABLED = env.bool('AIRTEL_MONEY_SANDBOX_ENABLED', default=True)
 AIRTEL_MONEY_PROVIDER_NAME = env('AIRTEL_MONEY_PROVIDER_NAME', default='sandbox_airtel_money')
 CARD_SANDBOX_ENABLED = env.bool('CARD_SANDBOX_ENABLED', default=True)
 CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
 ERP_SYNC_TIMEOUT_SECONDS = env.int('ERP_SYNC_TIMEOUT_SECONDS', default=30)
-ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
+ERP_SYNC_PAGE_LENGTH = env.int('ERP_SYNC_PAGE_LENGTH', default=1000)
 ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')

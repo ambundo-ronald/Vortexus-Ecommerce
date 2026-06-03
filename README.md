@@ -158,3 +158,31 @@ https://api.vortexus.example.com/api/v1/health/ready/
 - OpenSearch commonly needs `vm.max_map_count=262144` on Linux hosts.
 - OpenSearch and CLIP/PyTorch are memory-hungry. A 4 GB RAM VPS is the practical minimum; 8 GB is safer.
 - Keep `.env.production` out of git. It is intentionally ignored.
+
+## Cloudflare Tunnel Preview
+
+For a stable public preview URL from a local Docker stack, use the optional `cloudflared` compose profile. Cloudflare terminates public HTTPS, and the local Caddy container routes plain HTTP traffic inside Docker.
+
+1. In Cloudflare Zero Trust, create a tunnel and add three public hostnames:
+   - `vortexus.example.com` -> `http://caddy:80`
+   - `admin.vortexus.example.com` -> `http://caddy:80`
+   - `api.vortexus.example.com` -> `http://caddy:80`
+2. Copy `.env.cloudflare.example` to `.env.cloudflare`.
+3. Copy `.env.cloudflare.app.example` to `.env.cloudflare.app`.
+4. Set the real `STOREFRONT_DOMAIN`, `DASHBOARD_DOMAIN`, `API_DOMAIN`, `VITE_API_BASE_URL`, and `NUXT_PUBLIC_API_BASE` in `.env.cloudflare`.
+5. Set the matching `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, payment callbacks, and app secrets in `.env.cloudflare.app`.
+6. Paste the connector token into `CLOUDFLARE_TUNNEL_TOKEN` in `.env.cloudflare`.
+7. Start the stack:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.cloudflare.yml --env-file .env.cloudflare --profile tunnel up -d --build
+```
+
+The tunnel is outbound-only, so your local IP can change without changing the public URLs.
+
+If you run Caddy without the Cloudflare override file and ports `80` or `443` are already in use, set alternate host ports in your env file:
+
+```env
+CADDY_HTTP_PORT=8080
+CADDY_HTTPS_PORT=8443
+```
