@@ -12,6 +12,14 @@ export default function CartSummary({ basket }) {
   const loading = useCartStore((state) => state.loading);
   const totals = basket?.totals || {};
   const vouchers = basket?.vouchers || [];
+  const currency = totals.currency || basket?.currency || "KES";
+  const subtotal = totals.subtotal ?? 0;
+  const discount = Number(totals.discount || 0);
+  const orderTotal =
+    totals.order_total ??
+    totals.total ??
+    totals.total_incl_tax ??
+    Math.max(0, Number(subtotal || 0) - discount);
 
   async function handleApplyCoupon(event) {
     event.preventDefault();
@@ -27,23 +35,44 @@ export default function CartSummary({ basket }) {
 
   return (
     <aside className="cart-summary surface-panel">
-      <h2>Order summary</h2>
-      <div className="summary-row">
-        <span>Items</span>
-        <strong>{basket?.item_count || 0}</strong>
-      </div>
-      <div className="summary-row">
-        <span>Subtotal</span>
-        <strong>{formatCurrency(totals.subtotal, totals.currency)}</strong>
-      </div>
-      {Number(totals.discount || 0) > 0 ? (
-        <div className="summary-row summary-row--discount">
-          <span>Coupon savings</span>
-          <strong>-{formatCurrency(totals.discount, totals.currency)}</strong>
+      <div className="cart-summary__head">
+        <span>
+          <MaterialIcon name="receipt_long" size={20} />
+        </span>
+        <div>
+          <h2>Order summary</h2>
+          <p>Review your cart before delivery</p>
         </div>
-      ) : null}
+      </div>
+      <div className="summary-group">
+        <div className="summary-row">
+          <span>Items</span>
+          <strong>{basket?.item_count || 0}</strong>
+        </div>
+        <div className="summary-row">
+          <span>Subtotal</span>
+          <strong>{formatCurrency(subtotal, currency)}</strong>
+        </div>
+        {discount > 0 ? (
+          <div className="summary-row summary-row--discount">
+            <span>Coupon savings</span>
+            <strong>-{formatCurrency(discount, currency)}</strong>
+          </div>
+        ) : null}
+        <div className="summary-row summary-row--muted">
+          <span>Delivery</span>
+          <strong>Calculated next</strong>
+        </div>
+        <div className="summary-row summary-row--total">
+          <span>Estimated total</span>
+          <strong>{formatCurrency(orderTotal, currency)}</strong>
+        </div>
+      </div>
       <form className="coupon-form" onSubmit={(event) => void handleApplyCoupon(event)}>
-        <label htmlFor="coupon-code">Coupon code</label>
+        <label htmlFor="coupon-code">
+          <MaterialIcon name="sell" size={16} />
+          Coupon or promo code
+        </label>
         <div>
           <input
             id="coupon-code"
@@ -70,8 +99,16 @@ export default function CartSummary({ basket }) {
         </div>
       ) : null}
       <Link className="primary-button" to="/checkout/shipping">
-        <MaterialIcon name="local_shipping" size={19} />
-        Continue to shipping
+        <MaterialIcon name="lock" size={19} />
+        Checkout securely
+      </Link>
+      <p className="cart-summary__safe-note">
+        <MaterialIcon name="verified_user" size={17} />
+        Secure checkout. Your data is protected.
+      </p>
+      <Link className="cart-summary__continue" to="/catalog">
+        <MaterialIcon name="arrow_back" size={18} />
+        Continue shopping
       </Link>
     </aside>
   );

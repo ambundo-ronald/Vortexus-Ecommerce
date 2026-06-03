@@ -11,6 +11,7 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
+import "./CheckoutFlow.css";
 
 export default function ShippingPage() {
   const navigate = useNavigate();

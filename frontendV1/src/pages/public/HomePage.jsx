@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import HeroImageCarousel from "../../components/home/HeroImageCarousel.jsx";
@@ -27,14 +27,6 @@ const fallbackCategories = [
   { id: "offers", name: "Deals & Offers", slug: "", icon: "local_offer", to: "/offers" }
 ];
 
-const valueProps = [
-  { icon: "verified", title: "Quality products", text: "Sourced for real project use" },
-  { icon: "support_agent", title: "Expert support", text: "Help from industry teams" },
-  { icon: "local_shipping", title: "Fast delivery", text: "Reliable dispatch options" },
-  { icon: "payments", title: "Secure checkout", text: "Safe payment choices" },
-  { icon: "assignment_return", title: "Easy returns", text: "Clear account support" }
-];
-
 export default function HomePage() {
   const [categoriesCollapsed, setCategoriesCollapsed] = useState(false);
   const { blocks: marketingBlocks, loading: marketingLoading } = useMarketingBlocks();
@@ -60,7 +52,6 @@ export default function HomePage() {
   }, {});
   const categoryItems = categories.length ? categories : fallbackCategories;
   const newestPreview = newestProducts.length ? newestProducts.slice(0, 6) : recommendations.slice(0, 6);
-  const firstPromo = marketingByPlacement.promo_banner?.[0];
 
   return (
     <div className="home-page">
@@ -127,15 +118,7 @@ export default function HomePage() {
         <ProductGrid products={newestProducts.slice(0, 5).length ? newestProducts.slice(0, 5) : recommendations.slice(0, 5)} loading={newestLoading || recommendationsLoading} skeletonCount={5} />
       </section>
 
-      <Link className="home-deal-banner" to={firstPromo?.cta_url || "/offers"}>
-        <div>
-          <span>{firstPromo?.eyebrow || "Flash sales"}</span>
-          <strong>{firstPromo?.headline || "Ending in 2hrs"}</strong>
-          <small>{firstPromo?.body || "Take a chance to buy within the time."}</small>
-          <em>{firstPromo?.cta_text || "Shop the sale"}</em>
-        </div>
-        {firstPromo?.image_url ? <img src={mediaUrl(firstPromo.image_url)} alt={firstPromo.image_alt || firstPromo.title || "Offer"} loading="lazy" /> : null}
-      </Link>
+      <PromoBannerCarousel blocks={marketingByPlacement.promo_banner} />
 
       <section className="content-section home-product-section home-product-section--dense">
         <div className="section-heading">
@@ -155,22 +138,93 @@ export default function HomePage() {
         <ProductGrid products={recommendations} loading={recommendationsLoading} skeletonCount={8} />
       </section>
 
-      <section className="home-value-strip" aria-label="Store benefits">
-        {valueProps.map((item) => (
-          <div className="home-value-item" key={item.title}>
-            <span>
-              <MaterialIcon name={item.icon} size={20} />
-            </span>
-            <div>
-              <strong>{item.title}</strong>
-              <small>{item.text}</small>
-            </div>
-          </div>
-        ))}
-      </section>
-
       <BrandStrip blocks={marketingByPlacement.brand_strip} />
     </div>
+  );
+}
+
+function PromoBannerCarousel({ blocks = [] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const slides = blocks.length
+    ? blocks
+    : [
+        {
+          id: "fallback-promo",
+          eyebrow: "Flash sales",
+          headline: "Ending in 2hrs",
+          body: "Take a chance to buy within the time.",
+          cta_text: "Shop the sale",
+          cta_url: "/offers",
+          image_url: "/hero%20landing%20images/television%20and%20sound%20system%20.png"
+        }
+      ];
+
+  useEffect(() => {
+    if (slides.length < 2) return undefined;
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % slides.length);
+    }, 4200);
+
+    return () => window.clearInterval(timer);
+  }, [slides.length]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [blocks.length]);
+
+  return (
+    <section className="home-deal-section" aria-label="Promotional banners">
+      <div className="section-heading">
+        <h2>Campaigns</h2>
+        <Link to="/offers">View all</Link>
+      </div>
+      <div className="home-deal-carousel">
+        <div className="home-deal-carousel__track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+          {slides.map((slide, index) => (
+            <PromoBannerSlide block={slide} key={slide.id || slide.slug || slide.image_url || slide.title} eager={index === 0} />
+          ))}
+        </div>
+        {slides.length > 1 ? (
+          <div className="home-deal-carousel__dots" aria-hidden="true">
+            {slides.map((slide, index) => (
+              <span className={index === activeIndex ? "active" : ""} key={slide.id || slide.slug || slide.image_url || slide.title} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function PromoBannerSlide({ block, eager = false }) {
+  const href = block.cta_url || "/offers";
+  const external = /^https?:\/\//i.test(href);
+  const imageUrl = block.id === "fallback-promo" ? block.image_url : mediaUrl(block.image_url);
+  const content = (
+    <>
+      {imageUrl ? <img src={imageUrl} alt={block.image_alt || block.title || block.headline || "Promotion"} loading={eager ? "eager" : "lazy"} /> : null}
+      <div>
+        <span>{block.eyebrow || "Promo"}</span>
+        <strong>{block.headline || block.title}</strong>
+        {block.body ? <small>{block.body}</small> : null}
+        <em>{block.cta_text || "Shop the sale"}</em>
+      </div>
+    </>
+  );
+
+  if (external) {
+    return (
+      <a className="home-deal-banner" href={href} target="_blank" rel="noreferrer">
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link className="home-deal-banner" to={href}>
+      {content}
+    </Link>
   );
 }
 

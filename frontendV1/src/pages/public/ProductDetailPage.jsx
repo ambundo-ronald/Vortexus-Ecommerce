@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { FaFacebookF, FaLinkedinIn, FaWhatsapp } from "react-icons/fa";
+import { FaXTwitter } from "react-icons/fa6";
 import { Link, useParams } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
@@ -20,6 +22,7 @@ import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { productPrice, stockTone } from "../../utils/productDisplay";
+import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
   const { productId } = useParams();
@@ -33,11 +36,17 @@ export default function ProductDetailPage() {
   const [optionError, setOptionError] = useState("");
   const [copiedShare, setCopiedShare] = useState(false);
   const [alertSaving, setAlertSaving] = useState(false);
+  const [quantity, setQuantity] = useState(1);
   const productOptions = useMemo(() => product?.options || product?.product_options || [], [product]);
   const missingRequiredOptions = useMemo(
     () => productOptions.filter((option) => option.required && !selectedOptions[option.id || option.code]),
     [productOptions, selectedOptions]
   );
+  const category = useMemo(() => product?.categories?.[0] || null, [product]);
+  const categoryLabel = category?.name || "Uncategorized";
+  const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
+  const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
+  const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
   const shareUrl = useMemo(() => {
     const path = `/products/${productId}`;
     if (typeof window === "undefined") return path;
@@ -47,6 +56,12 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (user && product?.id) void loadStatus([product.id]);
   }, [loadStatus, product?.id, user]);
+
+  useEffect(() => {
+    setQuantity(1);
+    setSelectedOptions({});
+    setOptionError("");
+  }, [product?.id]);
 
   useEffect(() => {
     if (!product?.id) return;
@@ -64,9 +79,12 @@ export default function ProductDetailPage() {
   const price = productPrice(product);
   const stock = stockTone(product);
   const canAddToCart = stock.isAvailable && !price.isQuote;
-  const categoryLabel = product.categories?.[0]?.name || "Uncategorized";
   const reviewCount = Number(product.review_count || product.reviews_count || 0);
   const rating = Number(product.rating || product.average_review_score || 0);
+  const brandLabel = product.brand || product.brand_name || product.manufacturer || "Not specified";
+  const skuLabel = product.sku || product.upc || product.code || "Pending";
+  const maxQuantity = stock.count > 0 ? stock.count : 99;
+  const boundedQuantity = Math.max(1, Math.min(quantity, maxQuantity || 1));
 
   async function handleAddToCart() {
     if (!stock.isAvailable) {
@@ -98,7 +116,7 @@ export default function ProductDetailPage() {
           value: selectedOptions[option.id || option.code] || ""
         }))
         .filter((option) => option.value !== "");
-      await addItem(product.id, 1, options);
+      await addItem(product.id, boundedQuantity, options);
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -160,44 +178,74 @@ export default function ProductDetailPage() {
   }
 
   return (
-    <>
-      <Link className="back-link" to="/catalog">
-        &lt; Back to catalog
-      </Link>
+    <div className="product-detail-page">
+      <nav className="product-breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/">Home</Link>
+        <MaterialIcon name="chevron_right" size={16} />
+        <Link to="/catalog">Shop</Link>
+        <MaterialIcon name="chevron_right" size={16} />
+        <Link to={categoryHref}>{categoryLabel}</Link>
+        <MaterialIcon name="chevron_right" size={16} />
+        <span>{product.title}</span>
+      </nav>
+
       <section className="product-detail">
-        <ProductImageGallery product={product} />
+        <div className="product-detail__media-panel">
+          <ProductImageGallery product={product} />
+          <ProductTrustBar />
+        </div>
+
         <div className="product-detail__body">
-          <div className="product-detail__meta">
-            <Badge tone={stock.tone}>{stock.label}</Badge>
-            <span>{categoryLabel}</span>
-          </div>
-          <h1>{product.title}</h1>
-          {reviewCount > 0 ? (
-            <div className="product-detail__rating">
-              <StarRating value={rating} size={16} />
-              <span>{rating.toFixed(1)}</span>
-              <a href="#reviews">{reviewCount} review{reviewCount === 1 ? "" : "s"}</a>
+          <div className="product-detail__topline">
+            <div>
+              <h1>{product.title}</h1>
+              <div className="product-detail__rating">
+                <StarRating value={rating || 0} size={17} />
+                <span>{rating ? rating.toFixed(1) : "0.0"}</span>
+                <a href="#reviews">
+                  ({reviewCount} review{reviewCount === 1 ? "" : "s"})
+                </a>
+                {!reviewCount ? <a href="#reviews">Be the first to review</a> : null}
+              </div>
             </div>
-          ) : null}
+            <dl className="product-detail__identity">
+              <div>
+                <dt>SKU</dt>
+                <dd>{skuLabel}</dd>
+              </div>
+              <div>
+                <dt>Brand</dt>
+                <dd>{brandLabel}</dd>
+              </div>
+            </dl>
+          </div>
+
           <div className="product-price-block">
             <strong className="product-price">{price.label || "Price on request"}</strong>
-            {price.sublabel ? <span>{price.sublabel}</span> : null}
+            {price.previousLabel ? (
+              <span>
+                <del>{price.previousLabel}</del>
+                {price.discountLabel ? <em>{price.discountLabel}</em> : null}
+              </span>
+            ) : price.sublabel ? <span>{price.sublabel}</span> : null}
           </div>
+
           <dl className="product-quick-facts">
-            <div>
-              <dt>SKU</dt>
-              <dd>{product.sku || "Pending"}</dd>
-            </div>
             <div>
               <dt>Category</dt>
               <dd>{categoryLabel}</dd>
             </div>
             <div>
               <dt>Availability</dt>
-              <dd>{stock.label}</dd>
+              <dd><Badge tone={stock.tone}>{stock.label}</Badge></dd>
             </div>
           </dl>
-          <p>{product.description || "No product description has been added yet."}</p>
+
+          <section className="product-overview" aria-label="Quick overview">
+            <h2>Quick overview</h2>
+            <p>{overviewText}</p>
+          </section>
+
           {productOptions.length ? (
             <div className="product-options">
               <h2>Choose options</h2>
@@ -212,7 +260,14 @@ export default function ProductDetailPage() {
               ))}
             </div>
           ) : null}
+
           <div className="product-actions">
+            <QuantityStepper
+              value={boundedQuantity}
+              max={maxQuantity}
+              disabled={!canAddToCart || cartLoading}
+              onChange={setQuantity}
+            />
             <button className={`primary-button${canAddToCart ? "" : " primary-button--muted"}`} type="button" disabled={cartLoading} onClick={() => void handleAddToCart()}>
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
@@ -223,6 +278,7 @@ export default function ProductDetailPage() {
               Request quote
             </Link>
           </div>
+
           {!stock.isAvailable ? (
             <ProductAlertForm
               defaultEmail={user?.email || ""}
@@ -230,21 +286,32 @@ export default function ProductDetailPage() {
               onSubmit={handleCreateProductAlert}
             />
           ) : null}
-          <ProductSharePanel
-            product={product}
-            shareUrl={shareUrl}
-            copied={copiedShare}
-            onCopy={() => void handleCopyShare()}
-            onNativeShare={() => void handleNativeShare()}
-          />
         </div>
       </section>
 
-      <section className="content-section">
-        <div className="section-heading">
+      <ProductSharePanel
+        product={product}
+        shareUrl={shareUrl}
+        copied={copiedShare}
+        onCopy={() => void handleCopyShare()}
+        onNativeShare={() => void handleNativeShare()}
+      />
+
+      <section className="product-info-grid">
+        <article className="product-info-card">
+          <h2>Why choose this product?</h2>
+          <ul className="product-benefit-list">
+            <li><MaterialIcon name="check_circle" size={18} filled /> High performance and reliable operation</li>
+            <li><MaterialIcon name="check_circle" size={18} filled /> Built with durable project-ready materials</li>
+            <li><MaterialIcon name="check_circle" size={18} filled /> Easy to install, maintain, and reorder</li>
+            <li><MaterialIcon name="check_circle" size={18} filled /> Suitable for industrial and commercial use</li>
+          </ul>
+        </article>
+
+        <article className="product-info-card">
           <h2>Technical specifications</h2>
-        </div>
-        <ProductSpecifications specifications={product.specifications || []} />
+          <ProductSpecifications specifications={detailSpecs} />
+        </article>
       </section>
 
       <div id="reviews">
@@ -252,8 +319,75 @@ export default function ProductDetailPage() {
       </div>
 
       <RelatedProducts products={related} />
-    </>
+    </div>
   );
+}
+
+function ProductTrustBar() {
+  const items = [
+    { icon: "verified_user", title: "Premium quality" },
+    { icon: "workspace_premium", title: "Warranty ready" },
+    { icon: "inventory_2", title: "Secure packaging" }
+  ];
+
+  return (
+    <div className="product-trust-bar" aria-label="Product trust signals">
+      {items.map((item) => (
+        <span key={item.title}>
+          <MaterialIcon name={item.icon} size={19} />
+          {item.title}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function QuantityStepper({ value, max, disabled, onChange }) {
+  const canDecrease = !disabled && value > 1;
+  const canIncrease = !disabled && value < max;
+
+  return (
+    <div className="quantity-stepper" aria-label="Quantity">
+      <button type="button" disabled={!canDecrease} onClick={() => onChange((current) => Math.max(1, current - 1))}>
+        <MaterialIcon name="remove" size={18} />
+      </button>
+      <span>{value}</span>
+      <button type="button" disabled={!canIncrease} onClick={() => onChange((current) => Math.min(max, current + 1))}>
+        <MaterialIcon name="add" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function cleanOverview(value = "") {
+  return String(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildProductSpecs(product) {
+  if (!product) return [];
+
+  const specs = Array.isArray(product.specifications) ? [...product.specifications] : [];
+  const existingNames = new Set(specs.map((spec) => String(spec.name || spec.code || "").toLowerCase()));
+
+  function addSpec(name, value, code) {
+    if (value === null || value === undefined || value === "") return;
+    const key = String(name || code || "").toLowerCase();
+    if (!key || existingNames.has(key)) return;
+    existingNames.add(key);
+    specs.push({ name, value, code: code || key });
+  }
+
+  addSpec("SKU", product.sku || product.upc || product.code, "sku");
+  addSpec("Brand", product.brand || product.brand_name || product.manufacturer, "brand");
+  addSpec("Category", product.categories?.[0]?.name, "category");
+  addSpec("Tags", Array.isArray(product.tags) ? product.tags.join(", ") : product.tags, "tags");
+  addSpec("Weight", product.weight || product.weight_grams, "weight");
+  addSpec("Dimensions", product.dimensions, "dimensions");
+
+  return specs;
 }
 
 function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare }) {
@@ -263,25 +397,25 @@ function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare })
   const links = [
     {
       label: "WhatsApp",
-      short: "WA",
+      Icon: FaWhatsapp,
       className: "share-button--whatsapp",
       href: `https://wa.me/?text=${encodedText}%20${encodedUrl}`
     },
     {
       label: "Facebook",
-      short: "f",
+      Icon: FaFacebookF,
       className: "share-button--facebook",
       href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`
     },
     {
       label: "X",
-      short: "X",
+      Icon: FaXTwitter,
       className: "share-button--x",
       href: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`
     },
     {
       label: "LinkedIn",
-      short: "in",
+      Icon: FaLinkedinIn,
       className: "share-button--linkedin",
       href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`
     }
@@ -323,7 +457,8 @@ function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare })
                 aria-label={`Share on ${link.label}`}
                 title={link.label}
               >
-                {link.short}
+                <link.Icon aria-hidden="true" />
+                <span className="visually-hidden">{link.label}</span>
               </a>
             ))}
           </div>

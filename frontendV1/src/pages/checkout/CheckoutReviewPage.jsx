@@ -10,6 +10,7 @@ import { useCheckout } from "../../hooks/useCheckout";
 import { paymentsApi } from "../../api/payments.api";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
+import "./CheckoutFlow.css";
 
 function readPendingCheckout() {
   try {
