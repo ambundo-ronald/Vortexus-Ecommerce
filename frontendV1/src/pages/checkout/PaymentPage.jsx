@@ -9,6 +9,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
+import "./CheckoutFlow.css";
 
 const COMPLETE_STATUSES = new Set(["authorized", "paid"]);
 

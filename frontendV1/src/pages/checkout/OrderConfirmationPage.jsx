@@ -8,6 +8,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import "./CheckoutFlow.css";
 
 function readStoredOrder() {
   try {

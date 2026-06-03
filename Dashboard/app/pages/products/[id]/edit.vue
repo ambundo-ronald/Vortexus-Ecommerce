@@ -62,6 +62,12 @@ async function submit(event: FormSubmitEvent<ProductFormSchema>) {
     }
     images.value = imageResult.data || images.value
     originalImages.value = [...images.value]
+    const refreshedProduct = await getProduct(route.params.id as string)
+    if (refreshedProduct.success) {
+      product.value = refreshedProduct.data
+      images.value = refreshedProduct.data?.images || []
+      originalImages.value = [...images.value]
+    }
     toast.add({
       title: "Product updated",
       description: "The storefront will reflect the saved product data.",

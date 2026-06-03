@@ -106,7 +106,7 @@
   color: #fff;
   font-size: 0.74rem;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 600;
   padding: 5px 8px;
 }
 
@@ -136,7 +136,7 @@
 .wishlist-settings-panel label span {
   color: var(--color-text-muted);
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .wishlist-settings-actions {

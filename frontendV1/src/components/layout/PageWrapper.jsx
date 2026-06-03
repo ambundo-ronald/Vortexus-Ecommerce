@@ -15,7 +15,7 @@ export default function PageWrapper({ children }) {
   const { user } = useAuth();
   const bottomItems = [
     { to: "/", label: "Home", icon: "home" },
-    { to: "/catalog", label: "Shop", icon: "storefront" },
+    { to: "/catalog", label: "Shop", icon: "shopping_bag" },
     { to: "/search", label: "Search", icon: "travel_explore" },
     { to: "/checkout/cart", label: "Cart", icon: "shopping_cart" },
     { to: user ? "/account" : "/login", label: user ? "Account" : "Sign in", icon: "person" }

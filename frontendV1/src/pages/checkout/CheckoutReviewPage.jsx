@@ -9,6 +9,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
+import "./CheckoutFlow.css";
 
 function readPendingCheckout() {
   try {

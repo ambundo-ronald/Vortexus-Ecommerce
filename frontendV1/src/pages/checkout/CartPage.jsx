@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import CartEmpty from "../../components/cart/CartEmpty.jsx";
 import CartItem from "../../components/cart/CartItem.jsx";
@@ -10,6 +10,7 @@ import { useCart } from "../../hooks/useCart";
 import { useCartStore } from "../../store/cart.store";
 import { formatCurrency } from "../../utils/currency";
 import { productImageUrl } from "../../utils/productImages";
+import "./CartPage.css";
 
 export default function CartPage() {
   const { basket, loading, error } = useCart();
@@ -19,21 +20,23 @@ export default function CartPage() {
   const moveSavedToCart = useCartStore((state) => state.moveSavedToCart);
   const removeSavedItem = useCartStore((state) => state.removeSavedItem);
   const lines = basket.lines || [];
+  const itemCount = basket.item_count || lines.reduce((total, line) => total + Number(line.quantity || 0), 0);
+  const itemLabel = itemCount === 1 ? "Item" : "Items";
+  const savedItemsRef = useRef(null);
 
   useEffect(() => {
     void loadSavedItems();
   }, [loadSavedItems]);
 
-  return (
-    <>
-      <section className="surface-panel page-intro cart-intro">
-        <div>
-          <p className="eyebrow">Cart</p>
-          <h1>Your cart</h1>
-          <p>{basket.item_count || 0} item{basket.item_count === 1 ? "" : "s"}</p>
-        </div>
-      </section>
+  function scrollSavedItems() {
+    savedItemsRef.current?.scrollBy({
+      left: Math.max(280, savedItemsRef.current.clientWidth * 0.75),
+      behavior: "smooth",
+    });
+  }
 
+  return (
+    <div className="cart-page">
       <Alert>{error}</Alert>
       {loading && !lines.length ? <Spinner label="Loading cart" /> : null}
 
@@ -41,11 +44,34 @@ export default function CartPage() {
         <CartEmpty />
       ) : (
         <section className="cart-layout">
-          <div className="cart-lines">
-            {lines.map((line) => (
-              <CartItem key={line.id} line={line} />
-            ))}
-          </div>
+          <section className="cart-products-panel" aria-labelledby="cart-page-title">
+            <div className="cart-products-panel__head">
+              <div>
+                <h1 id="cart-page-title">Your cart</h1>
+                <p>Review your items and proceed to checkout</p>
+              </div>
+              <span className="cart-products-panel__count">
+                <MaterialIcon name="shopping_cart" size={18} />
+                {itemCount} {itemLabel}
+              </span>
+            </div>
+            <div className="cart-table-head" aria-hidden="true">
+              <span>Product</span>
+              <span>Price</span>
+              <span>Qty</span>
+              <span>Total</span>
+              <span></span>
+            </div>
+            <div className="cart-lines">
+              {lines.map((line) => (
+                <CartItem key={line.id} line={line} />
+              ))}
+            </div>
+            <div className="cart-warranty-note">
+              <MaterialIcon name="verified_user" size={18} />
+              <span>All items are covered by manufacturer warranty and quality guarantee.</span>
+            </div>
+          </section>
           <CartSummary basket={basket} />
         </section>
       )}
@@ -55,9 +81,11 @@ export default function CartPage() {
         <section className="content-section saved-items-section">
           <div className="section-heading">
             <h2>Saved for later</h2>
-            <span>{savedItems.length}</span>
+            <span>
+              {savedItems.length} {savedItems.length === 1 ? "Item" : "Items"}
+            </span>
           </div>
-          <div className="saved-items-grid">
+          <div className="saved-items-grid" ref={savedItemsRef}>
             {savedItems.map((item) => (
               <SavedCartItem
                 key={item.id}
@@ -80,9 +108,18 @@ export default function CartPage() {
               />
             ))}
           </div>
+          {savedItems.length > 2 ? (
+            <button className="saved-items-next" type="button" onClick={scrollSavedItems} aria-label="Show more saved items">
+              <MaterialIcon name="chevron_right" size={24} />
+            </button>
+          ) : null}
+          <div className="saved-items-note">
+            <MaterialIcon name="info" size={17} />
+            <span>Move items to your cart or remove them if you no longer need them.</span>
+          </div>
         </section>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -90,13 +127,29 @@ function SavedCartItem({ item, disabled, onMove, onRemove }) {
   const product = item.product || item.wishlist_item?.product || {};
   const options = item.options || item.wishlist_item?.options || [];
   const image = productImageUrl(product);
+  const stockCount =
+    product.stock ??
+    product.stock_count ??
+    product.num_in_stock ??
+    product.availability?.num_available ??
+    product.availability?.num_in_stock ??
+    product.availability?.stock;
+  const hasStockCount = stockCount !== null && stockCount !== undefined && stockCount !== "";
+  const isAvailable =
+    product.is_available !== false &&
+    product.availability?.is_available !== false &&
+    (!hasStockCount || Number(stockCount) > 0);
+  const stockText = isAvailable ? (hasStockCount ? `In stock ${stockCount}` : "In stock") : "Sold out";
+  const sku = product.sku || product.upc || product.code || product.slug || "Saved product";
+
   return (
     <article className="saved-cart-item">
       <div className="saved-cart-item__media">
         {image ? <img src={image} alt={product.title || "Product"} /> : <MaterialIcon name="inventory_2" size={26} />}
       </div>
-      <div>
+      <div className="saved-cart-item__body">
         <strong>{product.title || "Saved product"}</strong>
+        <span className="saved-cart-item__sku">SKU: {sku}</span>
         {options.length ? (
           <ul className="cart-item__options">
             {options.map((option) => (
@@ -107,12 +160,16 @@ function SavedCartItem({ item, disabled, onMove, onRemove }) {
             ))}
           </ul>
         ) : null}
-        <span>{formatCurrency(product.price, product.currency)}</span>
+        <span className="saved-cart-item__price">{formatCurrency(product.price, product.currency)}</span>
+        <span className={`saved-cart-item__stock ${isAvailable ? "is-in-stock" : "is-sold-out"}`}>
+          <MaterialIcon name={isAvailable ? "check_circle" : "block"} size={15} />
+          {stockText}
+        </span>
       </div>
       <div className="saved-cart-item__actions">
         <button className="secondary-button" type="button" disabled={disabled} onClick={() => void onMove()}>
           <MaterialIcon name="add_shopping_cart" size={18} />
-          Move
+          Move to cart
         </button>
         <button className="danger-link" type="button" disabled={disabled} onClick={() => void onRemove()} aria-label="Remove saved item">
           <MaterialIcon name="delete" size={18} />

@@ -2,7 +2,7 @@ import ProductGrid from "./ProductGrid.jsx";
 
 export default function RelatedProducts({ products = [] }) {
   return (
-    <section className="content-section">
+    <section className="content-section related-products-section">
       <div className="section-heading">
         <h2>Related products</h2>
       </div>
