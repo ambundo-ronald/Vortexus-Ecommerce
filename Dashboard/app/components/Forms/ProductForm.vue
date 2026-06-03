@@ -6,6 +6,7 @@ const props = defineProps<{
   values?: Partial<ProductFormSchema>;
   statusOptions: { label: string; value: string; icon: string; color: string }[];
   categories: { label: string; value: string }[];
+  productOptions?: { label: string; value: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -17,6 +18,10 @@ const productSchema = z.object({
     .string({ error: "Product name is required" })
     .min(1, "Product name cannot be empty"),
   description: z.string().optional(),
+  slug: z.string().optional(),
+  metaTitle: z.string().optional(),
+  metaDescription: z.string().optional(),
+  recommendedProductIds: z.array(z.coerce.number()).optional(),
   images: z.array(z.object({ src: z.string(), alt: z.string() })).optional(),
   price: z.number({
     error: (issue) => (issue.input === undefined ? "" : ""),
@@ -67,6 +72,10 @@ export type ProductFormSchema = z.infer<typeof productSchema>;
 const localFormState = reactive<ProductFormSchema>({
   name: "",
   description: "",
+  slug: "",
+  metaTitle: "",
+  metaDescription: "",
+  recommendedProductIds: [],
   images: [],
   price: 0,
   currency: "KES",
@@ -90,6 +99,10 @@ watch(
     Object.assign(localFormState, {
       name: "",
       description: "",
+      slug: "",
+      metaTitle: "",
+      metaDescription: "",
+      recommendedProductIds: [],
       images: [],
       price: 0,
       currency: "KES",
@@ -109,11 +122,36 @@ watch(
   { immediate: true, deep: true },
 )
 
+const selectedRecommendedProductId = ref("")
+const selectedRecommendedProducts = computed(() => {
+  const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
+  return (props.productOptions || []).filter(option => selectedIds.has(Number(option.value)))
+})
+const availableRecommendedProductOptions = computed(() => {
+  const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
+  return (props.productOptions || []).filter(option => !selectedIds.has(Number(option.value)))
+})
+
 function generateSKU() {
   localFormState.sku = `SKU-${Math.random()
     .toString(36)
     .substring(7)
     .toUpperCase()}`;
+}
+
+function addRecommendedProduct() {
+  const productId = Number(selectedRecommendedProductId.value)
+  if (!Number.isFinite(productId) || productId <= 0)
+    return
+
+  const current = (localFormState.recommendedProductIds || []).map(Number)
+  if (!current.includes(productId))
+    localFormState.recommendedProductIds = [...current, productId]
+  selectedRecommendedProductId.value = ""
+}
+
+function removeRecommendedProduct(productId: number) {
+  localFormState.recommendedProductIds = (localFormState.recommendedProductIds || []).filter(id => id !== productId)
 }
 
 function emitSubmit(data: ProductFormSchema) {
@@ -202,6 +240,94 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                   <UInput
                     v-model="localFormState.tags"
                     placeholder="pump, reverse osmosis, tank"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </UCard>
+            <UCard class="rounded-xl">
+              <template #header>
+                <h3 class="text-base font-black leading-6 text-slate-950">
+                  Upselling
+                </h3>
+              </template>
+              <div class="space-y-4">
+                <div class="flex flex-col gap-3 sm:flex-row">
+                  <UFormField label="Recommended product" class="min-w-0 flex-1">
+                    <USelect
+                      v-model="selectedRecommendedProductId"
+                      :items="availableRecommendedProductOptions"
+                      value-attribute="value"
+                      option-attribute="label"
+                      placeholder="Select product to recommend"
+                      size="lg"
+                      class="w-full"
+                    />
+                  </UFormField>
+                  <div class="flex items-end">
+                    <UButton
+                      icon="i-lucide-plus"
+                      color="primary"
+                      variant="outline"
+                      :disabled="!selectedRecommendedProductId"
+                      @click="addRecommendedProduct"
+                    >
+                      Add
+                    </UButton>
+                  </div>
+                </div>
+                <div v-if="selectedRecommendedProducts.length" class="space-y-2">
+                  <div
+                    v-for="item in selectedRecommendedProducts"
+                    :key="item.value"
+                    class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    <span class="min-w-0 truncate text-sm font-medium text-slate-700">{{ item.label }}</span>
+                    <UButton
+                      icon="i-lucide-x"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      square
+                      :aria-label="`Remove ${item.label}`"
+                      @click="removeRecommendedProduct(Number(item.value))"
+                    />
+                  </div>
+                </div>
+                <p v-else class="text-sm text-slate-500">
+                  No upsell products selected.
+                </p>
+              </div>
+            </UCard>
+            <UCard class="rounded-xl">
+              <template #header>
+                <h3 class="text-base font-black leading-6 text-slate-950">
+                  SEO
+                </h3>
+              </template>
+              <div class="space-y-4">
+                <UFormField label="URL slug" name="slug">
+                  <UInput
+                    v-model="localFormState.slug"
+                    placeholder="1000lph-ro-system-assembly"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Meta title" name="metaTitle">
+                  <UInput
+                    v-model="localFormState.metaTitle"
+                    placeholder="1000LPH RO System Assembly"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Meta description" name="metaDescription">
+                  <UTextarea
+                    v-model="localFormState.metaDescription"
+                    placeholder="Short search result description for this product."
+                    :rows="3"
                     size="lg"
                     class="w-full"
                   />

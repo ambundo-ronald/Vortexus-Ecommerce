@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.notifications.config import configured_from_email, configured_reply_to_email
+from apps.payments.services import available_payment_methods
 
 from .account_serializers import AccountProfileUpdateSerializer, AccountSummarySerializer
 
@@ -37,16 +39,17 @@ def _serialize_store_settings(site):
             'name': method.get('name', ''),
             'type': method.get('type', ''),
             'requires_prepayment': bool(method.get('requires_prepayment', False)),
+            'is_configured': bool(method.get('is_configured', True)),
         }
-        for method in getattr(settings, 'PAYMENT_METHODS', [])
+        for method in available_payment_methods()
     ]
     return {
         'site_name': site.name,
         'site_domain': site.domain,
         'default_currency': getattr(settings, 'OSCAR_DEFAULT_CURRENCY', ''),
         'shop_name': getattr(settings, 'OSCAR_SHOP_NAME', ''),
-        'support_email': getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
-        'reply_to_email': getattr(settings, 'NOTIFICATION_REPLY_TO_EMAIL', ''),
+        'support_email': configured_from_email(),
+        'reply_to_email': configured_reply_to_email(),
         'payment_methods': payment_methods,
         'async_enabled': bool(getattr(settings, 'ENABLE_ASYNC_TASKS', False)),
         'search_host': getattr(settings, 'OPENSEARCH', {}).get('HOST', ''),

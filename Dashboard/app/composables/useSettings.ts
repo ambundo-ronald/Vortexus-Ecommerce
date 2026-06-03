@@ -10,6 +10,7 @@ export interface AdminStoreSettings {
     name: string
     type: string
     requires_prepayment: boolean
+    is_configured?: boolean
   }>
   async_enabled: boolean
   search_host: string

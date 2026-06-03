@@ -2,14 +2,19 @@ import json
 import hashlib
 from collections import defaultdict
 from decimal import Decimal
+from pathlib import Path
+from urllib.parse import urlparse
 
 from django.apps import apps
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 
 from apps.auditlog.services import sanitize_metadata
+from apps.common.media import normalize_uploaded_image
 
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextIntegrationError, build_erpnext_client
@@ -120,6 +125,22 @@ def _make_safe_identifier(value: str, max_length: int) -> str:
     return f'{normalized[:prefix_length]}-{digest}'
 
 
+def _first_image_reference(item: dict) -> str:
+    for field in ('image', 'website_image', 'thumbnail'):
+        value = (item.get(field) or '').strip()
+        if value:
+            return value
+    return ''
+
+
+def _filename_from_image_reference(image_reference: str, item_code: str) -> str:
+    path = urlparse(image_reference).path if image_reference else ''
+    filename = Path(path).name or f'{item_code or "erpnext-item"}.jpg'
+    if not Path(filename).suffix:
+        filename = f'{filename}.jpg'
+    return filename
+
+
 class ERPNextSyncService:
     def __init__(self, connection: IntegrationConnection):
         self.connection = connection
@@ -128,6 +149,12 @@ class ERPNextSyncService:
         self.product_class = _resolve_product_class(connection)
         self.default_currency = connection.metadata.get('default_currency') or settings.OSCAR_DEFAULT_CURRENCY
         self.default_price_list = connection.metadata.get('price_list') or getattr(settings, 'ERPNEXT_DEFAULT_PRICE_LIST', 'Standard Selling')
+        self.page_length = int(connection.metadata.get('page_length') or getattr(settings, 'ERP_SYNC_PAGE_LENGTH', 1000))
+        self.selected_item_groups = {
+            str(group).strip()
+            for group in connection.metadata.get('item_groups', [])
+            if str(group).strip()
+        }
 
     def _log_event(self, job: SyncJob, entity_type: str, status: str, external_reference: str = '', payload_excerpt: dict | None = None, error_message: str = ''):
         SyncEventLog.objects.create(
@@ -142,44 +169,103 @@ class ERPNextSyncService:
         )
 
     def _fetch_item_groups(self) -> list[dict]:
-        payload = self.client._request(
+        return self.client.fetch_all(
             '/api/resource/Item Group',
             query={
                 'fields': json.dumps(['name', 'parent_item_group', 'is_group', 'modified']),
-                'limit_page_length': 1000,
             },
+            page_length=self.page_length,
         )
-        return payload.get('data') or []
 
     def _fetch_items(self) -> list[dict]:
-        payload = self.client._request(
+        return self.client.fetch_all(
             '/api/resource/Item',
             query={
-                'fields': json.dumps(['name', 'item_name', 'description', 'item_group', 'stock_uom', 'disabled', 'modified']),
-                'limit_page_length': 1000,
+                'fields': json.dumps([
+                    'name',
+                    'item_name',
+                    'description',
+                    'item_group',
+                    'stock_uom',
+                    'disabled',
+                    'image',
+                    'website_image',
+                    'thumbnail',
+                    'modified',
+                ]),
             },
+            page_length=self.page_length,
         )
-        return payload.get('data') or []
 
     def _fetch_prices(self) -> list[dict]:
-        payload = self.client._request(
+        return self.client.fetch_all(
             '/api/resource/Item Price',
             query={
                 'fields': json.dumps(['name', 'item_code', 'price_list', 'currency', 'price_list_rate', 'modified']),
-                'limit_page_length': 1000,
             },
+            page_length=self.page_length,
         )
-        return payload.get('data') or []
 
     def _fetch_bins(self) -> list[dict]:
-        payload = self.client._request(
+        return self.client.fetch_all(
             '/api/resource/Bin',
             query={
                 'fields': json.dumps(['name', 'item_code', 'warehouse', 'actual_qty', 'reserved_qty', 'modified']),
-                'limit_page_length': 2000,
             },
+            page_length=self.page_length,
         )
-        return payload.get('data') or []
+
+    def _import_product_image(self, *, product, item: dict, item_code: str, job: SyncJob) -> str:
+        image_reference = _first_image_reference(item)
+        if not image_reference:
+            return 'missing'
+
+        ProductImage = apps.get_model('catalogue', 'ProductImage')
+        max_bytes = int(getattr(settings, 'MAX_PRODUCT_IMAGE_BYTES', 10 * 1024 * 1024))
+        max_dimension = int(getattr(settings, 'MAX_PRODUCT_IMAGE_DIMENSION', 2400))
+
+        try:
+            image_bytes = self.client.fetch_file_bytes(image_reference, max_bytes=max_bytes * 4)
+            filename = _filename_from_image_reference(image_reference, item_code)
+            upload = SimpleUploadedFile(filename, image_bytes)
+            normalized = normalize_uploaded_image(upload, max_bytes=max_bytes, max_dimension=max_dimension)
+            if hasattr(normalized, 'seek'):
+                normalized.seek(0)
+            normalized_bytes = normalized.read()
+            image_hash = hashlib.sha256(normalized_bytes).hexdigest()
+
+            existing_hashes = set()
+            for image in product.images.all():
+                original = getattr(image, 'original', None)
+                if not original:
+                    continue
+                try:
+                    with original.open('rb') as handle:
+                        existing_hashes.add(hashlib.sha256(handle.read()).hexdigest())
+                except Exception:
+                    continue
+
+            if image_hash in existing_hashes:
+                return 'duplicate'
+
+            product_image = ProductImage(
+                product=product,
+                caption=(item.get('item_name') or item_code).strip(),
+                display_order=product.images.count(),
+            )
+            product_image.original.save(getattr(normalized, 'name', filename), ContentFile(normalized_bytes), save=False)
+            product_image.save()
+            return 'created'
+        except Exception as exc:
+            self._log_event(
+                job,
+                entity_type='product_image',
+                status=SyncEventLog.STATUS_FAILED,
+                external_reference=item_code,
+                payload_excerpt={'image': image_reference},
+                error_message=str(exc),
+            )
+            return 'failed'
 
     def import_catalog(self, actor=None, include_stock: bool = True) -> dict:
         job = SyncJob.objects.create(
@@ -196,12 +282,19 @@ class ERPNextSyncService:
             'products_updated': 0,
             'stock_created': 0,
             'stock_updated': 0,
+            'images_created': 0,
+            'images_duplicate': 0,
+            'images_missing': 0,
+            'images_failed': 0,
         }
 
         try:
             groups = self._fetch_item_groups()
             items = self._fetch_items()
             prices = self._fetch_prices()
+            summary['item_groups_fetched'] = len(groups)
+            summary['items_fetched'] = len(items)
+            summary['prices_fetched'] = len(prices)
             price_map = {}
             for price in prices:
                 if price.get('price_list') != self.default_price_list:
@@ -229,6 +322,9 @@ class ERPNextSyncService:
 
                     category = None
                     item_group = (item.get('item_group') or '').strip()
+                    if self.selected_item_groups and item_group not in self.selected_item_groups:
+                        continue
+
                     if item_group:
                         segments = _normalize_category_segments(item_group, groups_by_name)
                         category, created_count = _get_or_create_category_path(segments)
@@ -330,12 +426,22 @@ class ERPNextSyncService:
                     if item_group:
                         _save_attribute(product, self.product_class, 'erpnext_item_group', 'ERPNext Item Group', item_group)
 
+                    image_result = self._import_product_image(product=product, item=item, item_code=item_code, job=job)
+                    if image_result == 'created':
+                        summary['images_created'] += 1
+                    elif image_result == 'duplicate':
+                        summary['images_duplicate'] += 1
+                    elif image_result == 'missing':
+                        summary['images_missing'] += 1
+                    else:
+                        summary['images_failed'] += 1
+
                     self._log_event(
                         job,
                         entity_type='product',
                         status=SyncEventLog.STATUS_PROCESSED,
                         external_reference=item_code,
-                        payload_excerpt={'title': product.title, 'item_group': item_group},
+                        payload_excerpt={'title': product.title, 'item_group': item_group, 'image': _first_image_reference(item)},
                     )
 
                 if include_stock:
@@ -376,6 +482,7 @@ class ERPNextSyncService:
 
         try:
             bins = self._fetch_bins()
+            summary['bins_fetched'] = len(bins)
             stock_by_item = defaultdict(lambda: Decimal('0'))
             for row in bins:
                 item_code = (row.get('item_code') or '').strip()

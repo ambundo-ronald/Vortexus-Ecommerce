@@ -6,12 +6,13 @@ import ProductForm, {
 } from "~/components/Forms/ProductForm.vue";
 import type { ProductImageItem } from "~/types/ProductImage";
 
-const { deleteProduct, getProduct, getCategoryOptions, syncProductImages, updateProduct } = useProduct();
+const { deleteProduct, getProduct, getCategoryOptions, getProductOptions, syncProductImages, updateProduct } = useProduct();
 
 const route = useRoute();
 
 const product = ref<any>(null)
 const categories = ref<{ label: string; value: string }[]>([])
+const productOptions = ref<{ label: string; value: string }[]>([])
 const originalImages = ref<ProductImageItem[]>([])
 const isDeleteModalOpen = ref(false)
 const isDeleting = ref(false)
@@ -21,9 +22,10 @@ const loadError = ref("")
 
 onMounted(async () => {
   isLoadingProduct.value = true
-  const [productResult, categoryResult] = await Promise.all([
+  const [productResult, categoryResult, productOptionsResult] = await Promise.all([
     getProduct(route.params.id as string),
     getCategoryOptions(),
+    getProductOptions(route.params.id as string),
   ])
 
   if (productResult.success)
@@ -33,6 +35,8 @@ onMounted(async () => {
 
   if (categoryResult.success)
     categories.value = categoryResult.data
+  if (productOptionsResult.success)
+    productOptions.value = productOptionsResult.data
 
   isLoadingProduct.value = false
 })
@@ -153,6 +157,7 @@ watch(product, (value) => {
       :values="product"
       :status-options="statusOptions"
       :categories="categories"
+      :product-options="productOptions"
       @on-submit="submit"
     >
       <template #header="{ submit }">

@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 
-const preferredOrder = ["cash_on_delivery", "bank_transfer", "credit_card", "debit_card", "mpesa", "airtel_money"];
+const preferredOrder = ["pesapal", "cash_on_delivery", "bank_transfer", "credit_card", "debit_card", "mpesa", "airtel_money"];
 
 const methodIcons = {
   cash_on_delivery: "payments",
   bank_transfer: "account_balance",
   credit_card: "credit_card",
   debit_card: "credit_card",
+  pesapal: "account_balance_wallet",
   mpesa: "phone_iphone",
   airtel_money: "phone_iphone"
 };
@@ -118,6 +119,7 @@ function methodRank(code) {
 }
 
 function paymentHint(method) {
+  if (method.code === "pesapal") return "Secure hosted checkout";
   if (method.code === "cash_on_delivery") return "Pay when your order arrives";
   if (method.code === "bank_transfer") return "Order is reserved for transfer";
   if (method.code === "credit_card" || method.code === "debit_card") return "Secure card authorization";

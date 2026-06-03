@@ -8,6 +8,7 @@ class MarketingBlock(models.Model):
     PLACEMENT_PROMO_BANNER = 'promo_banner'
     PLACEMENT_FEATURED = 'featured'
     PLACEMENT_BRAND_STRIP = 'brand_strip'
+    PLACEMENT_TOP_CATEGORY = 'top_category'
 
     PLACEMENT_CHOICES = [
         (PLACEMENT_HOME_HERO, 'Homepage hero'),
@@ -15,6 +16,7 @@ class MarketingBlock(models.Model):
         (PLACEMENT_PROMO_BANNER, 'Promo banner'),
         (PLACEMENT_FEATURED, 'Featured block'),
         (PLACEMENT_BRAND_STRIP, 'Brand strip'),
+        (PLACEMENT_TOP_CATEGORY, 'Top Category'),
     ]
 
     title = models.CharField(max_length=160)

@@ -35,7 +35,7 @@ def mpesa_is_configured() -> bool:
 
 def initiate_stk_push(payment_session) -> dict:
     if not mpesa_is_configured():
-        raise MpesaConfigurationError('M-Pesa sandbox credentials are not configured.')
+        raise MpesaConfigurationError('M-Pesa Daraja credentials are not configured.')
 
     access_token = _generate_access_token()
     timestamp = _timestamp()
@@ -81,7 +81,7 @@ def initiate_stk_push(payment_session) -> dict:
 
 def query_stk_push_status(payment_session) -> dict:
     if not mpesa_is_configured():
-        raise MpesaConfigurationError('M-Pesa sandbox credentials are not configured.')
+        raise MpesaConfigurationError('M-Pesa Daraja credentials are not configured.')
 
     checkout_request_id = payment_session.provider_payload.get('checkout_request_id', '')
     if not checkout_request_id:

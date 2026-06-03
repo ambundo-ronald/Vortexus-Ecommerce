@@ -28,6 +28,7 @@ import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage.jsx";
 import LoginPage from "../pages/auth/LoginPage.jsx";
 import RegisterPage from "../pages/auth/RegisterPage.jsx";
 import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
+import VerifyEmailPage from "../pages/auth/VerifyEmailPage.jsx";
 import CategoryPage from "../pages/public/CategoryPage.jsx";
 import GuestOrderDetailPage from "../pages/public/GuestOrderDetailPage.jsx";
 import GuestOrderLookupPage from "../pages/public/GuestOrderLookupPage.jsx";
@@ -60,14 +61,15 @@ export default function AppRouter() {
       <Route path="/product-alerts/cancel/:key" element={<PageWrapper><ProductAlertActionPage action="cancel" /></PageWrapper>} />
       <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
       <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
-      <Route path="/checkout/shipping" element={<PageWrapper><ShippingPage /></PageWrapper>} />
-      <Route path="/checkout/payment" element={<PageWrapper><PaymentPage /></PageWrapper>} />
-      <Route path="/checkout/review" element={<PageWrapper><CheckoutReviewPage /></PageWrapper>} />
-      <Route path="/checkout/confirmation" element={<PageWrapper><OrderConfirmationPage /></PageWrapper>} />
+      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><ShippingPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><PaymentPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><CheckoutReviewPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/confirmation" element={<PageWrapper><ProtectedRoute><OrderConfirmationPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/login" element={<PageWrapper><LoginPage /></PageWrapper>} />
       <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />
       <Route path="/forgot-password" element={<PageWrapper><ForgotPasswordPage /></PageWrapper>} />
       <Route path="/reset-password" element={<PageWrapper><ResetPasswordPage /></PageWrapper>} />
+      <Route path="/account/verify-email" element={<PageWrapper><VerifyEmailPage /></PageWrapper>} />
       <Route path="/unauthorized" element={<PageWrapper><UnauthorizedPage /></PageWrapper>} />
       <Route path="/account" element={<PageWrapper><ProtectedRoute><AccountDashboardPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/delete" element={<PageWrapper><ProtectedRoute><AccountDeletePage /></ProtectedRoute></PageWrapper>} />

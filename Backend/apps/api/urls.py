@@ -2,7 +2,10 @@ from django.urls import include, path
 
 from .account_views import (
     AccountLoginAPIView,
+    AccountLoginTwoFactorAPIView,
     AccountLogoutAPIView,
+    AccountEmailVerificationResendAPIView,
+    AccountEmailVerifyAPIView,
     AccountPasswordAPIView,
     AccountProfileAPIView,
     AccountRegisterAPIView,
@@ -60,6 +63,17 @@ from .admin_extra_views import (
 )
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
+from .email_config_views import (
+    AdminEmailConfigurationAPIView,
+    AdminEmailLogCollectionAPIView,
+    AdminEmailLogDetailAPIView,
+    AdminEmailLogRetryAPIView,
+    AdminEmailSuppressionCollectionAPIView,
+    AdminEmailSuppressionDetailAPIView,
+    AdminEmailTemplateCollectionAPIView,
+    AdminEmailTemplateDetailAPIView,
+    AdminEmailTestAPIView,
+)
 from .health_views import LivenessAPIView, ReadinessAPIView
 from .integration_views import (
     ERPNextCatalogImportAPIView,
@@ -158,6 +172,9 @@ from .payment_views import (
     PaymentInitializationAPIView,
     PaymentMethodCollectionAPIView,
     PaymentSessionDetailAPIView,
+    PesapalInitializationAPIView,
+    PesapalNotificationAPIView,
+    PesapalStatusAPIView,
 )
 from .payment_config_views import AdminPaymentConfigurationAPIView
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
@@ -209,7 +226,10 @@ urlpatterns = [
     path('account/csrf/', CsrfTokenAPIView.as_view(), name='account-csrf'),
     path('account/register/', AccountRegisterAPIView.as_view(), name='account-register'),
     path('account/login/', AccountLoginAPIView.as_view(), name='account-login'),
+    path('account/login/2fa/', AccountLoginTwoFactorAPIView.as_view(), name='account-login-2fa'),
     path('account/logout/', AccountLogoutAPIView.as_view(), name='account-logout'),
+    path('account/email/verify/', AccountEmailVerifyAPIView.as_view(), name='account-email-verify'),
+    path('account/email/verification/resend/', AccountEmailVerificationResendAPIView.as_view(), name='account-email-verification-resend'),
     path('account/me/', AccountProfileAPIView.as_view(), name='account-profile'),
     path('account/password/', AccountPasswordAPIView.as_view(), name='account-password'),
     path('account/password-reset/request/', PasswordResetRequestAPIView.as_view(), name='account-password-reset-request'),
@@ -288,6 +308,15 @@ urlpatterns = [
     path('admin/media/', AdminMediaCollectionAPIView.as_view(), name='admin-media'),
     path('admin/media/<int:image_id>/', AdminMediaDetailAPIView.as_view(), name='admin-media-detail'),
     path('admin/settings/', AdminSettingsAPIView.as_view(), name='admin-settings'),
+    path('admin/email/config/', AdminEmailConfigurationAPIView.as_view(), name='admin-email-config'),
+    path('admin/email/test/', AdminEmailTestAPIView.as_view(), name='admin-email-test'),
+    path('admin/email/logs/', AdminEmailLogCollectionAPIView.as_view(), name='admin-email-logs'),
+    path('admin/email/logs/<int:notification_id>/', AdminEmailLogDetailAPIView.as_view(), name='admin-email-log-detail'),
+    path('admin/email/logs/<int:notification_id>/retry/', AdminEmailLogRetryAPIView.as_view(), name='admin-email-log-retry'),
+    path('admin/email/suppressions/', AdminEmailSuppressionCollectionAPIView.as_view(), name='admin-email-suppressions'),
+    path('admin/email/suppressions/<int:suppression_id>/', AdminEmailSuppressionDetailAPIView.as_view(), name='admin-email-suppression-detail'),
+    path('admin/email/templates/', AdminEmailTemplateCollectionAPIView.as_view(), name='admin-email-templates'),
+    path('admin/email/templates/<slug:code>/', AdminEmailTemplateDetailAPIView.as_view(), name='admin-email-template-detail'),
     path('admin/payments/config/', AdminPaymentConfigurationAPIView.as_view(), name='admin-payment-config'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/statistics/', AdminOrderStatisticsAPIView.as_view(), name='admin-order-statistics'),
@@ -351,8 +380,11 @@ urlpatterns = [
     path('checkout/payments/cards/initiate/', CardInitializationAPIView.as_view(), name='checkout-payment-card-initiate'),
     path('checkout/payments/mpesa/initiate/', MpesaInitializationAPIView.as_view(), name='checkout-payment-mpesa-initiate'),
     path('checkout/payments/mpesa/<str:reference>/status/', MpesaStatusAPIView.as_view(), name='checkout-payment-mpesa-status'),
+    path('checkout/payments/pesapal/initiate/', PesapalInitializationAPIView.as_view(), name='checkout-payment-pesapal-initiate'),
+    path('checkout/payments/pesapal/<str:reference>/status/', PesapalStatusAPIView.as_view(), name='checkout-payment-pesapal-status'),
     path('payments/airtel-money/callback/', AirtelMoneyCallbackAPIView.as_view(), name='payment-airtel-callback'),
     path('payments/mpesa/callback/', MpesaCallbackAPIView.as_view(), name='payment-mpesa-callback'),
+    path('payments/pesapal/ipn/', PesapalNotificationAPIView.as_view(), name='payment-pesapal-ipn'),
     path('checkout/orders/', OrderPlacementAPIView.as_view(), name='checkout-orders'),
     path('checkout/thank-you/', CheckoutThankYouAPIView.as_view(), name='checkout-thank-you'),
     path('orders/guest/lookup/', GuestOrderLookupAPIView.as_view(), name='guest-order-lookup'),

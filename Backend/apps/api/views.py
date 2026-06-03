@@ -19,6 +19,7 @@ from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
 from .serializers import ProductImageUploadSerializer, ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
+from .media_utils import delete_product_image_with_file
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def _product_queryset(include_hidden: bool = False):
     Product = apps.get_model("catalogue", "Product")
     queryset = (
         Product.objects.exclude(structure="parent")
-        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images")
+        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images", "recommended_products")
         .distinct()
     )
     if include_hidden:
@@ -175,7 +176,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'currency': detail.get('currency'),
         'status': 'active' if product.is_public else 'draft',
         'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'slug': product.slug or '',
         'description': product.description or '',
+        'metaTitle': product.meta_title or '',
+        'metaDescription': product.meta_description or '',
         'imageUrl': detail.get('primary_image', ''),
         'images': [_serialize_product_image(image, fallback_alt=product.title) for image in product.images.all()],
         'category': str(detail['categories'][0]['id']) if detail.get('categories') else '',
@@ -186,6 +190,15 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'dimensions': attributes.get('dimensions', ''),
         'weight': float(attributes['weight_grams']) if attributes.get('weight_grams') not in (None, '') and str(attributes.get('weight_grams')).replace('.', '', 1).isdigit() else None,
         'chargeTax': True,
+        'recommendedProducts': [
+            {
+                'id': recommended.id,
+                'name': recommended.title,
+                'sku': recommended.upc,
+            }
+            for recommended in product.sorted_recommended_products
+        ],
+        'recommendedProductIds': [recommended.id for recommended in product.sorted_recommended_products],
         'specifications': detail.get('specifications', []),
         'updatedAt': detail.get('updated_at'),
         'isPublic': product.is_public,
@@ -564,12 +577,13 @@ class AdminProductImageDetailAPIView(APIView):
     def delete(self, request, product_id: int, image_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
         image = get_object_or_404(product.images.all(), id=image_id)
+        image_id = image.id
+        filename = delete_product_image_with_file(image)
         metadata = {
-            'image_id': image.id,
+            'image_id': image_id,
             'product_id': product.id,
-            'filename': getattr(getattr(image, 'original', None), 'name', ''),
+            'filename': filename,
         }
-        image.delete()
         record_audit_event(
             event_type='catalog.product_image_deleted',
             request=request,

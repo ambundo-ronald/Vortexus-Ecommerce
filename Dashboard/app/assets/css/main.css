@@ -4,7 +4,7 @@
 html, body, #__nuxt {
   height: 100%;
   letter-spacing: 0;
-  background: #f4f7fb;
+  background: var(--color-surface-muted);
 }
 
 html {
@@ -50,6 +50,12 @@ html {
 }
 
 .dark {
+  --color-surface: #020617;
+  --color-surface-muted: #0f172a;
+  --color-border: #1e293b;
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+
   --ui-primary: var(--color-primary);
   --ui-text: var(--color-text);
   --ui-bg: var(--color-surface);

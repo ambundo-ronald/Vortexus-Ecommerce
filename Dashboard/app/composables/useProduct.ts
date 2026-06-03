@@ -53,6 +53,10 @@ function mapProductDetailToForm(product: any) {
     id: product.id,
     name: product.name,
     description: product.description || '',
+    slug: product.slug || '',
+    metaTitle: product.metaTitle || '',
+    metaDescription: product.metaDescription || '',
+    recommendedProductIds: (product.recommendedProductIds || []).map((id: any) => Number(id)),
     price: Number(product.price || 0),
     currency: product.currency || DEFAULT_CURRENCY,
     originalPrice: undefined,
@@ -73,9 +77,13 @@ function mapFormToPayload(data: Record<string, any>) {
   return {
     upc: data.sku,
     title: data.name,
+    slug: data.slug || '',
     description: data.description || '',
+    meta_title: data.metaTitle || '',
+    meta_description: data.metaDescription || '',
     is_public: data.status === 'active',
     category_ids: data.category && data.category !== '__uncategorized__' ? [Number(data.category)] : [],
+    recommended_product_ids: Array.isArray(data.recommendedProductIds) ? data.recommendedProductIds.map(Number) : [],
     price: Number(data.price || 0),
     currency: data.currency || DEFAULT_CURRENCY,
     num_in_stock: Number(data.stock || 0),
@@ -150,6 +158,42 @@ export function useProduct() {
     try {
       const result = await request<{ results: any[] }>('/catalog/categories/', { method: 'GET' })
       return { success: true, data: flattenCategories(result.results || []) }
+    }
+    catch (err: any) {
+      return { success: false, error: err?.data?.error?.detail || err?.message || 'Unknown error', data: [] }
+    }
+  }
+
+  async function getProductOptions(excludeId?: number | string) {
+    try {
+      const results: any[] = []
+      let page = 1
+      let hasNext = true
+
+      while (hasNext) {
+        const response = await request<{ results: any[], pagination?: { has_next?: boolean } }>('/admin/products/', {
+          method: 'GET',
+          query: {
+            page,
+            page_size: 60,
+            sort_by: 'title_asc',
+          },
+        })
+        results.push(...(response.results || []))
+        hasNext = Boolean(response.pagination?.has_next)
+        page += 1
+      }
+
+      const excluded = excludeId ? Number(excludeId) : null
+      return {
+        success: true,
+        data: results
+          .filter(product => Number(product.id) !== excluded)
+          .map(product => ({
+            label: `${product.name}${product.sku ? ` (${product.sku})` : ''}`,
+            value: String(product.id),
+          })),
+      }
     }
     catch (err: any) {
       return { success: false, error: err?.data?.error?.detail || err?.message || 'Unknown error', data: [] }
@@ -283,6 +327,7 @@ export function useProduct() {
     deleteProduct,
     deleteProductImage,
     getProduct,
+    getProductOptions,
     getProducts,
     getCategoryOptions,
     syncProductImages,

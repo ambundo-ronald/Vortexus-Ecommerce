@@ -4,6 +4,7 @@ import Alert from "../ui/Alert.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 
 export default function AccountProfileForm({ user, loading = false, error = "", onSubmit }) {
+  const emailVerified = Boolean(user?.email_verification?.is_verified);
   const [form, setForm] = useState(() => ({
     first_name: user?.first_name || "",
     last_name: user?.last_name || "",
@@ -13,7 +14,8 @@ export default function AccountProfileForm({ user, loading = false, error = "", 
     country_code: user?.country_code || "KE",
     preferred_currency: user?.preferred_currency || "",
     receive_order_updates: user?.settings?.receive_order_updates ?? true,
-    receive_marketing_emails: user?.settings?.receive_marketing_emails ?? false
+    receive_marketing_emails: user?.settings?.receive_marketing_emails ?? false,
+    two_factor_email_enabled: user?.settings?.two_factor_email_enabled ?? false
   }));
 
   function updateField(event) {
@@ -89,6 +91,18 @@ export default function AccountProfileForm({ user, loading = false, error = "", 
         <input type="checkbox" name="receive_marketing_emails" checked={form.receive_marketing_emails} onChange={updateField} />
         <span>Send offers and product updates</span>
       </label>
+
+      <label className="auth-check">
+        <input
+          type="checkbox"
+          name="two_factor_email_enabled"
+          checked={form.two_factor_email_enabled}
+          onChange={updateField}
+          disabled={!emailVerified}
+        />
+        <span>Require an email code when signing in</span>
+      </label>
+      {!emailVerified ? <p className="auth-field-note">Verify your email before enabling email sign-in codes.</p> : null}
 
       <button className="primary-button auth-submit" type="submit" disabled={loading}>
         <MaterialIcon name="save" size={19} />

@@ -37,6 +37,17 @@ export default function PaymentPage() {
       }
       const payment = await paymentState.initializePayment(form);
       const selectedMethod = paymentState.methods.find((method) => method.code === payment.method);
+      if (payment.method === "pesapal" && payment.redirect_url) {
+        const reviewPayload = {
+          payment_reference: payment.reference,
+          payment,
+          method: selectedMethod || null,
+          guest_email: form.payerEmail
+        };
+        sessionStorage.setItem("vortexus:pendingCheckout", JSON.stringify(reviewPayload));
+        window.location.assign(payment.redirect_url);
+        return;
+      }
       const finalPayment = selectedMethod?.requires_prepayment && !COMPLETE_STATUSES.has(payment.status)
         ? await paymentState.waitForPayment(payment)
         : payment;

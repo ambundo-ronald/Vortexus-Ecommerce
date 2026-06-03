@@ -1,13 +1,24 @@
-from django.contrib.auth import login, logout, update_session_auth_hash
+from django.apps import apps
+from django.contrib.auth import get_user_model, login, logout, update_session_auth_hash
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import permissions, status
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.accounts.tokens import email_verification_token_generator
+from apps.accounts.two_factor import (
+    create_email_two_factor_challenge,
+    generate_two_factor_code,
+    verify_email_two_factor_challenge,
+)
 from apps.auditlog.services import record_audit_event
-from apps.notifications.services import queue_account_registration_email, queue_password_changed_email
+from apps.notifications.services import queue_email_two_factor_code, queue_email_verification_email, queue_password_changed_email
 
 from .throttles import AccountLoginIdentityThrottle, AccountRegisterIdentityThrottle
 from .account_serializers import (
@@ -16,6 +27,7 @@ from .account_serializers import (
     AccountProfileUpdateSerializer,
     AccountRegistrationSerializer,
     AccountSummarySerializer,
+    get_or_create_customer_profile,
 )
 
 
@@ -47,7 +59,7 @@ class AccountRegisterAPIView(APIView):
             raise
         user = serializer.save()
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-        queue_account_registration_email(user)
+        queue_email_verification_email(user)
         record_audit_event(
             event_type='account.registered',
             request=request,
@@ -83,6 +95,26 @@ class AccountLoginAPIView(APIView):
             )
             raise
         user = serializer.validated_data['user']
+        profile = get_or_create_customer_profile(user)
+        if profile.two_factor_email_enabled:
+            code = generate_two_factor_code()
+            challenge = create_email_two_factor_challenge(user, code)
+            queue_email_two_factor_code(user, code=code)
+            record_audit_event(
+                event_type='account.login_two_factor_required',
+                request=request,
+                actor=user,
+                target=user,
+                message='Account login requires email 2FA.',
+                metadata={'email': user.email},
+            )
+            return Response(
+                {
+                    'requires_2fa': True,
+                    'challenge_id': challenge.id,
+                    'detail': 'Enter the verification code sent to your email.',
+                }
+            )
         login(request, user)
         record_audit_event(
             event_type='account.logged_in',
@@ -90,6 +122,47 @@ class AccountLoginAPIView(APIView):
             actor=user,
             target=user,
             message='Account login successful.',
+        )
+        return Response(
+            {
+                'user': AccountSummarySerializer(user).data,
+                'csrf_token': get_token(request),
+            }
+        )
+
+
+class AccountLoginTwoFactorAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'account_login_2fa'
+
+    def post(self, request):
+        challenge_id = request.data.get('challenge_id')
+        code = str(request.data.get('code', '')).strip()
+        Challenge = apps.get_model('accounts', 'EmailTwoFactorChallenge')
+        challenge = get_object_or_404(Challenge.objects.select_related('user'), id=challenge_id)
+        ok, error = verify_email_two_factor_challenge(challenge, code)
+        if not ok:
+            record_audit_event(
+                event_type='account.login_two_factor_failed',
+                request=request,
+                actor=challenge.user,
+                target=challenge.user,
+                status='failure',
+                message='Email 2FA login failed.',
+                metadata={'email': challenge.user.email},
+            )
+            raise ValidationError({'code': error})
+
+        user = challenge.user
+        if not user.is_active:
+            raise ValidationError({'detail': 'This account is inactive.'})
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+        record_audit_event(
+            event_type='account.logged_in',
+            request=request,
+            actor=user,
+            target=user,
+            message='Account login successful with email 2FA.',
         )
         return Response(
             {
@@ -136,6 +209,8 @@ class AccountProfileAPIView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        if previous_email != user.email:
+            queue_email_verification_email(user)
         record_audit_event(
             event_type='account.profile_updated',
             request=request,
@@ -145,6 +220,61 @@ class AccountProfileAPIView(APIView):
             metadata={'previous_email': previous_email, 'current_email': user.email},
         )
         return Response({'user': AccountSummarySerializer(user).data})
+
+
+class AccountEmailVerifyAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'account_email_verify'
+
+    def post(self, request):
+        uid = request.data.get('uid', '')
+        token = request.data.get('token', '')
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+        except Exception as exc:
+            raise ValidationError({'uid': 'Invalid verification link.'}) from exc
+        if not user_id:
+            raise ValidationError({'uid': 'Invalid verification link.'})
+
+        user = get_object_or_404(get_user_model(), pk=user_id)
+        if not email_verification_token_generator.check_token(user, token):
+            raise ValidationError({'token': 'Invalid or expired verification token.'})
+
+        profile = get_or_create_customer_profile(user)
+        if profile.email_verified_at is None:
+            profile.email_verified_at = timezone.now()
+            profile.save(update_fields=['email_verified_at', 'updated_at'])
+
+        record_audit_event(
+            event_type='account.email_verified',
+            request=request,
+            actor=user,
+            target=user,
+            message='Account email verified.',
+            metadata={'email': user.email},
+        )
+        return Response({'detail': 'Email verified successfully.', 'user': AccountSummarySerializer(user).data})
+
+
+class AccountEmailVerificationResendAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = 'account_email_verify_resend'
+
+    def post(self, request):
+        profile = get_or_create_customer_profile(request.user)
+        if profile.email_verified_at is not None:
+            return Response({'detail': 'Email is already verified.', 'user': AccountSummarySerializer(request.user).data})
+
+        queue_email_verification_email(request.user)
+        record_audit_event(
+            event_type='account.email_verification_resent',
+            request=request,
+            actor=request.user,
+            target=request.user,
+            message='Account email verification resent.',
+            metadata={'email': request.user.email},
+        )
+        return Response({'detail': 'Verification email sent.'})
 
 
 class AccountPasswordAPIView(APIView):

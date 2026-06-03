@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.notifications.services import queue_email_verification_email
 
 from .user_serializers import AdminUserDetailSerializer, AdminUserListSerializer, AdminUserWriteSerializer
 
@@ -132,6 +133,7 @@ class AdminUserCollectionAPIView(APIView):
         serializer = AdminUserWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        queue_email_verification_email(user)
         record_audit_event(
             event_type='account.admin_user_created',
             request=request,
@@ -161,6 +163,8 @@ class AdminUserDetailAPIView(APIView):
         serializer = AdminUserWriteSerializer(instance=user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        if previous_state['email'] != user.email:
+            queue_email_verification_email(user)
         record_audit_event(
             event_type='account.admin_user_updated',
             request=request,

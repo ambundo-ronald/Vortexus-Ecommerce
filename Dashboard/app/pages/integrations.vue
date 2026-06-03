@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ERPNextPreviewResource, ERPNextPreviewResult, IntegrationConnection, IntegrationLog } from '~/composables/useIntegrations'
+import type { ERPNextPreviewResource, ERPNextPreviewResult, IntegrationConnection, IntegrationConnectionPayload, IntegrationLog } from '~/composables/useIntegrations'
 
 const toast = useToast()
-const { getConnections, getLogs, testConnection, syncStock, previewERPNext, importERPNextCatalog } = useIntegrations()
+const { getConnections, createConnection, updateConnection, getLogs, testConnection, syncStock, previewERPNext, importERPNextCatalog } = useIntegrations()
 
 const connections = ref<IntegrationConnection[]>([])
 const selectedConnection = ref<IntegrationConnection | null>(null)
@@ -17,6 +17,26 @@ const previewResult = ref<ERPNextPreviewResult | null>(null)
 const previewConnection = ref<IntegrationConnection | null>(null)
 const importIncludeStock = ref(true)
 const importSummary = ref<Record<string, any> | null>(null)
+const isEditorOpen = ref(false)
+const isSavingConnection = ref(false)
+const editingConnectionId = ref<number | null>(null)
+const connectionForm = ref({
+  name: '',
+  base_url: '',
+  credential_source: 'db',
+  secret_env_prefix: '',
+  api_key: '',
+  api_secret: '',
+  default_company: '',
+  default_warehouse: '',
+  poll_interval_minutes: 20,
+  is_active: true,
+  price_list: 'Standard Selling',
+  item_groups_text: '',
+  default_currency: '',
+  partner_name: '',
+  product_class: 'Industrial Product',
+})
 
 const previewResourceOptions = [
   { label: 'Items', value: 'items' },
@@ -29,6 +49,11 @@ const previewLimitOptions = [
   { label: '20 records', value: 20 },
   { label: '50 records', value: 50 },
   { label: '100 records', value: 100 },
+]
+
+const credentialSourceOptions = [
+  { label: 'Saved in dashboard', value: 'db' },
+  { label: 'Environment variables', value: 'env' },
 ]
 
 const activeConnections = computed(() => connections.value.filter(connection => connection.is_active).length)
@@ -121,6 +146,125 @@ async function runTest(connection: IntegrationConnection) {
   actionId.value = null
 }
 
+function resetConnectionForm() {
+  editingConnectionId.value = null
+  connectionForm.value = {
+    name: '',
+    base_url: '',
+    credential_source: 'db',
+    secret_env_prefix: '',
+    api_key: '',
+    api_secret: '',
+    default_company: '',
+    default_warehouse: '',
+    poll_interval_minutes: 20,
+    is_active: true,
+    price_list: 'Standard Selling',
+    item_groups_text: '',
+    default_currency: '',
+    partner_name: '',
+    product_class: 'Industrial Product',
+  }
+}
+
+function openNewConnection() {
+  resetConnectionForm()
+  isEditorOpen.value = true
+}
+
+function openEditConnection(connection: IntegrationConnection) {
+  editingConnectionId.value = connection.id
+  const metadata = connection.metadata || {}
+  connectionForm.value = {
+    name: connection.name || '',
+    base_url: connection.base_url || '',
+    credential_source: connection.credential_source || 'db',
+    secret_env_prefix: connection.secret_env_prefix || '',
+    api_key: '',
+    api_secret: '',
+    default_company: connection.default_company || '',
+    default_warehouse: connection.default_warehouse || '',
+    poll_interval_minutes: Number(connection.poll_interval_minutes || 20),
+    is_active: Boolean(connection.is_active),
+    price_list: metadata.price_list || 'Standard Selling',
+    item_groups_text: Array.isArray(metadata.item_groups) ? metadata.item_groups.join(', ') : '',
+    default_currency: metadata.default_currency || '',
+    partner_name: metadata.partner_name || '',
+    product_class: metadata.product_class || 'Industrial Product',
+  }
+  isEditorOpen.value = true
+}
+
+function buildConnectionPayload(): IntegrationConnectionPayload {
+  const metadata: Record<string, any> = {
+    price_list: connectionForm.value.price_list.trim(),
+    item_groups: connectionForm.value.item_groups_text
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean),
+    default_currency: connectionForm.value.default_currency.trim(),
+    partner_name: connectionForm.value.partner_name.trim(),
+    product_class: connectionForm.value.product_class.trim(),
+  }
+
+  Object.keys(metadata).forEach((key) => {
+    if (Array.isArray(metadata[key]) ? metadata[key].length === 0 : !metadata[key])
+      delete metadata[key]
+  })
+
+  const payload: IntegrationConnectionPayload = {
+    name: connectionForm.value.name.trim(),
+    connection_type: 'erpnext',
+    base_url: connectionForm.value.base_url.trim(),
+    auth_type: 'token',
+    credential_source: connectionForm.value.credential_source,
+    secret_env_prefix: connectionForm.value.secret_env_prefix.trim(),
+    default_company: connectionForm.value.default_company.trim(),
+    default_warehouse: connectionForm.value.default_warehouse.trim(),
+    poll_interval_minutes: Number(connectionForm.value.poll_interval_minutes || 20),
+    is_active: connectionForm.value.is_active,
+    metadata,
+  }
+
+  if (connectionForm.value.credential_source === 'db') {
+    if (connectionForm.value.api_key)
+      payload.api_key = connectionForm.value.api_key
+    if (connectionForm.value.api_secret)
+      payload.api_secret = connectionForm.value.api_secret
+  }
+
+  return payload
+}
+
+async function saveConnection() {
+  isSavingConnection.value = true
+  const payload = buildConnectionPayload()
+  const result = editingConnectionId.value
+    ? await updateConnection(editingConnectionId.value, payload)
+    : await createConnection(payload)
+
+  if (result.success && result.data) {
+    toast.add({
+      title: editingConnectionId.value ? 'ERPNext integration updated' : 'ERPNext integration created',
+      description: 'The dashboard can now test, preview, import, and sync with this ERPNext connection.',
+      color: 'success',
+    })
+    isEditorOpen.value = false
+    resetConnectionForm()
+    await loadConnections()
+    await loadLogs(result.data)
+  }
+  else {
+    toast.add({
+      title: 'Could not save ERPNext integration',
+      description: result.error || 'Please check the form and try again.',
+      color: 'error',
+    })
+  }
+
+  isSavingConnection.value = false
+}
+
 async function runPreview(connection: IntegrationConnection) {
   previewActionId.value = connection.id
   previewConnection.value = connection
@@ -210,16 +354,98 @@ onMounted(loadConnections)
         </p>
       </div>
 
-      <UButton variant="outline" size="lg" :loading="isLoading" @click="loadConnections">
-        <UIcon name="i-lucide-refresh-cw" />
-        Refresh
-      </UButton>
+      <div class="flex flex-wrap gap-2">
+        <UButton color="primary" size="lg" icon="i-lucide-plus" @click="openNewConnection">
+          New ERPNext Integration
+        </UButton>
+        <UButton variant="outline" size="lg" :loading="isLoading" @click="loadConnections">
+          <UIcon name="i-lucide-refresh-cw" />
+          Refresh
+        </UButton>
+      </div>
     </div>
 
     <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
       <CardsKpiCard2 name="Connections" :value="connections.length" :budget="connections.length" color="#3d7cff" />
       <CardsKpiCard2 name="Active" :value="activeConnections" :budget="connections.length" color="#16a34a" />
       <CardsKpiCard2 name="Needs attention" :value="errorConnections" :budget="connections.length" color="#ef4444" />
+    </div>
+
+    <div v-if="isEditorOpen" class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200 px-5 py-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 class="text-lg font-black text-slate-950">
+              {{ editingConnectionId ? 'Edit ERPNext integration' : 'New ERPNext integration' }}
+            </h2>
+            <p class="mt-1 text-sm text-slate-500">
+              Configure catalog, price list, warehouse, and credentials used by backend sync jobs.
+            </p>
+          </div>
+          <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="isEditorOpen = false">
+            Close
+          </UButton>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+        <UFormField label="Connection name" required>
+          <UInput v-model="connectionForm.name" placeholder="ERPNext Main" />
+        </UFormField>
+        <UFormField label="ERPNext URL" required>
+          <UInput v-model="connectionForm.base_url" placeholder="https://erp.example.com" />
+        </UFormField>
+        <UFormField label="Credential source">
+          <USelect v-model="connectionForm.credential_source" :items="credentialSourceOptions" class="w-full" />
+        </UFormField>
+
+        <UFormField v-if="connectionForm.credential_source === 'env'" label="Secret env prefix" required>
+          <UInput v-model="connectionForm.secret_env_prefix" placeholder="ERPNEXT_MAIN" />
+        </UFormField>
+        <UFormField v-if="connectionForm.credential_source === 'db'" label="API key">
+          <UInput v-model="connectionForm.api_key" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API key'" autocomplete="new-password" />
+        </UFormField>
+        <UFormField v-if="connectionForm.credential_source === 'db'" label="API secret">
+          <UInput v-model="connectionForm.api_secret" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API secret'" autocomplete="new-password" />
+        </UFormField>
+
+        <UFormField label="Company">
+          <UInput v-model="connectionForm.default_company" placeholder="Company name in ERPNext" />
+        </UFormField>
+        <UFormField label="Warehouse">
+          <UInput v-model="connectionForm.default_warehouse" placeholder="Stores - Company" />
+        </UFormField>
+        <UFormField label="Selling price list">
+          <UInput v-model="connectionForm.price_list" placeholder="Standard Selling" />
+        </UFormField>
+        <UFormField label="Item groups">
+          <UInput v-model="connectionForm.item_groups_text" placeholder="Machines, Spares, Tools" />
+        </UFormField>
+        <UFormField label="Default currency">
+          <UInput v-model="connectionForm.default_currency" maxlength="3" placeholder="KES" />
+        </UFormField>
+        <UFormField label="Poll interval minutes">
+          <UInput v-model.number="connectionForm.poll_interval_minutes" type="number" min="1" />
+        </UFormField>
+        <UFormField label="Partner name">
+          <UInput v-model="connectionForm.partner_name" placeholder="Default Partner" />
+        </UFormField>
+        <UFormField label="Product class">
+          <UInput v-model="connectionForm.product_class" placeholder="Industrial Product" />
+        </UFormField>
+        <div class="flex items-end">
+          <UCheckbox v-model="connectionForm.is_active" label="Enable scheduled sync" />
+        </div>
+      </div>
+
+      <div class="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
+        <UButton color="neutral" variant="ghost" @click="isEditorOpen = false">
+          Cancel
+        </UButton>
+        <UButton color="primary" icon="i-lucide-save" :loading="isSavingConnection" @click="saveConnection">
+          Save Integration
+        </UButton>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_420px]">
@@ -278,6 +504,12 @@ onMounted(loadConnections)
               <UBadge color="neutral" variant="soft" class="uppercase">
                 {{ connection.connection_type }}
               </UBadge>
+              <UButton
+                size="sm"
+                variant="ghost"
+                icon="i-lucide-pencil"
+                @click="openEditConnection(connection)"
+              />
               <UButton
                 size="sm"
                 variant="outline"

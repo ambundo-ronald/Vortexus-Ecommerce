@@ -1,11 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const auth = useAuth()
-const colorMode = useColorMode()
 const searchQuery = ref('')
-
-colorMode.preference = 'light'
-colorMode.value = 'light'
 
 const isAuthPage = computed(() => route.path === '/login')
 const displayName = computed(() => {
@@ -26,11 +22,11 @@ async function handleLogout() {
   >
     <NuxtPage v-if="isAuthPage" />
 
-    <div v-else class="min-h-screen bg-slate-50 text-slate-950">
+    <div v-else class="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
       <LayoutSidebar />
 
       <div class="min-h-screen lg:pl-64">
-        <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <div class="flex h-18 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <NuxtLink to="/" class="flex items-center gap-3">
               <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
@@ -40,7 +36,7 @@ async function handleLogout() {
                 <p class="text-lg font-black leading-tight">
                   Vortexus
                 </p>
-                <p class="text-xs text-slate-500">
+                <p class="text-xs text-slate-500 dark:text-slate-400">
                   Admin dashboard
                 </p>
               </div>

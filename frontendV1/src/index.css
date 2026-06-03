@@ -1436,6 +1436,17 @@ img {
   padding-inline: 2px;
 }
 
+.inline-action-button {
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  margin-left: var(--space-2);
+  padding: 0 var(--space-3);
+  background: var(--color-text);
+  color: white;
+  font-weight: 800;
+}
+
 .search-form {
   position: relative;
   min-height: 42px;

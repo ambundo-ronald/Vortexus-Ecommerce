@@ -2,13 +2,22 @@
 const colorMode = useColorMode();
 const toast = useToast();
 const { getSettings, updateSettings } = useSettings();
+const { getEmailConfig, updateEmailConfig, sendTestEmail } = useEmailConfig();
 const { getPaymentConfig, updatePaymentConfig } = usePaymentConfig();
 
 const theme = ref(colorMode.preference);
 const isLoading = ref(false);
 const isSaving = ref(false);
+const isEmailLoading = ref(false);
+const isEmailSaving = ref(false);
+const isEmailTesting = ref(false);
 const isPaymentLoading = ref(false);
 const isPaymentSaving = ref(false);
+const themeOptions = [
+  { label: "Light", value: "light", icon: "i-lucide-sun" },
+  { label: "Dark", value: "dark", icon: "i-lucide-moon" },
+  { label: "System", value: "system", icon: "i-lucide-monitor" },
+];
 
 const store = ref({
   site_name: "",
@@ -17,7 +26,7 @@ const store = ref({
   shop_name: "",
   support_email: "",
   reply_to_email: "",
-  payment_methods: [] as Array<{ code: string; name: string; type: string; requires_prepayment: boolean }>,
+  payment_methods: [] as Array<{ code: string; name: string; type: string; requires_prepayment: boolean; is_configured?: boolean }>,
   async_enabled: false,
   search_host: "",
 });
@@ -33,6 +42,23 @@ const profile = ref({
   receive_order_updates: true,
   receive_marketing_emails: false,
 });
+
+const emailConfig = ref({
+  is_enabled: false,
+  is_configured: false,
+  host: "",
+  port: 587,
+  username: "",
+  password: "",
+  has_password: false,
+  use_tls: true,
+  use_ssl: false,
+  timeout_seconds: 30,
+  from_email: "",
+  reply_to_email: "",
+  sales_recipients: "",
+});
+const testEmailRecipient = ref("");
 
 const paymentConfig = ref({
   mpesa: {
@@ -63,6 +89,16 @@ const paymentConfig = ref({
     sandbox_enabled: false,
   },
 });
+
+function useMpesaSandboxPreset() {
+  paymentConfig.value.mpesa.base_url = "https://sandbox.safaricom.co.ke";
+  paymentConfig.value.mpesa.transaction_type = paymentConfig.value.mpesa.transaction_type || "CustomerPayBillOnline";
+}
+
+function useMpesaLivePreset() {
+  paymentConfig.value.mpesa.base_url = "https://api.safaricom.co.ke";
+  paymentConfig.value.mpesa.transaction_type = paymentConfig.value.mpesa.transaction_type || "CustomerPayBillOnline";
+}
 
 function applySettings(data: any) {
   store.value = {
@@ -129,12 +165,41 @@ async function loadPaymentConfig() {
   isPaymentLoading.value = false;
 }
 
+async function loadEmailConfig() {
+  isEmailLoading.value = true;
+  const result = await getEmailConfig();
+  if (result.success && result.data) {
+    emailConfig.value = {
+      ...emailConfig.value,
+      ...result.data,
+      password: "",
+    };
+    testEmailRecipient.value = profile.value.email || result.data.from_email || "";
+  }
+  else {
+    toast.add({
+      title: "Could not load email settings",
+      description: result.error || "Please try again.",
+      color: "error",
+    });
+  }
+  isEmailLoading.value = false;
+}
+
 function changeTheme(value: string) {
   if (!["light", "dark", "system"].includes(value))
     return;
   theme.value = value;
   colorMode.preference = value;
 }
+
+watch(
+  () => colorMode.preference,
+  (value) => {
+    if (["light", "dark", "system"].includes(value))
+      theme.value = value;
+  },
+);
 
 async function saveSettings() {
   isSaving.value = true;
@@ -239,8 +304,86 @@ async function savePaymentConfig() {
   isPaymentSaving.value = false;
 }
 
+function setEmailSecurityMode(mode: "tls" | "ssl" | "none") {
+  emailConfig.value.use_tls = mode === "tls";
+  emailConfig.value.use_ssl = mode === "ssl";
+
+  if (mode === "tls" && Number(emailConfig.value.port || 0) === 465)
+    emailConfig.value.port = 587;
+  if (mode === "ssl" && Number(emailConfig.value.port || 0) === 587)
+    emailConfig.value.port = 465;
+}
+
+function applyGmailSmtpPreset() {
+  emailConfig.value = {
+    ...emailConfig.value,
+    is_enabled: true,
+    host: "smtp.gmail.com",
+    port: 587,
+    use_tls: true,
+    use_ssl: false,
+  };
+
+  if (!emailConfig.value.from_email && emailConfig.value.username)
+    emailConfig.value.from_email = emailConfig.value.username;
+  if (!emailConfig.value.reply_to_email && emailConfig.value.username)
+    emailConfig.value.reply_to_email = emailConfig.value.username;
+}
+
+async function saveEmailConfig() {
+  isEmailSaving.value = true;
+  const payload: Record<string, any> = {
+    is_enabled: emailConfig.value.is_enabled,
+    host: emailConfig.value.host,
+    port: Number(emailConfig.value.port || 587),
+    username: emailConfig.value.username,
+    use_tls: emailConfig.value.use_tls,
+    use_ssl: emailConfig.value.use_ssl,
+    timeout_seconds: Number(emailConfig.value.timeout_seconds || 30),
+    from_email: emailConfig.value.from_email,
+    reply_to_email: emailConfig.value.reply_to_email,
+    sales_recipients: emailConfig.value.sales_recipients,
+  };
+  if (emailConfig.value.password)
+    payload.password = emailConfig.value.password;
+
+  const result = await updateEmailConfig({ email: payload });
+  if (result.success && result.data) {
+    emailConfig.value = {
+      ...emailConfig.value,
+      ...result.data,
+      password: "",
+    };
+    toast.add({
+      title: "Email settings saved",
+      description: "Notification emails will use the updated deliverability settings.",
+      color: "success",
+    });
+  }
+  else {
+    toast.add({
+      title: "Could not save email settings",
+      description: result.error || "Please check the form and try again.",
+      color: "error",
+    });
+  }
+  isEmailSaving.value = false;
+}
+
+async function runTestEmail() {
+  isEmailTesting.value = true;
+  const result = await sendTestEmail(testEmailRecipient.value);
+  toast.add({
+    title: result.success ? "Test email sent" : "Test email failed",
+    description: result.success ? result.data?.detail || "The backend accepted the test email." : result.error || "Please check the SMTP configuration.",
+    color: result.success ? "success" : "error",
+  });
+  isEmailTesting.value = false;
+}
+
 onMounted(() => {
   void loadSettings();
+  void loadEmailConfig();
   void loadPaymentConfig();
 });
 </script>
@@ -297,18 +440,20 @@ onMounted(() => {
         </template>
 
         <div class="space-y-4">
-          <UButtonGroup class="w-full">
-            <UButton icon="i-lucide-sun" color="neutral" :variant="theme === 'light' ? 'solid' : 'subtle'" @click="changeTheme('light')">
-              Light
+          <div class="grid grid-cols-3 overflow-hidden rounded-md border border-default">
+            <UButton
+              v-for="option in themeOptions"
+              :key="option.value"
+              :icon="option.icon"
+              color="neutral"
+              :variant="theme === option.value ? 'solid' : 'ghost'"
+              class="justify-center rounded-none"
+              @click="changeTheme(option.value)"
+            >
+              {{ option.label }}
             </UButton>
-            <UButton icon="i-lucide-moon" color="neutral" :variant="theme === 'dark' ? 'solid' : 'subtle'" @click="changeTheme('dark')">
-              Dark
-            </UButton>
-            <UButton icon="i-lucide-computer" color="neutral" :variant="theme === 'system' ? 'solid' : 'subtle'" @click="changeTheme('system')">
-              System
-            </UButton>
-          </UButtonGroup>
-          <p class="text-xs text-(--ui-text-muted)">Theme is frontend-only for now; backend settings remain operational.</p>
+          </div>
+          <p class="text-xs text-(--ui-text-muted)">Current mode: {{ colorMode.value === 'dark' ? 'Dark' : 'Light' }}</p>
         </div>
       </UCard>
 
@@ -363,6 +508,83 @@ onMounted(() => {
         <template #header>
           <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
+              <h3 class="text-lg font-semibold">Email Deliverability</h3>
+              <p class="text-sm text-(--ui-text-muted)">Configure outbound SMTP for account, password, order, and notification emails.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UBadge :color="emailConfig.is_configured ? 'success' : 'warning'" variant="soft">
+                {{ emailConfig.is_configured ? "Configured" : "Incomplete" }}
+              </UBadge>
+              <UButton color="neutral" variant="outline" icon="i-lucide-mail" @click="applyGmailSmtpPreset">
+                Use Gmail SMTP
+              </UButton>
+              <UButton color="primary" icon="i-lucide-save" :loading="isEmailSaving" @click="saveEmailConfig">
+                Save Email Settings
+              </UButton>
+            </div>
+          </div>
+        </template>
+
+        <div class="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_320px]">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <UCheckbox v-model="emailConfig.is_enabled" label="Enable SMTP delivery" :disabled="isEmailLoading" />
+            </div>
+            <UFormField label="SMTP host">
+              <UInput v-model="emailConfig.host" :loading="isEmailLoading" placeholder="smtp.example.com" />
+            </UFormField>
+            <UFormField label="Port">
+              <UInput v-model.number="emailConfig.port" :loading="isEmailLoading" type="number" min="1" max="65535" />
+            </UFormField>
+            <UFormField label="Username">
+              <UInput v-model="emailConfig.username" :loading="isEmailLoading" autocomplete="username" placeholder="yourname@gmail.com" />
+            </UFormField>
+            <UFormField label="Password / API key">
+              <UInput v-model="emailConfig.password" :loading="isEmailLoading" type="password" :placeholder="emailConfig.has_password ? 'Saved' : 'Google app password'" autocomplete="new-password" />
+            </UFormField>
+            <UFormField label="From email">
+              <UInput v-model="emailConfig.from_email" :loading="isEmailLoading" type="email" placeholder="no-reply@example.com" />
+            </UFormField>
+            <UFormField label="Reply-to email">
+              <UInput v-model="emailConfig.reply_to_email" :loading="isEmailLoading" type="email" placeholder="support@example.com" />
+            </UFormField>
+            <UFormField label="Security">
+              <UButtonGroup class="w-full">
+                <UButton :variant="emailConfig.use_tls ? 'solid' : 'subtle'" color="neutral" @click="setEmailSecurityMode('tls')">TLS</UButton>
+                <UButton :variant="emailConfig.use_ssl ? 'solid' : 'subtle'" color="neutral" @click="setEmailSecurityMode('ssl')">SSL</UButton>
+                <UButton :variant="!emailConfig.use_tls && !emailConfig.use_ssl ? 'solid' : 'subtle'" color="neutral" @click="setEmailSecurityMode('none')">None</UButton>
+              </UButtonGroup>
+            </UFormField>
+            <UFormField label="Timeout seconds">
+              <UInput v-model.number="emailConfig.timeout_seconds" :loading="isEmailLoading" type="number" min="1" max="120" />
+            </UFormField>
+            <UFormField class="md:col-span-2" label="Sales recipients">
+              <UInput v-model="emailConfig.sales_recipients" :loading="isEmailLoading" placeholder="sales@example.com, support@example.com" />
+            </UFormField>
+          </div>
+
+          <div class="rounded-lg border border-default p-4">
+            <h4 class="font-semibold">Test Delivery</h4>
+            <p class="mt-1 text-xs text-(--ui-text-muted)">Sends a simple message using the current saved configuration.</p>
+            <div class="mt-4 space-y-3">
+              <UFormField label="Recipient">
+                <UInput v-model="testEmailRecipient" type="email" placeholder="admin@example.com" />
+              </UFormField>
+              <UButton class="w-full justify-center" color="neutral" variant="outline" icon="i-lucide-send" :loading="isEmailTesting" :disabled="!testEmailRecipient" @click="runTestEmail">
+                Send Test Email
+              </UButton>
+              <p class="text-xs text-(--ui-text-muted)">
+                Save changes before testing if you changed host, credentials, or sender details.
+              </p>
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard class="lg:col-span-3">
+        <template #header>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
               <h3 class="text-lg font-semibold">Payment Integrations</h3>
               <p class="text-sm text-(--ui-text-muted)">Provider details are stored on the backend and used during checkout.</p>
             </div>
@@ -386,6 +608,14 @@ onMounted(() => {
 
             <div class="space-y-4">
               <UCheckbox v-model="paymentConfig.mpesa.is_enabled" label="Enable M-Pesa at checkout" :disabled="isPaymentLoading" />
+              <div class="grid grid-cols-2 gap-2">
+                <UButton color="neutral" variant="outline" block size="sm" @click="useMpesaSandboxPreset">
+                  Sandbox URL
+                </UButton>
+                <UButton color="neutral" variant="outline" block size="sm" @click="useMpesaLivePreset">
+                  Live URL
+                </UButton>
+              </div>
               <UFormField label="Base URL">
                 <UInput v-model="paymentConfig.mpesa.base_url" :loading="isPaymentLoading" placeholder="https://sandbox.safaricom.co.ke" />
               </UFormField>
@@ -412,6 +642,9 @@ onMounted(() => {
                   <UInput v-model.number="paymentConfig.mpesa.timeout_seconds" :loading="isPaymentLoading" type="number" min="1" max="120" />
                 </UFormField>
               </div>
+              <p class="text-xs text-(--ui-text-muted)">
+                M-Pesa appears at checkout only when enabled and all Daraja credentials, shortcode, passkey, and callback URL are saved.
+              </p>
             </div>
           </div>
 
@@ -432,7 +665,7 @@ onMounted(() => {
                 <UInput v-model="paymentConfig.airtel_money.provider_name" :loading="isPaymentLoading" placeholder="sandbox_airtel_money" />
               </UFormField>
               <p class="text-xs text-(--ui-text-muted)">
-                Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}
+                Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}. This provider remains hidden from checkout unless its backend integration is enabled.
               </p>
             </div>
           </div>
@@ -454,7 +687,7 @@ onMounted(() => {
                 <UInput v-model="paymentConfig.card.provider_name" :loading="isPaymentLoading" placeholder="sandbox_card" />
               </UFormField>
               <p class="text-xs text-(--ui-text-muted)">
-                Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}
+                Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}. Real card payments require adding a PCI/tokenization provider before enabling this in production.
               </p>
             </div>
           </div>

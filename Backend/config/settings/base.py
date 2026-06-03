@@ -12,6 +12,7 @@ env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / '.env')
 
 SECRET_KEY = env('DJANGO_SECRET_KEY', default='change-me')
+EMAIL_SECRET_KEY = env('EMAIL_SECRET_KEY', default='')
 DEBUG = env('DJANGO_DEBUG', default=False)
 ALLOWED_HOSTS = [
     host.strip()
@@ -103,6 +104,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(env('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
+SERVE_MEDIA_FILES = env.bool('DJANGO_SERVE_MEDIA_FILES', default=False)
 FILE_UPLOAD_MAX_MEMORY_SIZE = env.int('FILE_UPLOAD_MAX_MEMORY_SIZE', default=5 * 1024 * 1024)
 DATA_UPLOAD_MAX_MEMORY_SIZE = env.int('DATA_UPLOAD_MAX_MEMORY_SIZE', default=15 * 1024 * 1024)
 MAX_IMAGE_UPLOAD_BYTES = env.int('MAX_IMAGE_UPLOAD_BYTES', default=5 * 1024 * 1024)
@@ -137,6 +139,9 @@ REST_FRAMEWORK = {
         'account_register_identity': '3/hour',
         'account_login': '20/hour',
         'account_login_identity': '8/hour',
+        'account_login_2fa': '10/hour',
+        'account_email_verify': '20/hour',
+        'account_email_verify_resend': '5/hour',
         'account_password': '10/hour',
         'quote_request': '8/hour',
         'public_search': '120/hour',
@@ -395,6 +400,7 @@ DISPLAY_CURRENCY_RATES = json.loads(
 
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
 NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
+STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://localhost:5173')
 SALES_NOTIFICATION_RECIPIENTS = [
     recipient.strip()
     for recipient in env('SALES_NOTIFICATION_RECIPIENTS', default='sales@vortexus.local').split(',')
@@ -402,6 +408,7 @@ SALES_NOTIFICATION_RECIPIENTS = [
 ]
 
 PAYMENT_METHODS = [
+    {'code': 'pesapal', 'name': 'Pesapal', 'provider': 'pesapal', 'requires_phone': False, 'requires_prepayment': True},
     {'code': 'mpesa', 'name': 'M-Pesa', 'provider': 'mpesa', 'requires_phone': True, 'requires_prepayment': True},
     {'code': 'airtel_money', 'name': 'Airtel Money', 'provider': 'airtel_money', 'requires_phone': True, 'requires_prepayment': True},
     {'code': 'credit_card', 'name': 'Credit Card', 'provider': 'card', 'requires_phone': False, 'requires_prepayment': True},
@@ -418,10 +425,21 @@ MPESA_PASSKEY = env('MPESA_PASSKEY', default='')
 MPESA_CALLBACK_URL = env('MPESA_CALLBACK_URL', default='')
 MPESA_TRANSACTION_TYPE = env('MPESA_TRANSACTION_TYPE', default='CustomerPayBillOnline')
 MPESA_TIMEOUT_SECONDS = env.int('MPESA_TIMEOUT_SECONDS', default=30)
+PESAPAL_BASE_URL = env('PESAPAL_BASE_URL', default='https://cybqa.pesapal.com/pesapalv3/api')
+PESAPAL_CONSUMER_KEY = env('PESAPAL_CONSUMER_KEY', default='')
+PESAPAL_CONSUMER_SECRET = env('PESAPAL_CONSUMER_SECRET', default='')
+PESAPAL_CALLBACK_URL = env('PESAPAL_CALLBACK_URL', default='')
+PESAPAL_CANCELLATION_URL = env('PESAPAL_CANCELLATION_URL', default='')
+PESAPAL_IPN_URL = env('PESAPAL_IPN_URL', default='')
+PESAPAL_IPN_ID = env('PESAPAL_IPN_ID', default='')
+PESAPAL_IPN_NOTIFICATION_TYPE = env('PESAPAL_IPN_NOTIFICATION_TYPE', default='POST')
+PESAPAL_BRANCH = env('PESAPAL_BRANCH', default='')
+PESAPAL_REDIRECT_MODE = env('PESAPAL_REDIRECT_MODE', default='TOP_WINDOW')
+PESAPAL_TIMEOUT_SECONDS = env.int('PESAPAL_TIMEOUT_SECONDS', default=30)
 AIRTEL_MONEY_SANDBOX_ENABLED = env.bool('AIRTEL_MONEY_SANDBOX_ENABLED', default=True)
 AIRTEL_MONEY_PROVIDER_NAME = env('AIRTEL_MONEY_PROVIDER_NAME', default='sandbox_airtel_money')
 CARD_SANDBOX_ENABLED = env.bool('CARD_SANDBOX_ENABLED', default=True)
 CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
 ERP_SYNC_TIMEOUT_SECONDS = env.int('ERP_SYNC_TIMEOUT_SECONDS', default=30)
-ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
+ERP_SYNC_PAGE_LENGTH = env.int('ERP_SYNC_PAGE_LENGTH', default=1000)
 ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
