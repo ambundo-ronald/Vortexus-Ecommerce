@@ -1,6 +1,9 @@
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import SuspiciousOperation
 from django.db import OperationalError, ProgrammingError
+
+from apps.notifications.secret_store import unseal_secret
 
 
 PROVIDER_SETTINGS = {
@@ -71,7 +74,10 @@ def get_payment_setting(provider: str, key: str, default=None):
         if key in (config.public_config or {}):
             return config.public_config.get(key)
         if key in (config.secret_config or {}):
-            return config.secret_config.get(key)
+            try:
+                return unseal_secret(config.secret_config.get(key) or '')
+            except SuspiciousOperation:
+                return default
 
     setting_name = PROVIDER_SETTINGS.get(provider, {}).get('public', {}).get(key)
     if not setting_name:
@@ -88,26 +94,30 @@ def has_payment_secret(provider: str, key: str) -> bool:
 
 
 def provider_is_configured(provider: str) -> bool:
+    return not provider_missing_requirements(provider)
+
+
+def provider_missing_requirements(provider: str) -> list[str]:
     if provider == 'mpesa':
-        required = [
-            get_payment_setting('mpesa', 'consumer_key', ''),
-            get_payment_setting('mpesa', 'consumer_secret', ''),
-            get_payment_setting('mpesa', 'shortcode', ''),
-            get_payment_setting('mpesa', 'passkey', ''),
-            get_payment_setting('mpesa', 'callback_url', ''),
-        ]
-        return all(required)
+        required = {
+            'consumer_key': get_payment_setting('mpesa', 'consumer_key', ''),
+            'consumer_secret': get_payment_setting('mpesa', 'consumer_secret', ''),
+            'shortcode': get_payment_setting('mpesa', 'shortcode', ''),
+            'passkey': get_payment_setting('mpesa', 'passkey', ''),
+            'callback_url': get_payment_setting('mpesa', 'callback_url', ''),
+        }
+        return [key for key, value in required.items() if not value]
     if provider == 'pesapal':
-        required = [
-            get_payment_setting('pesapal', 'consumer_key', ''),
-            get_payment_setting('pesapal', 'consumer_secret', ''),
-            get_payment_setting('pesapal', 'base_url', ''),
-            get_payment_setting('pesapal', 'callback_url', ''),
-            get_payment_setting('pesapal', 'ipn_id', ''),
-        ]
-        return all(required)
+        required = {
+            'consumer_key': get_payment_setting('pesapal', 'consumer_key', ''),
+            'consumer_secret': get_payment_setting('pesapal', 'consumer_secret', ''),
+            'base_url': get_payment_setting('pesapal', 'base_url', ''),
+            'callback_url': get_payment_setting('pesapal', 'callback_url', ''),
+            'ipn_id': get_payment_setting('pesapal', 'ipn_id', ''),
+        }
+        return [key for key, value in required.items() if not value]
     if provider == 'airtel_money':
-        return bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED)
+        return [] if settings.AIRTEL_MONEY_SANDBOX_ENABLED else ['sandbox_enabled']
     if provider == 'card':
-        return bool(settings.CARD_SANDBOX_ENABLED)
-    return True
+        return [] if settings.CARD_SANDBOX_ENABLED else ['sandbox_enabled']
+    return []

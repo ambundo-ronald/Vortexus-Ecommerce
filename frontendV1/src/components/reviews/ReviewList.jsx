@@ -18,6 +18,7 @@ export default function ReviewList({ productId }) {
   const [visibleCount, setVisibleCount] = useState(2);
   const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
   const hiddenCount = Math.max(reviews.length - visibleReviews.length, 0);
+  const nextCount = Math.min(2, hiddenCount);
 
   return (
     <section className="content-section reviews-section">
@@ -32,45 +33,49 @@ export default function ReviewList({ productId }) {
       <Alert>{error}</Alert>
       {loading ? <Spinner label="Loading reviews" /> : null}
 
-      {!loading && !reviews.length ? (
-        <div className="empty-state">
-          <strong>No reviews yet</strong>
-          <p>Be the first to review this product.</p>
-        </div>
-      ) : null}
-
-      {reviews.length ? (
-        <>
-          <div className="review-grid">
-            {visibleReviews.map((review) => (
-              <ReviewCard key={review.id} review={review} saving={saving} onVote={(reviewId, delta) => voteReview(reviewId, delta)} />
-            ))}
+      <div className="review-list-panel">
+        {!loading && !reviews.length ? (
+          <div className="empty-state">
+            <strong>No reviews yet</strong>
+            <p>Be the first to review this product.</p>
           </div>
-          {hiddenCount ? (
-            <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount((count) => count + 2)}>
-              <MaterialIcon name="expand_more" size={18} />
-              More reviews
-              <span>{hiddenCount}</span>
-            </button>
-          ) : reviews.length > 2 ? (
-            <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount(2)}>
-              <MaterialIcon name="expand_less" size={18} />
-              Show less
-            </button>
-          ) : null}
-        </>
-      ) : null}
+        ) : null}
 
-      {user && yourReview ? (
-        <Alert tone="warning">Your review is saved as {yourReview.status_label}. You can manage it from your account.</Alert>
-      ) : user ? (
-        <ReviewForm saving={saving} onSubmit={createReview} />
-      ) : (
-        <Link className="secondary-button review-login-action" to="/login" state={{ from: location }}>
-          <MaterialIcon name="login" size={18} />
-          Sign in to review
-        </Link>
-      )}
+        {reviews.length ? (
+          <>
+            <div className="review-grid">
+              {visibleReviews.map((review) => (
+                <ReviewCard key={review.id} review={review} saving={saving} onVote={(reviewId, delta) => voteReview(reviewId, delta)} />
+              ))}
+            </div>
+            {hiddenCount ? (
+              <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount((count) => count + 2)}>
+                <MaterialIcon name="expand_more" size={18} />
+                Show {nextCount} more review{nextCount === 1 ? "" : "s"}
+                <span>{hiddenCount} left</span>
+              </button>
+            ) : reviews.length > 2 ? (
+              <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount(2)}>
+                <MaterialIcon name="expand_less" size={18} />
+                Show first 2
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      <div className="review-action-panel">
+        {user && yourReview ? (
+          <Alert tone="warning">Your review is saved as {yourReview.status_label}. You can manage it from your account.</Alert>
+        ) : user ? (
+          <ReviewForm saving={saving} onSubmit={createReview} />
+        ) : (
+          <Link className="secondary-button review-login-action" to="/login" state={{ from: location }}>
+            <MaterialIcon name="login" size={18} />
+            Sign in to review
+          </Link>
+        )}
+      </div>
     </section>
   );
 }

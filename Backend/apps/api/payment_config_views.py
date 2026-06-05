@@ -1,11 +1,20 @@
 from django.conf import settings
+from django.core.paginator import Paginator
+from django.db.models import Count, Q, Sum
 from rest_framework import permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
-from apps.payments.config import get_payment_setting, has_payment_secret, provider_is_configured, provider_is_enabled
-from apps.payments.models import PaymentProviderConfiguration
+from apps.notifications.secret_store import seal_secret
+from apps.payments.config import (
+    get_payment_setting,
+    has_payment_secret,
+    provider_is_configured,
+    provider_is_enabled,
+    provider_missing_requirements,
+)
+from apps.payments.models import PaymentProviderConfiguration, PaymentSession
 
 
 class MpesaConfigSerializer(serializers.Serializer):
@@ -47,9 +56,13 @@ class CardConfigSerializer(serializers.Serializer):
 
 def _serialize_provider(provider: str) -> dict:
     if provider == 'mpesa':
+        is_enabled = provider_is_enabled('mpesa', default=True)
+        is_configured = provider_is_configured('mpesa')
         return {
-            'is_enabled': provider_is_enabled('mpesa', default=True),
-            'is_configured': provider_is_configured('mpesa'),
+            'is_enabled': is_enabled,
+            'is_configured': is_configured,
+            'checkout_visible': bool(is_enabled and is_configured),
+            'missing_requirements': provider_missing_requirements('mpesa'),
             'base_url': get_payment_setting('mpesa', 'base_url', settings.MPESA_BASE_URL),
             'has_consumer_key': has_payment_secret('mpesa', 'consumer_key'),
             'has_consumer_secret': has_payment_secret('mpesa', 'consumer_secret'),
@@ -60,9 +73,13 @@ def _serialize_provider(provider: str) -> dict:
             'timeout_seconds': int(get_payment_setting('mpesa', 'timeout_seconds', settings.MPESA_TIMEOUT_SECONDS)),
         }
     if provider == 'pesapal':
+        is_enabled = provider_is_enabled('pesapal', default=True)
+        is_configured = provider_is_configured('pesapal')
         return {
-            'is_enabled': provider_is_enabled('pesapal', default=True),
-            'is_configured': bool(provider_is_configured('pesapal') and provider_is_enabled('pesapal', default=True)),
+            'is_enabled': is_enabled,
+            'is_configured': is_configured,
+            'checkout_visible': bool(is_enabled and is_configured),
+            'missing_requirements': provider_missing_requirements('pesapal'),
             'base_url': get_payment_setting('pesapal', 'base_url', settings.PESAPAL_BASE_URL),
             'has_consumer_key': has_payment_secret('pesapal', 'consumer_key'),
             'has_consumer_secret': has_payment_secret('pesapal', 'consumer_secret'),
@@ -76,15 +93,23 @@ def _serialize_provider(provider: str) -> dict:
             'timeout_seconds': int(get_payment_setting('pesapal', 'timeout_seconds', settings.PESAPAL_TIMEOUT_SECONDS)),
         }
     if provider == 'airtel_money':
+        is_enabled = provider_is_enabled('airtel_money', default=True)
+        is_configured = provider_is_configured('airtel_money')
         return {
-            'is_enabled': provider_is_enabled('airtel_money', default=True),
-            'is_configured': bool(provider_is_configured('airtel_money') and provider_is_enabled('airtel_money', default=True)),
+            'is_enabled': is_enabled,
+            'is_configured': is_configured,
+            'checkout_visible': bool(is_enabled and is_configured),
+            'missing_requirements': provider_missing_requirements('airtel_money'),
             'provider_name': get_payment_setting('airtel_money', 'provider_name', settings.AIRTEL_MONEY_PROVIDER_NAME),
             'sandbox_enabled': bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED),
         }
+    is_enabled = provider_is_enabled('card', default=True)
+    is_configured = provider_is_configured('card')
     return {
-        'is_enabled': provider_is_enabled('card', default=True),
-        'is_configured': bool(provider_is_configured('card') and provider_is_enabled('card', default=True)),
+        'is_enabled': is_enabled,
+        'is_configured': is_configured,
+        'checkout_visible': bool(is_enabled and is_configured),
+        'missing_requirements': provider_missing_requirements('card'),
         'provider_name': get_payment_setting('card', 'provider_name', settings.CARD_PROVIDER_NAME),
         'sandbox_enabled': bool(settings.CARD_SANDBOX_ENABLED),
     }
@@ -103,11 +128,112 @@ def _upsert_provider(provider: str, *, is_enabled: bool | None, public_config: d
     next_secret = config.secret_config.copy()
     for key, value in secret_config.items():
         if value:
-            next_secret[key] = value
+            next_secret[key] = seal_secret(value)
     config.secret_config = next_secret
     config.updated_by = user
     config.save()
     return config
+
+
+def _update_payment_configuration(request) -> Response:
+    changed = []
+
+    if 'mpesa' in request.data:
+        serializer = MpesaConfigSerializer(data=request.data.get('mpesa') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'mpesa',
+            is_enabled=data.get('is_enabled'),
+            public_config={
+                key: data[key]
+                for key in ['base_url', 'shortcode', 'callback_url', 'transaction_type', 'timeout_seconds']
+                if key in data
+            },
+            secret_config={
+                key: data[key]
+                for key in ['consumer_key', 'consumer_secret', 'passkey']
+                if key in data
+            },
+            user=request.user,
+        )
+        changed.append('mpesa')
+
+    if 'pesapal' in request.data:
+        serializer = PesapalConfigSerializer(data=request.data.get('pesapal') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'pesapal',
+            is_enabled=data.get('is_enabled'),
+            public_config={
+                key: data[key]
+                for key in [
+                    'base_url',
+                    'callback_url',
+                    'cancellation_url',
+                    'ipn_url',
+                    'ipn_id',
+                    'notification_type',
+                    'branch',
+                    'redirect_mode',
+                    'timeout_seconds',
+                ]
+                if key in data
+            },
+            secret_config={
+                key: data[key]
+                for key in ['consumer_key', 'consumer_secret']
+                if key in data
+            },
+            user=request.user,
+        )
+        changed.append('pesapal')
+
+    if 'airtel_money' in request.data:
+        serializer = AirtelMoneyConfigSerializer(data=request.data.get('airtel_money') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'airtel_money',
+            is_enabled=data.get('is_enabled'),
+            public_config={key: data[key] for key in ['provider_name'] if key in data},
+            secret_config={},
+            user=request.user,
+        )
+        changed.append('airtel_money')
+
+    if 'card' in request.data:
+        serializer = CardConfigSerializer(data=request.data.get('card') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'card',
+            is_enabled=data.get('is_enabled'),
+            public_config={key: data[key] for key in ['provider_name'] if key in data},
+            secret_config={},
+            user=request.user,
+        )
+        changed.append('card')
+
+    if changed:
+        record_audit_event(
+            event_type='payments.configuration_updated',
+            request=request,
+            actor=request.user,
+            target=request.user,
+            message='Payment provider configuration updated.',
+            metadata={'providers': changed},
+        )
+
+    return Response(
+        {
+            'mpesa': _serialize_provider('mpesa'),
+            'pesapal': _serialize_provider('pesapal'),
+            'airtel_money': _serialize_provider('airtel_money'),
+            'card': _serialize_provider('card'),
+        }
+    )
 
 
 class AdminPaymentConfigurationAPIView(APIView):
@@ -124,101 +250,97 @@ class AdminPaymentConfigurationAPIView(APIView):
         )
 
     def patch(self, request):
-        changed = []
+        return _update_payment_configuration(request)
 
-        if 'mpesa' in request.data:
-            serializer = MpesaConfigSerializer(data=request.data.get('mpesa') or {}, partial=True)
-            serializer.is_valid(raise_exception=True)
-            data = serializer.validated_data
-            _upsert_provider(
-                'mpesa',
-                is_enabled=data.get('is_enabled'),
-                public_config={
-                    key: data[key]
-                    for key in ['base_url', 'shortcode', 'callback_url', 'transaction_type', 'timeout_seconds']
-                    if key in data
-                },
-                secret_config={
-                    key: data[key]
-                    for key in ['consumer_key', 'consumer_secret', 'passkey']
-                    if key in data
-                },
-                user=request.user,
-            )
-            changed.append('mpesa')
 
-        if 'pesapal' in request.data:
-            serializer = PesapalConfigSerializer(data=request.data.get('pesapal') or {}, partial=True)
-            serializer.is_valid(raise_exception=True)
-            data = serializer.validated_data
-            _upsert_provider(
-                'pesapal',
-                is_enabled=data.get('is_enabled'),
-                public_config={
-                    key: data[key]
-                    for key in [
-                        'base_url',
-                        'callback_url',
-                        'cancellation_url',
-                        'ipn_url',
-                        'ipn_id',
-                        'notification_type',
-                        'branch',
-                        'redirect_mode',
-                        'timeout_seconds',
-                    ]
-                    if key in data
-                },
-                secret_config={
-                    key: data[key]
-                    for key in ['consumer_key', 'consumer_secret']
-                    if key in data
-                },
-                user=request.user,
-            )
-            changed.append('pesapal')
+def _payment_session_payload(payment: PaymentSession) -> dict:
+    return {
+        'id': payment.id,
+        'reference': payment.reference,
+        'method': payment.method,
+        'provider': payment.provider,
+        'status': payment.status,
+        'amount': float(payment.amount),
+        'currency': payment.currency,
+        'payer_email': payment.payer_email,
+        'payer_phone': payment.payer_phone,
+        'external_reference': payment.external_reference,
+        'order_number': payment.order.number if payment.order_id else '',
+        'metadata': payment.metadata or {},
+        'provider_payload': _safe_provider_payload(payment.provider_payload or {}),
+        'created_at': payment.created_at,
+        'updated_at': payment.updated_at,
+        'paid_at': payment.paid_at,
+    }
 
-        if 'airtel_money' in request.data:
-            serializer = AirtelMoneyConfigSerializer(data=request.data.get('airtel_money') or {}, partial=True)
-            serializer.is_valid(raise_exception=True)
-            data = serializer.validated_data
-            _upsert_provider(
-                'airtel_money',
-                is_enabled=data.get('is_enabled'),
-                public_config={key: data[key] for key in ['provider_name'] if key in data},
-                secret_config={},
-                user=request.user,
-            )
-            changed.append('airtel_money')
 
-        if 'card' in request.data:
-            serializer = CardConfigSerializer(data=request.data.get('card') or {}, partial=True)
-            serializer.is_valid(raise_exception=True)
-            data = serializer.validated_data
-            _upsert_provider(
-                'card',
-                is_enabled=data.get('is_enabled'),
-                public_config={key: data[key] for key in ['provider_name'] if key in data},
-                secret_config={},
-                user=request.user,
-            )
-            changed.append('card')
+def _safe_provider_payload(payload: dict) -> dict:
+    hidden_keys = {'consumer_key', 'consumer_secret', 'passkey', 'token', 'access_token', 'password', 'secret'}
+    safe = {}
+    for key, value in payload.items():
+        normalized = str(key).lower()
+        if any(secret_key in normalized for secret_key in hidden_keys):
+            safe[key] = '***'
+        elif key == 'pesapal_response' and isinstance(value, dict):
+            safe[key] = _safe_provider_payload(value)
+        elif key == 'last_status' and isinstance(value, dict):
+            safe[key] = _safe_provider_payload(value)
+        else:
+            safe[key] = value
+    return safe
 
-        if changed:
-            record_audit_event(
-                event_type='payments.configuration_updated',
-                request=request,
-                actor=request.user,
-                target=request.user,
-                message='Payment provider configuration updated.',
-                metadata={'providers': changed},
+
+class AdminPaymentSessionLogCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        queryset = PaymentSession.objects.select_related('user', 'order').order_by('-created_at')
+
+        search = (request.query_params.get('q') or '').strip()
+        method = (request.query_params.get('method') or '').strip()
+        status_filter = (request.query_params.get('status') or '').strip()
+        provider = (request.query_params.get('provider') or '').strip()
+
+        if search:
+            queryset = queryset.filter(
+                Q(reference__icontains=search)
+                | Q(external_reference__icontains=search)
+                | Q(payer_email__icontains=search)
+                | Q(payer_phone__icontains=search)
+                | Q(order__number__icontains=search)
             )
+        if method:
+            queryset = queryset.filter(method=method)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if provider:
+            queryset = queryset.filter(provider=provider)
+
+        page = max(1, int(request.query_params.get('page') or 1))
+        page_size = min(100, max(1, int(request.query_params.get('page_size') or 50)))
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+
+        base_queryset = PaymentSession.objects.all()
+        summary = {
+            'total': base_queryset.count(),
+            'by_status': list(base_queryset.values('status').annotate(count=Count('id')).order_by('status')),
+            'by_method': list(base_queryset.values('method').annotate(count=Count('id')).order_by('method')),
+            'paid_total': float(base_queryset.filter(status=PaymentSession.STATUS_PAID).aggregate(total=Sum('amount'))['total'] or 0),
+            'authorized_total': float(base_queryset.filter(status=PaymentSession.STATUS_AUTHORIZED).aggregate(total=Sum('amount'))['total'] or 0),
+        }
 
         return Response(
             {
-                'mpesa': _serialize_provider('mpesa'),
-                'pesapal': _serialize_provider('pesapal'),
-                'airtel_money': _serialize_provider('airtel_money'),
-                'card': _serialize_provider('card'),
+                'results': [_payment_session_payload(payment) for payment in page_obj.object_list],
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'num_pages': paginator.num_pages,
+                    'count': paginator.count,
+                    'has_next': page_obj.has_next(),
+                    'has_previous': page_obj.has_previous(),
+                },
+                'summary': summary,
             }
         )

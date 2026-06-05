@@ -1,6 +1,7 @@
 import json
 from decimal import Decimal
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -18,7 +19,7 @@ class PesapalGatewayError(Exception):
 
 
 SUCCESS_STATUS_CODES = {'1'}
-FAILED_STATUS_CODES = {'2', '3'}
+FAILED_STATUS_CODES = {'0', '2', '3'}
 
 
 def pesapal_is_configured() -> bool:
@@ -43,7 +44,8 @@ def submit_order_request(payment_session, *, customer_name: str = '') -> dict:
         'id': payment_session.reference,
         'currency': payment_session.currency,
         'amount': float(Decimal(str(payment_session.amount)).quantize(Decimal('0.01'))),
-        'description': f'Vortexus order payment {payment_session.reference}',
+        'description': f'Vortexus payment {payment_session.reference}'[:100],
+        'redirect_mode': get_payment_setting('pesapal', 'redirect_mode', settings.PESAPAL_REDIRECT_MODE),
         'callback_url': get_payment_setting('pesapal', 'callback_url', ''),
         'notification_id': get_payment_setting('pesapal', 'ipn_id', ''),
         'billing_address': {
@@ -89,11 +91,13 @@ def query_transaction_status(payment_session) -> dict:
     if not order_tracking_id:
         raise PesapalGatewayError('Missing Pesapal order tracking ID for this payment session.')
     token = _request_access_token()
-    return _get_json(f'/Transactions/GetTransactionStatus?orderTrackingId={order_tracking_id}', token=token)
+    return _get_json(f'/Transactions/GetTransactionStatus?{urlencode({"orderTrackingId": order_tracking_id})}', token=token)
 
 
 def handle_transaction_status(payment_session, status_payload: dict):
-    payment_status_code = str(status_payload.get('payment_status_code') or '').strip()
+    _validate_status_payload(payment_session, status_payload)
+
+    payment_status_code = str(status_payload.get('status_code') or status_payload.get('payment_status_code') or '').strip()
     payment_status = str(status_payload.get('payment_status_description') or status_payload.get('payment_status') or '').strip()
     confirmation_code = str(status_payload.get('confirmation_code') or '').strip()
     payment_method = str(status_payload.get('payment_method') or '').strip()
@@ -155,7 +159,7 @@ def _request_access_token() -> str:
 
 
 def _post_json(path: str, payload: dict, *, token: str = '') -> dict:
-    headers = {'Content-Type': 'application/json'}
+    headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f'Bearer {token}'
     request = Request(url=_url(path), data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
@@ -163,7 +167,7 @@ def _post_json(path: str, payload: dict, *, token: str = '') -> dict:
 
 
 def _get_json(path: str, *, token: str) -> dict:
-    request = Request(url=_url(path), headers={'Authorization': f'Bearer {token}'}, method='GET')
+    request = Request(url=_url(path), headers={'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}, method='GET')
     return _execute_request(request)
 
 
@@ -181,6 +185,26 @@ def _execute_request(request: Request) -> dict:
 def _url(path: str) -> str:
     base_url = str(get_payment_setting('pesapal', 'base_url', settings.PESAPAL_BASE_URL)).rstrip('/')
     return f'{base_url}{path}'
+
+
+def _validate_status_payload(payment_session, status_payload: dict) -> None:
+    merchant_reference = str(status_payload.get('merchant_reference') or '').strip()
+    if merchant_reference and merchant_reference != payment_session.reference:
+        raise PesapalGatewayError('Pesapal merchant reference did not match this payment session.')
+
+    currency = str(status_payload.get('currency') or '').strip()
+    if currency and currency.upper() != str(payment_session.currency).upper():
+        raise PesapalGatewayError('Pesapal currency did not match this payment session.')
+
+    amount = status_payload.get('amount')
+    if amount not in (None, ''):
+        try:
+            received_amount = Decimal(str(amount)).quantize(Decimal('0.01'))
+        except Exception as exc:
+            raise PesapalGatewayError('Pesapal returned an invalid transaction amount.') from exc
+        expected_amount = Decimal(str(payment_session.amount)).quantize(Decimal('0.01'))
+        if received_amount != expected_amount:
+            raise PesapalGatewayError('Pesapal amount did not match this payment session.')
 
 
 def _first_name(name: str) -> str:

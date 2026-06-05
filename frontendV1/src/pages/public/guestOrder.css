@@ -60,7 +60,7 @@
 .guest-order-card label span {
   color: var(--color-text-muted);
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .guest-order-card input {
@@ -92,7 +92,7 @@
 
 .guest-order-card__note a {
   color: var(--color-primary-700);
-  font-weight: 850;
+  font-weight: 600;
 }
 
 @media (min-width: 720px) {

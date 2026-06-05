@@ -51,9 +51,9 @@
   --color-offer: var(--color-accent-orange);
   --color-offer-bg: var(--color-accent-orange-soft);
   --color-rating: var(--color-accent-yellow);
-  --color-favorite: #6d28d9;
-  --color-favorite-bg: #f3e8ff;
-  --color-favorite-shadow: rgba(109, 40, 217, 0.28);
+  --color-favorite: #cf142b;
+  --color-favorite-bg: #ffe8ec;
+  --color-favorite-shadow: rgba(207, 20, 43, 0.28);
 
   --shadow-xs: 0 1px 1px rgba(15, 23, 42, 0.04);
   --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.05);
@@ -79,13 +79,13 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --font-body: "Poppins", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Poppins", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Montserrat", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Montserrat", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-weight-regular: 400;
   --font-weight-body: 400;
   --font-weight-medium: 500;
-  --font-weight-bold: 700;
-  --font-weight-black: 800;
+  --font-weight-bold: 600;
+  --font-weight-black: 700;
   --font-weight-heading: 600;
   --line-height-body: 1.5;
   --line-height-heading: 1.08;
@@ -104,7 +104,7 @@
   --button-radius: var(--radius-md);
   --button-height-sm: 40px;
   --button-height: 46px;
-  --button-font-weight: 700;
+  --button-font-weight: 600;
   --button-primary-bg: var(--color-primary);
   --button-primary-bg-hover: var(--color-primary-700);
   --button-primary-color: var(--color-text-inverse);

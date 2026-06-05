@@ -64,6 +64,8 @@ const paymentConfig = ref({
   mpesa: {
     is_enabled: true,
     is_configured: false,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
     base_url: "https://sandbox.safaricom.co.ke",
     consumer_key: "",
     has_consumer_key: false,
@@ -76,19 +78,58 @@ const paymentConfig = ref({
     transaction_type: "CustomerPayBillOnline",
     timeout_seconds: 30,
   },
+  pesapal: {
+    is_enabled: true,
+    is_configured: false,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
+    base_url: "https://cybqa.pesapal.com/pesapalv3/api",
+    consumer_key: "",
+    has_consumer_key: false,
+    consumer_secret: "",
+    has_consumer_secret: false,
+    callback_url: "",
+    cancellation_url: "",
+    ipn_url: "",
+    ipn_id: "",
+    notification_type: "POST",
+    branch: "",
+    redirect_mode: "TOP_WINDOW",
+    timeout_seconds: 30,
+  },
   airtel_money: {
     is_enabled: true,
     is_configured: false,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
     provider_name: "sandbox_airtel_money",
     sandbox_enabled: false,
   },
   card: {
     is_enabled: true,
     is_configured: false,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
     provider_name: "sandbox_card",
     sandbox_enabled: false,
   },
 });
+
+function paymentVisibilityBadge(provider: keyof typeof paymentConfig.value) {
+  const config = paymentConfig.value[provider];
+  if (config.checkout_visible)
+    return { color: "success" as const, label: "Visible at checkout" };
+  if (!config.is_enabled)
+    return { color: "neutral" as const, label: "Disabled" };
+  return { color: "warning" as const, label: "Hidden at checkout" };
+}
+
+function paymentMissingText(provider: keyof typeof paymentConfig.value) {
+  const missing = paymentConfig.value[provider].missing_requirements || [];
+  if (!missing.length)
+    return "";
+  return `Missing: ${missing.map((item) => item.replaceAll("_", " ")).join(", ")}.`;
+}
 
 function useMpesaSandboxPreset() {
   paymentConfig.value.mpesa.base_url = "https://sandbox.safaricom.co.ke";
@@ -98,6 +139,14 @@ function useMpesaSandboxPreset() {
 function useMpesaLivePreset() {
   paymentConfig.value.mpesa.base_url = "https://api.safaricom.co.ke";
   paymentConfig.value.mpesa.transaction_type = paymentConfig.value.mpesa.transaction_type || "CustomerPayBillOnline";
+}
+
+function usePesapalSandboxPreset() {
+  paymentConfig.value.pesapal.base_url = "https://cybqa.pesapal.com/pesapalv3/api";
+}
+
+function usePesapalLivePreset() {
+  paymentConfig.value.pesapal.base_url = "https://pay.pesapal.com/v3/api";
 }
 
 function applySettings(data: any) {
@@ -144,6 +193,12 @@ async function loadPaymentConfig() {
         consumer_key: "",
         consumer_secret: "",
         passkey: "",
+      },
+      pesapal: {
+        ...paymentConfig.value.pesapal,
+        ...result.data.pesapal,
+        consumer_key: "",
+        consumer_secret: "",
       },
       airtel_money: {
         ...paymentConfig.value.airtel_money,
@@ -257,8 +312,27 @@ async function savePaymentConfig() {
   if (paymentConfig.value.mpesa.passkey)
     mpesaPayload.passkey = paymentConfig.value.mpesa.passkey;
 
+  const pesapalPayload: Record<string, any> = {
+    is_enabled: paymentConfig.value.pesapal.is_enabled,
+    base_url: paymentConfig.value.pesapal.base_url,
+    callback_url: paymentConfig.value.pesapal.callback_url,
+    cancellation_url: paymentConfig.value.pesapal.cancellation_url,
+    ipn_url: paymentConfig.value.pesapal.ipn_url,
+    ipn_id: paymentConfig.value.pesapal.ipn_id,
+    notification_type: paymentConfig.value.pesapal.notification_type || "POST",
+    branch: paymentConfig.value.pesapal.branch,
+    redirect_mode: paymentConfig.value.pesapal.redirect_mode || "TOP_WINDOW",
+    timeout_seconds: Number(paymentConfig.value.pesapal.timeout_seconds || 30),
+  };
+
+  if (paymentConfig.value.pesapal.consumer_key)
+    pesapalPayload.consumer_key = paymentConfig.value.pesapal.consumer_key;
+  if (paymentConfig.value.pesapal.consumer_secret)
+    pesapalPayload.consumer_secret = paymentConfig.value.pesapal.consumer_secret;
+
   const result = await updatePaymentConfig({
     mpesa: mpesaPayload,
+    pesapal: pesapalPayload,
     airtel_money: {
       is_enabled: paymentConfig.value.airtel_money.is_enabled,
       provider_name: paymentConfig.value.airtel_money.provider_name,
@@ -277,6 +351,12 @@ async function savePaymentConfig() {
         consumer_key: "",
         consumer_secret: "",
         passkey: "",
+      },
+      pesapal: {
+        ...paymentConfig.value.pesapal,
+        ...result.data.pesapal,
+        consumer_key: "",
+        consumer_secret: "",
       },
       airtel_money: {
         ...paymentConfig.value.airtel_money,
@@ -594,15 +674,15 @@ onMounted(() => {
           </div>
         </template>
 
-        <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
           <div class="rounded-lg border border-default p-4">
             <div class="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h4 class="font-semibold">M-Pesa Daraja</h4>
                 <p class="text-xs text-(--ui-text-muted)">STK push and callback configuration.</p>
               </div>
-              <UBadge :color="paymentConfig.mpesa.is_configured ? 'success' : 'warning'" variant="soft">
-                {{ paymentConfig.mpesa.is_configured ? "Configured" : "Incomplete" }}
+              <UBadge :color="paymentVisibilityBadge('mpesa').color" variant="soft">
+                {{ paymentVisibilityBadge('mpesa').label }}
               </UBadge>
             </div>
 
@@ -645,6 +725,78 @@ onMounted(() => {
               <p class="text-xs text-(--ui-text-muted)">
                 M-Pesa appears at checkout only when enabled and all Daraja credentials, shortcode, passkey, and callback URL are saved.
               </p>
+              <p v-if="paymentMissingText('mpesa')" class="text-xs text-warning">
+                {{ paymentMissingText('mpesa') }}
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-default p-4">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">Pesapal</h4>
+                <p class="text-xs text-(--ui-text-muted)">Hosted checkout, callback, and IPN configuration.</p>
+              </div>
+              <UBadge :color="paymentVisibilityBadge('pesapal').color" variant="soft">
+                {{ paymentVisibilityBadge('pesapal').label }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-4">
+              <UCheckbox v-model="paymentConfig.pesapal.is_enabled" label="Enable Pesapal at checkout" :disabled="isPaymentLoading" />
+              <div class="grid grid-cols-2 gap-2">
+                <UButton color="neutral" variant="outline" block size="sm" @click="usePesapalSandboxPreset">
+                  Sandbox URL
+                </UButton>
+                <UButton color="neutral" variant="outline" block size="sm" @click="usePesapalLivePreset">
+                  Live URL
+                </UButton>
+              </div>
+              <UFormField label="Base URL">
+                <UInput v-model="paymentConfig.pesapal.base_url" :loading="isPaymentLoading" placeholder="https://cybqa.pesapal.com/pesapalv3/api" />
+              </UFormField>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <UFormField label="Consumer key">
+                  <UInput v-model="paymentConfig.pesapal.consumer_key" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.pesapal.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
+                </UFormField>
+                <UFormField label="Consumer secret">
+                  <UInput v-model="paymentConfig.pesapal.consumer_secret" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.pesapal.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
+                </UFormField>
+              </div>
+              <UFormField label="Checkout callback URL">
+                <UInput v-model="paymentConfig.pesapal.callback_url" :loading="isPaymentLoading" placeholder="https://store.example.com/checkout/review" />
+              </UFormField>
+              <UFormField label="Cancellation URL">
+                <UInput v-model="paymentConfig.pesapal.cancellation_url" :loading="isPaymentLoading" placeholder="https://store.example.com/checkout/payment" />
+              </UFormField>
+              <UFormField label="IPN URL">
+                <UInput v-model="paymentConfig.pesapal.ipn_url" :loading="isPaymentLoading" placeholder="https://api.example.com/api/v1/payments/pesapal/ipn/" />
+              </UFormField>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <UFormField label="IPN ID">
+                  <UInput v-model="paymentConfig.pesapal.ipn_id" :loading="isPaymentLoading" placeholder="Registered Pesapal notification ID" />
+                </UFormField>
+                <UFormField label="Notification type">
+                  <USelect v-model="paymentConfig.pesapal.notification_type" :items="['POST', 'GET']" :loading="isPaymentLoading" />
+                </UFormField>
+              </div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <UFormField label="Branch">
+                  <UInput v-model="paymentConfig.pesapal.branch" :loading="isPaymentLoading" placeholder="Optional" />
+                </UFormField>
+                <UFormField label="Redirect mode">
+                  <UInput v-model="paymentConfig.pesapal.redirect_mode" :loading="isPaymentLoading" placeholder="TOP_WINDOW" />
+                </UFormField>
+                <UFormField label="Timeout seconds">
+                  <UInput v-model.number="paymentConfig.pesapal.timeout_seconds" :loading="isPaymentLoading" type="number" min="1" max="120" />
+                </UFormField>
+              </div>
+              <p class="text-xs text-(--ui-text-muted)">
+                Pesapal appears at checkout only when enabled and consumer credentials, callback URL, and IPN ID are saved.
+              </p>
+              <p v-if="paymentMissingText('pesapal')" class="text-xs text-warning">
+                {{ paymentMissingText('pesapal') }}
+              </p>
             </div>
           </div>
 
@@ -654,8 +806,8 @@ onMounted(() => {
                 <h4 class="font-semibold">Airtel Money</h4>
                 <p class="text-xs text-(--ui-text-muted)">Mobile collection provider controls.</p>
               </div>
-              <UBadge :color="paymentConfig.airtel_money.is_configured ? 'success' : 'neutral'" variant="soft">
-                {{ paymentConfig.airtel_money.is_configured ? "Ready" : "Disabled" }}
+              <UBadge :color="paymentVisibilityBadge('airtel_money').color" variant="soft">
+                {{ paymentVisibilityBadge('airtel_money').label }}
               </UBadge>
             </div>
 
@@ -667,6 +819,9 @@ onMounted(() => {
               <p class="text-xs text-(--ui-text-muted)">
                 Backend sandbox flag: {{ paymentConfig.airtel_money.sandbox_enabled ? "Enabled" : "Disabled" }}. This provider remains hidden from checkout unless its backend integration is enabled.
               </p>
+              <p v-if="paymentMissingText('airtel_money')" class="text-xs text-warning">
+                {{ paymentMissingText('airtel_money') }}
+              </p>
             </div>
           </div>
 
@@ -676,8 +831,8 @@ onMounted(() => {
                 <h4 class="font-semibold">Cards</h4>
                 <p class="text-xs text-(--ui-text-muted)">Sandbox card authorization controls.</p>
               </div>
-              <UBadge :color="paymentConfig.card.is_configured ? 'success' : 'neutral'" variant="soft">
-                {{ paymentConfig.card.is_configured ? "Ready" : "Disabled" }}
+              <UBadge :color="paymentVisibilityBadge('card').color" variant="soft">
+                {{ paymentVisibilityBadge('card').label }}
               </UBadge>
             </div>
 
@@ -688,6 +843,9 @@ onMounted(() => {
               </UFormField>
               <p class="text-xs text-(--ui-text-muted)">
                 Backend sandbox flag: {{ paymentConfig.card.sandbox_enabled ? "Enabled" : "Disabled" }}. Real card payments require adding a PCI/tokenization provider before enabling this in production.
+              </p>
+              <p v-if="paymentMissingText('card')" class="text-xs text-warning">
+                {{ paymentMissingText('card') }}
               </p>
             </div>
           </div>

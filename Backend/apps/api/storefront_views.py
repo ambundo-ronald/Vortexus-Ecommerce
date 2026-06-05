@@ -467,6 +467,22 @@ class AddressSerializer(serializers.Serializer):
         instance.save()
         return instance
 
+    def to_session_fields(self) -> dict:
+        data = self.validated_data.copy()
+        country = data.pop('country_code')
+        return {
+            **data,
+            'country_id': country.pk,
+        }
+
+    def to_address_payload(self) -> dict:
+        data = self.validated_data.copy()
+        country = data.pop('country_code')
+        return {
+            **data,
+            'country_code': country.iso_3166_1_a2,
+        }
+
 
 class AccountAddressCollectionAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -975,10 +991,8 @@ class BillingAddressAPIView(APIView):
     def put(self, request):
         serializer = AddressSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data.copy()
-        country = data.pop('country_code')
-        get_checkout_session(request).bill_to_new_address({**data, 'country': country})
-        return Response({'billing': {'address': request.data}})
+        get_checkout_session(request).bill_to_new_address(serializer.to_session_fields())
+        return Response({'billing': {'address': serializer.to_address_payload()}})
 
 
 class AccountPreferenceAPIView(APIView):

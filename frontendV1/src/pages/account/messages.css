@@ -118,7 +118,7 @@
   background: var(--color-bg-soft);
   border-radius: 999px;
   color: var(--color-text);
-  font-weight: 800;
+  font-weight: 600;
   padding: 5px 10px;
 }
 
@@ -148,7 +148,7 @@
   border-radius: 999px;
   color: var(--color-text-muted);
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 8px 12px;
 }
 

@@ -79,6 +79,10 @@ export function FeaturedMarketingBlocks({ blocks = [] }) {
 
   return (
     <section className="marketing-feature-section" aria-label="Featured promotions">
+      <div className="section-heading section-heading--marketing">
+        <h2>Featured campaigns</h2>
+        <Link to="/offers">View all</Link>
+      </div>
       <button className="marketing-feature-nav marketing-feature-nav--prev" type="button" aria-label="Previous promotions" onClick={() => scrollTrack(-1)}>
         <MaterialIcon name="chevron_left" size={34} />
       </button>
@@ -108,7 +112,10 @@ export function BrandStrip({ blocks = [] }) {
 
   return (
     <section className="marketing-brand-section" aria-label="Featured brands">
-      <h2>Brand You Love</h2>
+      <div className="section-heading section-heading--marketing">
+        <h2>Brand You Love</h2>
+        <Link to="/catalog">View all</Link>
+      </div>
       <div className="marketing-brand-strip">
       {blocks.slice(0, 8).map((block) => (
         <MarketingLink block={block} className="marketing-brand-pill" key={block.id || block.slug} style={blockStyle(block)}>

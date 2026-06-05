@@ -95,29 +95,52 @@ class PesapalInitializationSerializer(serializers.Serializer):
 class PesapalNotificationSerializer(serializers.Serializer):
     OrderTrackingId = serializers.CharField(required=False, allow_blank=True, max_length=128)
     OrderMerchantReference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    OrderNotificationType = serializers.CharField(required=False, allow_blank=True, max_length=64)
     orderTrackingId = serializers.CharField(required=False, allow_blank=True, max_length=128)
     orderMerchantReference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    orderNotificationType = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    order_tracking_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    order_merchant_reference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    order_notification_type = serializers.CharField(required=False, allow_blank=True, max_length=64)
     notification_type = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
     def validate(self, attrs):
+        request = self.context.get('request')
+        query_params = getattr(request, 'query_params', None) or getattr(request, 'GET', {}) if request else {}
         order_tracking_id = (
             attrs.get('OrderTrackingId')
             or attrs.get('orderTrackingId')
-            or self.context.get('request').query_params.get('OrderTrackingId')
-            or self.context.get('request').query_params.get('orderTrackingId')
+            or attrs.get('order_tracking_id')
+            or query_params.get('OrderTrackingId')
+            or query_params.get('orderTrackingId')
+            or query_params.get('order_tracking_id')
             or ''
         ).strip()
         merchant_reference = (
             attrs.get('OrderMerchantReference')
             or attrs.get('orderMerchantReference')
-            or self.context.get('request').query_params.get('OrderMerchantReference')
-            or self.context.get('request').query_params.get('orderMerchantReference')
+            or attrs.get('order_merchant_reference')
+            or query_params.get('OrderMerchantReference')
+            or query_params.get('orderMerchantReference')
+            or query_params.get('order_merchant_reference')
+            or ''
+        ).strip()
+        notification_type = (
+            attrs.get('OrderNotificationType')
+            or attrs.get('orderNotificationType')
+            or attrs.get('order_notification_type')
+            or attrs.get('notification_type')
+            or query_params.get('OrderNotificationType')
+            or query_params.get('orderNotificationType')
+            or query_params.get('order_notification_type')
+            or query_params.get('notification_type')
             or ''
         ).strip()
         if not order_tracking_id:
             raise serializers.ValidationError({'OrderTrackingId': 'Pesapal order tracking ID is required.'})
         attrs['order_tracking_id'] = order_tracking_id
         attrs['merchant_reference'] = merchant_reference
+        attrs['notification_type'] = notification_type
         return attrs
 
 

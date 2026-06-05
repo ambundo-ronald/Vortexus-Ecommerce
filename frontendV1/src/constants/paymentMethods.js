@@ -1,4 +1,5 @@
 export const PAYMENT_METHOD_CODES = {
+  PESAPAL: "pesapal",
   MPESA: "mpesa",
   AIRTEL_MONEY: "airtel_money",
   CREDIT_CARD: "credit_card",
@@ -8,6 +9,7 @@ export const PAYMENT_METHOD_CODES = {
 };
 
 export const PREPAYMENT_METHODS = new Set([
+  PAYMENT_METHOD_CODES.PESAPAL,
   PAYMENT_METHOD_CODES.MPESA,
   PAYMENT_METHOD_CODES.AIRTEL_MONEY,
   PAYMENT_METHOD_CODES.CREDIT_CARD,
