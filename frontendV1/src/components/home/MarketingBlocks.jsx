@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
@@ -31,13 +31,36 @@ function MarketingLink({ block, className = "", children, ...props }) {
 }
 
 export function AnnouncementStrip({ blocks = [] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    if (blocks.length < 2) return undefined;
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % blocks.length);
+    }, 5200);
+
+    return () => window.clearInterval(timer);
+  }, [blocks.length]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [blocks.length]);
+
   if (!blocks.length) return null;
 
-  const block = blocks[0];
+  const block = blocks[activeIndex % blocks.length];
+  const imageUrl = block.image_url ? mediaUrl(block.image_url) : "";
 
   return (
     <MarketingLink block={block} className="marketing-announcement" style={blockStyle(block)}>
-      <span>{block.eyebrow || "Notice"}</span>
+      <span className="marketing-announcement__media" aria-hidden={!imageUrl}>
+        {imageUrl ? (
+          <img src={imageUrl} alt={block.image_alt || block.title || block.headline || "Announcement"} loading="lazy" />
+        ) : (
+          <MaterialIcon name="campaign" size={18} />
+        )}
+      </span>
       <strong>{block.headline || block.title}</strong>
       {block.cta_text ? <em>{block.cta_text}</em> : null}
     </MarketingLink>

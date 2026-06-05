@@ -7,7 +7,7 @@
   position: relative;
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: 0;
   border: 1px solid var(--card-border);
   border-radius: calc(var(--card-radius) + 4px);
   background:
@@ -105,6 +105,14 @@
   color: var(--color-primary-700);
 }
 
+.home-category-list__image {
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+}
+
 .home-category-list a span:not(.material-symbols-rounded) {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -124,8 +132,8 @@
 .home-showcase .hero-image-carousel {
   height: 258px;
   margin: 0;
-  border: 1px solid var(--card-border);
-  border-radius: calc(var(--card-radius) - 2px);
+  border: 0;
+  border-radius: calc(var(--card-radius) + 3px) calc(var(--card-radius) + 3px) 0 0;
   box-shadow: none;
 }
 
@@ -152,14 +160,13 @@
 }
 
 .home-arrivals-strip {
-  border: 1px solid var(--card-border);
-  border-radius: calc(var(--card-radius) - 2px);
+  margin: 0;
+  border: 0;
+  border-radius: 0;
   display: grid;
   gap: var(--space-3);
-  padding: 12px;
-  background:
-    linear-gradient(135deg, var(--color-surface), color-mix(in srgb, var(--color-primary-50) 72%, var(--color-surface))),
-    var(--card-bg);
+  padding: 12px var(--space-3) var(--space-3);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -368,14 +375,10 @@
 
 @media (min-width: 760px) {
   .home-showcase {
-    grid-template-columns: 248px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     gap: 12px;
-    padding: 12px;
-  }
-
-  .home-showcase--categories-collapsed {
-    grid-template-columns: 70px minmax(0, 1fr);
+    padding: 0;
   }
 
   .home-category-panel {
@@ -434,6 +437,12 @@
     border-radius: var(--radius-pill);
     display: grid;
     place-items: center;
+  }
+
+  .home-category-panel.is-collapsed .home-category-list__image {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-pill);
   }
 
   .home-category-panel.is-collapsed .home-category-list a:hover > .material-symbols-rounded:first-child {

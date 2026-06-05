@@ -10,7 +10,7 @@ import { quotesApi } from "../../api/quotes.api";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productInitials, productPrice } from "../../utils/productDisplay";
+import { productId as resolveProductId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
 
 export default function QuoteRequestPage() {
   const [searchParams] = useSearchParams();
@@ -46,6 +46,8 @@ export default function QuoteRequestPage() {
 
   const price = useMemo(() => (product ? productPrice(product) : null), [product]);
   const productImage = useMemo(() => (product ? productImageUrl(product) : ""), [product]);
+  const resolvedProductId = product ? resolveProductId(product) : "";
+  const resolvedTitle = product ? productTitle(product) : "";
 
   async function submitQuote(payload) {
     setSaving(true);
@@ -67,7 +69,7 @@ export default function QuoteRequestPage() {
 
   return (
     <section className="quote-page">
-      <Link className="back-link" to={product ? `/products/${product.id}` : "/catalog"}>
+      <Link className="back-link" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
         <MaterialIcon name="arrow_back" size={18} />
         {product ? "Product" : "Catalog"}
       </Link>
@@ -81,10 +83,10 @@ export default function QuoteRequestPage() {
             <Spinner label="Loading product" />
           ) : product ? (
             <>
-              {productImage ? <img src={productImage} alt={product.title} /> : <span className="quote-product__image-fallback">{productInitials(product.title)}</span>}
+              {productImage ? <img src={productImage} alt={resolvedTitle} /> : <span className="quote-product__image-fallback">{productInitials(resolvedTitle)}</span>}
               <div>
                 <span>Selected product</span>
-                <h1>{product.title}</h1>
+                <h1>{resolvedTitle}</h1>
                 <strong>{price?.label || "Quote on request"}</strong>
                 {price?.sublabel ? <small>{price.sublabel}</small> : null}
               </div>

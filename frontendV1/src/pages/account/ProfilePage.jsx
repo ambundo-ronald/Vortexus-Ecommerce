@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import EmailVerificationNotice from "../../components/account/EmailVerificationNotice.jsx";
 import AccountProfileForm from "../../components/account/AccountProfileForm.jsx";
 import ChangePasswordForm from "../../components/auth/ChangePasswordForm.jsx";
 import Alert from "../../components/ui/Alert.jsx";
@@ -22,6 +23,7 @@ export default function ProfilePage() {
       <Link className="back-link" to="/account">
         <MaterialIcon name="arrow_back" size={18} /> Account
       </Link>
+      <EmailVerificationNotice user={auth.user} showVerified />
       <Alert tone="warning">Profile changes save directly to your account.</Alert>
       <AccountProfileForm user={auth.user} loading={auth.loading} error={auth.error} onSubmit={handleProfileUpdate} />
       <ChangePasswordForm loading={auth.loading} error={auth.error} onSubmit={handlePasswordChange} />

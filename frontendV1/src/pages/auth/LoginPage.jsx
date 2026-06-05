@@ -27,8 +27,10 @@ export default function LoginPage() {
       <LoginForm
         loading={auth.loading}
         error={auth.error}
+        errorCode={auth.errorCode}
         pendingTwoFactor={auth.pendingTwoFactor}
         onSubmit={handleLogin}
+        onRequestReactivation={auth.requestReactivation}
         onVerifyTwoFactor={handleTwoFactor}
         onCancelTwoFactor={auth.clearPendingTwoFactor}
       />

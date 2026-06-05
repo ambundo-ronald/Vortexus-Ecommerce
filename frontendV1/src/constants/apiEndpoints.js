@@ -14,6 +14,7 @@ export const ENDPOINTS = {
     register: "/account/register/",
     login: "/account/login/",
     loginTwoFactor: "/account/login/2fa/",
+    reactivationRequest: "/account/reactivation/request/",
     logout: "/account/logout/",
     verifyEmail: "/account/email/verify/",
     resendEmailVerification: "/account/email/verification/resend/",

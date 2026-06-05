@@ -8,6 +8,7 @@ import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { normalizeApiError } from "../../utils/errorHandler";
+import { productId, productTitle } from "../../utils/productDisplay";
 import "./preferences.css";
 
 export default function RecentlyViewedPage() {
@@ -63,7 +64,7 @@ export default function RecentlyViewedPage() {
       {products.length ? (
         <div className="recent-products-grid">
           {products.map((product) => (
-            <ProductCard product={product} key={product.id} />
+            <ProductCard product={product} key={productId(product) || productTitle(product)} />
           ))}
         </div>
       ) : null}

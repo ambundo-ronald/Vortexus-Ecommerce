@@ -1,0 +1,120 @@
+.email-touchpoint {
+  width: 100%;
+  align-items: start;
+  background: linear-gradient(135deg, var(--color-surface), var(--color-info-bg));
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: var(--space-3);
+  text-align: left;
+}
+
+.email-touchpoint--success {
+  background: linear-gradient(135deg, var(--color-surface), var(--color-success-bg));
+  border-left-color: var(--color-success);
+}
+
+.email-touchpoint--warning {
+  background: linear-gradient(135deg, var(--color-surface), var(--color-warning-bg));
+  border-left-color: var(--color-warning);
+}
+
+.email-touchpoint--security {
+  background: linear-gradient(135deg, var(--color-surface), var(--color-primary-soft));
+  border-left-color: var(--color-primary-700);
+}
+
+.email-touchpoint__icon {
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary-700);
+  display: inline-flex;
+  justify-content: center;
+}
+
+.email-touchpoint--success .email-touchpoint__icon {
+  color: var(--color-success);
+}
+
+.email-touchpoint--warning .email-touchpoint__icon {
+  color: var(--color-warning);
+}
+
+.email-touchpoint__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.email-touchpoint__copy strong {
+  color: var(--color-text);
+  font-weight: var(--font-weight-heading);
+}
+
+.email-touchpoint__copy span,
+.email-touchpoint__copy small {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.email-touchpoint__copy small {
+  font-size: 0.82rem;
+}
+
+.email-touchpoint__eyebrow {
+  color: var(--color-primary-700);
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.email-touchpoint__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.email-touchpoint__action {
+  min-height: 34px;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: var(--font-weight-bold);
+  padding: 7px var(--space-3);
+  text-decoration: none;
+}
+
+.email-touchpoint__action:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-700);
+}
+
+@media (min-width: 720px) {
+  .email-touchpoint {
+    align-items: center;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .email-touchpoint__actions {
+    grid-column: auto;
+    justify-content: flex-end;
+  }
+}

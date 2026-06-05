@@ -6,6 +6,8 @@ export const authApi = {
   register: (payload) => apiClient.post(ENDPOINTS.account.register, payload).then((response) => response.data),
   login: (payload) => apiClient.post(ENDPOINTS.account.login, payload).then((response) => response.data),
   loginTwoFactor: (payload) => apiClient.post(ENDPOINTS.account.loginTwoFactor, payload).then((response) => response.data),
+  requestReactivation: (payload) =>
+    apiClient.post(ENDPOINTS.account.reactivationRequest, payload).then((response) => response.data),
   logout: () => apiClient.post(ENDPOINTS.account.logout).then((response) => response.data),
   verifyEmail: (payload) => apiClient.post(ENDPOINTS.account.verifyEmail, payload).then((response) => response.data),
   resendEmailVerification: () =>

@@ -10,6 +10,7 @@ import { useCheckout } from "../../hooks/useCheckout";
 import { paymentsApi } from "../../api/payments.api";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
+import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
 
 function readPendingCheckout() {
@@ -165,7 +166,7 @@ export default function CheckoutReviewPage() {
               {(preview?.basket?.lines || []).map((line) => (
                 <div className="review-line" key={line.id}>
                   <span>{line.quantity}x</span>
-                  <strong>{line.product?.title || "Product"}</strong>
+                  <strong>{productTitle({ ...line, product: line.product || {} })}</strong>
                   <em>{formatCurrency(line.line_total, line.currency || preview?.basket?.currency)}</em>
                 </div>
               ))}

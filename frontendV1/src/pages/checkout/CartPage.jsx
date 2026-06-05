@@ -8,7 +8,7 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useCartStore } from "../../store/cart.store";
-import { formatCurrency } from "../../utils/currency";
+import { productInitials, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 import "./CartPage.css";
 
@@ -126,29 +126,19 @@ export default function CartPage() {
 function SavedCartItem({ item, disabled, onMove, onRemove }) {
   const product = item.product || item.wishlist_item?.product || {};
   const options = item.options || item.wishlist_item?.options || [];
-  const image = productImageUrl(product);
-  const stockCount =
-    product.stock ??
-    product.stock_count ??
-    product.num_in_stock ??
-    product.availability?.num_available ??
-    product.availability?.num_in_stock ??
-    product.availability?.stock;
-  const hasStockCount = stockCount !== null && stockCount !== undefined && stockCount !== "";
-  const isAvailable =
-    product.is_available !== false &&
-    product.availability?.is_available !== false &&
-    (!hasStockCount || Number(stockCount) > 0);
-  const stockText = isAvailable ? (hasStockCount ? `In stock ${stockCount}` : "In stock") : "Sold out";
-  const sku = product.sku || product.upc || product.code || product.slug || "Saved product";
+  const image = productImageUrl({ ...item, ...product, product });
+  const title = productTitle({ ...item, product }, "Saved product");
+  const sku = productSku({ ...item, product }, product.slug || "Saved product");
+  const price = productPrice(product);
+  const stock = stockTone(product);
 
   return (
     <article className="saved-cart-item">
       <div className="saved-cart-item__media">
-        {image ? <img src={image} alt={product.title || "Product"} /> : <MaterialIcon name="inventory_2" size={26} />}
+        {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
       </div>
       <div className="saved-cart-item__body">
-        <strong>{product.title || "Saved product"}</strong>
+        <strong>{title}</strong>
         <span className="saved-cart-item__sku">SKU: {sku}</span>
         {options.length ? (
           <ul className="cart-item__options">
@@ -160,10 +150,10 @@ function SavedCartItem({ item, disabled, onMove, onRemove }) {
             ))}
           </ul>
         ) : null}
-        <span className="saved-cart-item__price">{formatCurrency(product.price, product.currency)}</span>
-        <span className={`saved-cart-item__stock ${isAvailable ? "is-in-stock" : "is-sold-out"}`}>
-          <MaterialIcon name={isAvailable ? "check_circle" : "block"} size={15} />
-          {stockText}
+        <span className="saved-cart-item__price">{price.label || "Quote on request"}</span>
+        <span className={`saved-cart-item__stock ${stock.isAvailable ? "is-in-stock" : "is-sold-out"}`}>
+          <MaterialIcon name={stock.isAvailable ? "check_circle" : "block"} size={15} />
+          {stock.label}
         </span>
       </div>
       <div className="saved-cart-item__actions">

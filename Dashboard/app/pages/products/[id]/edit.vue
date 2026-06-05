@@ -22,10 +22,9 @@ const loadError = ref("")
 
 onMounted(async () => {
   isLoadingProduct.value = true
-  const [productResult, categoryResult, productOptionsResult] = await Promise.all([
+  const [productResult, categoryResult] = await Promise.all([
     getProduct(route.params.id as string),
     getCategoryOptions(),
-    getProductOptions(route.params.id as string),
   ])
 
   if (productResult.success)
@@ -35,10 +34,16 @@ onMounted(async () => {
 
   if (categoryResult.success)
     categories.value = categoryResult.data
-  if (productOptionsResult.success)
-    productOptions.value = productOptionsResult.data
 
   isLoadingProduct.value = false
+
+  const productOptionsResult = await getProductOptions({
+    excludeId: route.params.id as string,
+    maxPages: 2,
+    pageSize: 60,
+  })
+  if (productOptionsResult.success)
+    productOptions.value = productOptionsResult.data
 })
 
 const pageTitle = computed(() => "Edit Product");

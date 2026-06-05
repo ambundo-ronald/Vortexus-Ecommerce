@@ -198,7 +198,7 @@ def queue_account_registration_email(user) -> None:
 
 
 def build_email_verification_url(user) -> str:
-    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://localhost:5173'
+    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://127.0.0.1:5174'
     query = urlencode(
         {
             'uid': urlsafe_base64_encode(force_bytes(user.pk)),
@@ -209,7 +209,7 @@ def build_email_verification_url(user) -> str:
 
 
 def build_password_reset_url(user) -> str:
-    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://localhost:5173'
+    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://127.0.0.1:5174'
     query = urlencode(
         {
             'uid': urlsafe_base64_encode(force_bytes(user.pk)),
@@ -243,6 +243,41 @@ def queue_email_verification_email(user) -> None:
     from .tasks import send_email_verification_email_task
 
     dispatch_background_task(send_email_verification_email_task, run_kwargs={'user_id': user.id})
+
+
+def send_account_reactivation_request_email(user, *, requested_by: str = '', raise_on_failure: bool = False) -> bool:
+    recipients = configured_sales_recipients()
+    if not recipients:
+        return False
+    context = {
+        'shop_name': settings.OSCAR_SHOP_NAME,
+        'user': user,
+        'display_name': _display_name_for_user(user),
+        'requested_by': requested_by or user.email,
+    }
+    sent = False
+    for recipient in recipients:
+        sent = notification_service.send(
+            event_type='account_reactivation_request',
+            to_email=recipient,
+            subject_template='emails/account_reactivation_request_subject.txt',
+            body_template='emails/account_reactivation_request_body.txt',
+            context=context,
+            related_object_type='user',
+            related_object_id=str(user.id),
+            metadata={'email': user.email, 'requested_by': requested_by or user.email},
+            raise_on_failure=raise_on_failure,
+        ) or sent
+    return sent
+
+
+def queue_account_reactivation_request_email(user, *, requested_by: str = '') -> None:
+    from .tasks import send_account_reactivation_request_email_task
+
+    dispatch_background_task(
+        send_account_reactivation_request_email_task,
+        run_kwargs={'user_id': user.id, 'requested_by': requested_by},
+    )
 
 
 def send_password_reset_email(user, *, raise_on_failure: bool = False) -> bool:

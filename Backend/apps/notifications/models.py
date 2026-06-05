@@ -52,6 +52,7 @@ class EmailConfiguration(models.Model):
 class EmailNotification(models.Model):
     EVENT_CHOICES = [
         ('account_registered', 'Account Registered'),
+        ('account_reactivation_request', 'Account Reactivation Request'),
         ('email_verification', 'Email Verification'),
         ('email_two_factor', 'Email Two Factor'),
         ('password_reset', 'Password Reset'),

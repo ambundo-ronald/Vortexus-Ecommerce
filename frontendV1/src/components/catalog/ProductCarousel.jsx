@@ -8,7 +8,7 @@ import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productPrice, stockTone } from "../../utils/productDisplay";
+import { productId, productPrice, productTitle, stockTone } from "../../utils/productDisplay";
 
 const fallbackSlides = [
   { title: "Borehole pumps", tone: "blue" },
@@ -30,7 +30,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
     return fallbackSlides;
   }, [products]);
 
-  const slideIds = useMemo(() => slides.map((product) => product.id).filter(Boolean), [slides]);
+  const slideIds = useMemo(() => slides.map((product) => productId(product)).filter(Boolean), [slides]);
 
   useEffect(() => {
     if (user && slideIds.length) void loadStatus(slideIds);
@@ -49,7 +49,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
       notify({
         tone: "warning",
         title: "Sold out",
-        message: `${product.title} is out of stock right now.`
+        message: `${productTitle(product)} is out of stock right now.`
       });
       return;
     }
@@ -62,7 +62,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
       return;
     }
     try {
-      await addItem(product.id);
+      await addItem(productId(product));
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -87,21 +87,23 @@ export default function ProductCarousel({ products = [], loading = false }) {
       </button>
       <div className="carousel-track" ref={scrollRef}>
         {slides.map((product, index) => {
-          const hasProduct = Boolean(product.id);
+          const resolvedProductId = productId(product);
+          const title = productTitle(product);
+          const hasProduct = Boolean(resolvedProductId);
           const image = hasProduct ? productImageUrl(product) : "";
           const price = hasProduct ? productPrice(product) : null;
           const stock = hasProduct ? stockTone(product) : null;
           const canAdd = hasProduct && stock.isAvailable && !price.isQuote;
 
           return (
-            <article className={`promo-slide promo-slide--${product.tone || "blue"}`} key={product.id || product.title}>
-              {hasProduct ? <WishlistButton productId={product.id} productTitle={product.title} /> : null}
-              <Link className="promo-slide__media" to={hasProduct ? `/products/${product.id}` : "/catalog"}>
-                {image ? <img src={image} alt={product.title} loading={index === 0 ? "eager" : "lazy"} /> : <span>{product.title}</span>}
+            <article className={`promo-slide promo-slide--${product.tone || "blue"}`} key={resolvedProductId || title}>
+              {hasProduct ? <WishlistButton productId={resolvedProductId} productTitle={title} /> : null}
+              <Link className="promo-slide__media" to={hasProduct ? `/products/${resolvedProductId}` : "/catalog"}>
+                {image ? <img src={image} alt={title} loading={index === 0 ? "eager" : "lazy"} /> : <span>{title}</span>}
               </Link>
               <div className="promo-slide__content">
-                <Link to={hasProduct ? `/products/${product.id}` : "/catalog"}>
-                  <strong>{product.title}</strong>
+                <Link to={hasProduct ? `/products/${resolvedProductId}` : "/catalog"}>
+                  <strong>{title}</strong>
                 </Link>
                 {hasProduct ? (
                   <>
@@ -113,7 +115,7 @@ export default function ProductCarousel({ products = [], loading = false }) {
                         type="button"
                         disabled={cartLoading}
                         onClick={() => void handleAddToCart(product)}
-                        aria-label={canAdd ? `Add ${product.title} to cart` : `${product.title} is sold out`}
+                        aria-label={canAdd ? `Add ${title} to cart` : `${title} is sold out`}
                       >
                         <MaterialIcon name="add_shopping_cart" size={18} />
                       </button>

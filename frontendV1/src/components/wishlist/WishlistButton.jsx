@@ -17,6 +17,10 @@ export default function WishlistButton({ productId, productTitle = "product", va
   async function handleClick(event) {
     event.preventDefault();
     event.stopPropagation();
+    if (!productId) {
+      notify({ tone: "warning", title: "Product unavailable", message: "Open the catalog and try this product again.", icon: "info" });
+      return;
+    }
     if (!user) {
       notify({ tone: "warning", title: "Sign in required", message: "Sign in to save products.", icon: "person" });
       navigate("/login", { state: { from: location } });
@@ -33,7 +37,7 @@ export default function WishlistButton({ productId, productTitle = "product", va
   const className = variant === "detail" ? "wishlist-detail-button" : "wishlist-icon-button";
 
   return (
-    <button className={`${className} ${inWishlist ? "active" : ""}`} type="button" disabled={saving} onClick={handleClick} aria-label={label}>
+    <button className={`${className} ${inWishlist ? "active" : ""}`} type="button" disabled={saving || !productId} onClick={handleClick} aria-label={label}>
       <MaterialIcon name="favorite" size={variant === "detail" ? 20 : 19} filled={inWishlist} />
       {variant === "detail" ? <span>{inWishlist ? "Saved" : "Save"}</span> : null}
     </button>

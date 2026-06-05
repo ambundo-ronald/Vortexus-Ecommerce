@@ -6,6 +6,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useUiStore } from "../../store/ui.store";
+import { emailEventMeta, emailStatusLabel, readableEmailEvent } from "../../utils/emailEvents";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { formatDate } from "../../utils/formatDate";
 import "./notifications.css";
@@ -28,6 +29,7 @@ export default function NotificationDetailPage() {
 
   const metadata = useMemo(() => notification?.metadata || {}, [notification]);
   const body = metadata.body || metadata.message || metadata.text || "";
+  const eventMeta = useMemo(() => emailEventMeta(notification?.event_type), [notification]);
   const metadataRows = useMemo(
     () => Object.entries(metadata).filter(([key]) => !["body", "message", "text", "read", "archived"].includes(key)),
     [metadata]
@@ -92,11 +94,11 @@ export default function NotificationDetailPage() {
       {!loading && notification ? (
         <>
           <div className="notification-detail-hero">
-            <span className={`notification-detail-hero__icon${isRead(notification) ? "" : " unread"}`}>
-              <MaterialIcon name={isRead(notification) ? "mail" : "mark_email_unread"} size={26} />
+            <span className={`notification-detail-hero__icon notification-detail-hero__icon--${eventMeta.tone}${isRead(notification) ? "" : " unread"}`}>
+              <MaterialIcon name={eventMeta.icon} size={26} filled={!isRead(notification)} />
             </span>
             <div>
-              <p className="eyebrow">{readableEvent(notification.event_type)}</p>
+              <p className="eyebrow">{eventMeta.label}</p>
               <h1>{notification.subject || "Notification"}</h1>
               <p>
                 {notification.recipient ? `${notification.recipient} · ` : ""}
@@ -121,7 +123,7 @@ export default function NotificationDetailPage() {
 
           <article className="notification-detail-card">
             <div className="notification-status-row">
-              <span>{notification.status || "Status unknown"}</span>
+              <span>{emailStatusLabel(notification.status)}</span>
               {!isRead(notification) ? <strong>Unread</strong> : <strong>Read</strong>}
               {isArchived(notification) ? <strong>Archived</strong> : null}
             </div>
@@ -148,9 +150,7 @@ export default function NotificationDetailPage() {
   );
 }
 
-function readableEvent(value = "") {
-  return String(value || "Notification").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+const readableEvent = readableEmailEvent;
 
 function formatMetadataValue(value) {
   if (value === null || value === undefined || value === "") return "Not provided";

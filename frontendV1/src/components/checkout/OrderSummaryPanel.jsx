@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
+import { productTitle } from "../../utils/productDisplay";
 
 export default function OrderSummaryPanel({ basket, shipping, action, actionTo, loading = false }) {
   const totals = shipping?.totals || basket?.totals || {};
@@ -24,7 +25,7 @@ export default function OrderSummaryPanel({ basket, shipping, action, actionTo, 
           <div className="checkout-mini-line" key={line.id}>
             <span>{line.quantity}x</span>
             <strong>
-              {line.product?.title || "Product"}
+              {productTitle({ ...line, product: line.product || {} })}
               {line.options?.length ? (
                 <small>{line.options.map((option) => `${option.name || option.code}: ${option.value}`).join(" / ")}</small>
               ) : null}

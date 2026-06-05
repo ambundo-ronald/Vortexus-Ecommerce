@@ -5,6 +5,7 @@ import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
+import { emailEventMeta, emailStatusLabel, readableEmailEvent } from "../../utils/emailEvents";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { formatDate } from "../../utils/formatDate";
 import "./messages.css";
@@ -17,6 +18,7 @@ export default function MessageDetailPage() {
 
   const metadata = useMemo(() => message?.metadata || {}, [message]);
   const body = metadata.body || metadata.message || metadata.text || "";
+  const eventMeta = useMemo(() => emailEventMeta(message?.event_type), [message]);
   const metadataRows = useMemo(
     () => Object.entries(metadata).filter(([key]) => !["body", "message", "text", "read", "archived"].includes(key)),
     [metadata]
@@ -52,10 +54,10 @@ export default function MessageDetailPage() {
         <>
           <div className="message-detail-hero">
             <span className="message-row__icon">
-              <MaterialIcon name="mail" size={24} />
+              <MaterialIcon name={eventMeta.icon} size={24} filled={message.status === "sent"} />
             </span>
             <div>
-              <p className="eyebrow">{readableEvent(message.event_type)}</p>
+              <p className="eyebrow">{eventMeta.label}</p>
               <h1>{message.subject || "Message"}</h1>
               <p>
                 {message.recipient ? `${message.recipient} · ` : ""}
@@ -66,8 +68,8 @@ export default function MessageDetailPage() {
 
           <article className="message-detail-card">
             <div className="message-status-row">
-              <span>{message.status || "Status unknown"}</span>
-              <span>{readableEvent(message.event_type)}</span>
+              <span>{emailStatusLabel(message.status)}</span>
+              <span>{eventMeta.label}</span>
             </div>
 
             <div className="message-body">
@@ -92,9 +94,7 @@ export default function MessageDetailPage() {
   );
 }
 
-function readableEvent(value = "") {
-  return String(value || "Message").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+const readableEvent = readableEmailEvent;
 
 function formatMetadataValue(value) {
   if (value === null || value === undefined || value === "") return "Not provided";

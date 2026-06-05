@@ -3,7 +3,7 @@ import { mediaUrl } from "./media";
 function imageCandidate(value) {
   if (!value) return "";
   if (typeof value === "string") return value;
-  return value.src || value.url || value.original || value.image || "";
+  return value.src || value.url || value.original || value.original_url || value.image || value.image_url || value.thumbnail || "";
 }
 
 export function productImageUrl(product = {}) {
@@ -15,9 +15,13 @@ export function productImageUrl(product = {}) {
     product.imageUrl,
     product.image,
     product.src,
+    product.original_url,
+    product.url,
     product.product?.thumbnail,
     product.product?.primary_image,
-    product.product?.image_url
+    product.product?.image_url,
+    product.product?.image,
+    product.product?.src
   ];
 
   if (Array.isArray(product.images)) {

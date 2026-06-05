@@ -9,14 +9,19 @@ export default function RegisterPage() {
 
   async function handleRegister(payload) {
     await auth.register(payload);
-    navigate("/account", { replace: true });
+    navigate("/account", { replace: true, state: { emailVerificationPending: true } });
   }
 
   if (auth.user) return <Navigate to="/account" replace />;
 
   return (
     <section className="auth-page">
-      <RegisterForm loading={auth.loading} error={auth.error} onSubmit={handleRegister} />
+      <RegisterForm
+        loading={auth.loading}
+        error={auth.error}
+        onSubmit={handleRegister}
+        onRequestReactivation={auth.requestReactivation}
+      />
     </section>
   );
 }

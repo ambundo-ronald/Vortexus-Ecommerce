@@ -103,6 +103,24 @@
   font-variation-settings: "FILL" 1, "wght" 700, "GRAD" 0, "opsz" 24;
 }
 
+.notification-card--success .notification-card__icon,
+.notification-detail-hero__icon--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.notification-card--warning .notification-card__icon,
+.notification-detail-hero__icon--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.notification-card--security .notification-card__icon,
+.notification-detail-hero__icon--security {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-700);
+}
+
 .notification-card__copy {
   display: grid;
   gap: 3px;
@@ -120,6 +138,15 @@
   color: var(--color-text-muted);
   font-size: 0.86rem;
   font-style: normal;
+}
+
+.notification-card__copy em {
+  width: fit-content;
+  background: var(--color-bg-soft);
+  border-radius: 999px;
+  color: var(--color-text);
+  font-weight: 600;
+  padding: 4px 9px;
 }
 
 .notification-card__actions,

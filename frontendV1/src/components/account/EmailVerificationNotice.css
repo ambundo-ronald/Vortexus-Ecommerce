@@ -1,0 +1,111 @@
+.email-verification-notice,
+.email-verification-status {
+  align-items: flex-start;
+  background: var(--color-warning-bg);
+  border: 1px solid color-mix(in srgb, var(--color-accent-orange) 34%, var(--color-border));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: var(--space-4);
+}
+
+.email-verification-status {
+  background: var(--color-success-bg);
+  border-color: color-mix(in srgb, var(--color-success) 28%, var(--color-border));
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.email-verification-notice--compact,
+.email-verification-status--compact {
+  padding: var(--space-3);
+}
+
+.email-verification-notice__icon,
+.email-verification-status__icon {
+  align-items: center;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  color: var(--color-warning);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.email-verification-status__icon {
+  color: var(--color-success);
+}
+
+.email-verification-notice__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.email-verification-notice strong,
+.email-verification-status strong {
+  font-size: 0.98rem;
+}
+
+.email-verification-notice p,
+.email-verification-status small {
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.email-verification-notice p span {
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+.email-verification-notice__success,
+.email-verification-notice__error {
+  font-size: 0.82rem;
+  font-weight: var(--font-weight-bold);
+}
+
+.email-verification-notice__success {
+  color: var(--color-success);
+}
+
+.email-verification-notice__error {
+  color: var(--color-warning);
+}
+
+.email-verification-notice__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.email-verification-notice__actions .secondary-button {
+  gap: var(--space-1);
+  min-height: 38px;
+  padding-inline: var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .email-verification-notice {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .email-verification-notice__actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .email-verification-notice__actions .secondary-button,
+  .email-verification-notice__actions .text-action {
+    justify-content: center;
+    width: 100%;
+  }
+}

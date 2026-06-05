@@ -1,9 +1,10 @@
 from django.apps import apps
 from django.contrib.auth import authenticate, get_user_model, password_validation
 from django.db import transaction
+from django.db.models import Q
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed
 
 from apps.common.currency import (
     currency_for_country,
@@ -14,6 +15,14 @@ from apps.common.currency import (
 )
 
 User = get_user_model()
+
+
+class AccountInactive(APIException):
+    status_code = 403
+    default_detail = (
+        'This account was deactivated. Request reactivation from support, then sign in once the account is restored.'
+    )
+    default_code = 'account_inactive'
 
 
 def get_or_create_customer_profile(user):
@@ -78,9 +87,14 @@ class AccountRegistrationSerializer(serializers.Serializer):
     receive_marketing_emails = serializers.BooleanField(required=False, default=False)
 
     def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
+        existing_user = User.objects.filter(email__iexact=value).first()
+        if existing_user and not existing_user.is_active:
+            raise serializers.ValidationError(
+                'This email belongs to a deactivated account. Request reactivation before signing in or registering again.'
+            )
+        if existing_user:
             raise serializers.ValidationError('An account with this email already exists.')
-        return value
+        return value.strip().lower()
 
     def validate_country_code(self, value):
         normalized = normalize_country_code(value)
@@ -152,11 +166,27 @@ class AccountLoginSerializer(serializers.Serializer):
             user = authenticate(request=request, email=identifier, password=password)
 
         if user is None:
+            inactive_user = User.objects.filter(Q(username__iexact=identifier) | Q(email__iexact=identifier)).first()
+            if inactive_user and not inactive_user.is_active and inactive_user.check_password(password):
+                raise AccountInactive()
             raise AuthenticationFailed('Invalid credentials.')
         if not user.is_active:
-            raise AuthenticationFailed('This account is inactive.')
+            raise AccountInactive()
 
         attrs['user'] = user
+        return attrs
+
+
+class AccountReactivationRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(max_length=150)
+
+    def validate_identifier(self, value):
+        return value.strip().lower()
+
+    def validate(self, attrs):
+        identifier = attrs['identifier']
+        user = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
+        attrs['inactive_user'] = user if user and not user.is_active else None
         return attrs
 
 

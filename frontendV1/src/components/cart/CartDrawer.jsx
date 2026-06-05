@@ -5,7 +5,7 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
-import { productInitials } from "../../utils/productDisplay";
+import { productId, productInitials, productTitle } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 import "./CartDrawer.css";
 
@@ -70,15 +70,17 @@ export default function CartDrawer() {
 
 function DrawerCartItem({ line, onClick }) {
   const product = line.product || {};
-  const image = productImageUrl(product);
+  const title = productTitle({ ...line, product });
+  const image = productImageUrl({ ...line, ...product, product });
+  const resolvedProductId = productId({ ...line, product });
 
   return (
-    <Link className="cart-drawer-item" to={`/products/${product.id}`} onClick={onClick}>
+    <Link className="cart-drawer-item" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} onClick={onClick}>
       <span className="cart-drawer-item__media">
-        {image ? <img src={image} alt={product.title || "Product"} /> : <em>{productInitials(product.title)}</em>}
+        {image ? <img src={image} alt={title} /> : <em>{productInitials(title)}</em>}
       </span>
       <span className="cart-drawer-item__body">
-        <strong>{product.title || "Product"}</strong>
+        <strong>{title}</strong>
         <span>{formatCurrency(line.line_total, line.currency)}</span>
       </span>
     </Link>

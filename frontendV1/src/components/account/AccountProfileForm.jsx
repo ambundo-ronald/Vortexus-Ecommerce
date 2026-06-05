@@ -2,9 +2,10 @@ import { useState } from "react";
 
 import Alert from "../ui/Alert.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { isEmailVerified } from "./EmailVerificationNotice.jsx";
 
 export default function AccountProfileForm({ user, loading = false, error = "", onSubmit }) {
-  const emailVerified = Boolean(user?.email_verification?.is_verified);
+  const emailVerified = isEmailVerified(user);
   const [form, setForm] = useState(() => ({
     first_name: user?.first_name || "",
     last_name: user?.last_name || "",
@@ -59,6 +60,10 @@ export default function AccountProfileForm({ user, loading = false, error = "", 
         <span>Email</span>
         <input type="email" name="email" value={form.email} onChange={updateField} required />
       </label>
+      <p className={`auth-email-status${emailVerified ? " is-verified" : ""}`}>
+        <MaterialIcon name={emailVerified ? "mark_email_read" : "outgoing_mail"} size={16} />
+        {emailVerified ? "This email is verified." : "Changing or adding an email requires inbox verification."}
+      </p>
 
       <div className="form-grid two">
         <label>

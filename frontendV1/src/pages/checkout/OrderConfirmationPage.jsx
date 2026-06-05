@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
+import EmailTouchpointCard from "../../components/account/EmailTouchpointCard.jsx";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
@@ -8,6 +9,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
 
 function readStoredOrder() {
@@ -45,6 +47,15 @@ export default function OrderConfirmationPage() {
   const payment = payload?.payment;
   const address = order?.shipping_address;
   const lines = order?.lines || [];
+  const emailActions = order?.guest_email
+    ? []
+    : [
+        { to: "/account/messages", label: "Email history", icon: "inbox" },
+        { to: "/account/preferences", label: "Email settings", icon: "tune" }
+      ];
+  const emailMessage = order?.guest_email
+    ? `Your order summary is being sent to ${order.guest_email}. Keep that email for tracking and support.`
+    : "Your order summary is stored in your account and sent to your inbox. Delivery status emails will follow when the order moves forward.";
 
   useEffect(() => {
     if (!order) return;
@@ -88,6 +99,15 @@ export default function OrderConfirmationPage() {
         <h1>Order placed</h1>
         <p>Order #{order.number || order.order_number} is now in progress.</p>
 
+        <EmailTouchpointCard
+          actions={emailActions}
+          eyebrow="Order email"
+          icon="mark_email_read"
+          message={emailMessage}
+          title="Confirmation email is on the way"
+          tone="success"
+        />
+
         <div className="confirmation-grid">
           <div>
             <span>Total</span>
@@ -121,12 +141,12 @@ export default function OrderConfirmationPage() {
               <div className="confirmation-line" key={line.id}>
                 <span>{line.quantity}x</span>
                 <strong>
-                  {line.title || "Product"}
+                  {productTitle({ ...line, product: line.product || {} })}
                   {line.options?.length ? (
                     <small>{line.options.map((option) => `${option.name || option.code}: ${option.value}`).join(" / ")}</small>
                   ) : null}
                 </strong>
-                <em>{formatCurrency(line.line_price_incl_tax, line.currency || order.currency || "USD")}</em>
+                <em>{formatCurrency(line.line_price_incl_tax ?? line.line_total ?? line.total_incl_tax, line.currency || order.currency || "USD")}</em>
               </div>
             ))}
           </div>

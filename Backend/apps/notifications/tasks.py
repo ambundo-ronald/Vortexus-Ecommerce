@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 
 from .services import (
     send_account_registration_email,
+    send_account_reactivation_request_email,
     send_email_two_factor_code,
     send_email_verification_email,
     send_order_confirmation_email,
@@ -30,6 +31,15 @@ def send_email_verification_email_task(self, user_id: int) -> bool:
     if not user:
         return False
     return send_email_verification_email(user, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_account_reactivation_request_email_task(self, user_id: int, requested_by: str = '') -> bool:
+    User = get_user_model()
+    user = User.objects.filter(id=user_id).first()
+    if not user:
+        return False
+    return send_account_reactivation_request_email(user, requested_by=requested_by, raise_on_failure=True)
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
