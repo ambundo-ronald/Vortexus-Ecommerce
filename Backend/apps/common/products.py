@@ -2,7 +2,8 @@ from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from apps.common.currency import convert_product_payload
+from apps.common.catalog import brand_slug, product_brand
+from apps.common.currency import convert_product_payload, default_currency
 
 
 def stockrecord_price(stockrecord: Any) -> float | None:
@@ -23,7 +24,7 @@ def stockrecord_price(stockrecord: Any) -> float | None:
 def stockrecord_currency(stockrecord: Any) -> str:
     if stockrecord and getattr(stockrecord, 'price_currency', None):
         return stockrecord.price_currency
-    return 'USD'
+    return default_currency()
 
 
 def stockrecord_previous_price(stockrecord: Any) -> float | None:
@@ -43,7 +44,7 @@ def stockrecord_previous_price(stockrecord: Any) -> float | None:
 
 def stockrecord_previous_currency(stockrecord: Any) -> str:
     if not stockrecord:
-        return 'USD'
+        return default_currency()
 
     try:
         snapshot = stockrecord.price_snapshot
@@ -73,6 +74,7 @@ def serialize_product_card(
     base_previous_price = stockrecord_previous_price(stockrecord)
     base_previous_currency = stockrecord_previous_currency(stockrecord)
     stock_count = stockrecord_count(stockrecord)
+    brand = product_brand(product)
 
     image_url = ''
     try:
@@ -95,6 +97,8 @@ def serialize_product_card(
         'base_previous_price': base_previous_price,
         'base_previous_currency': base_previous_currency,
         'thumbnail': image_url,
+        'brand': brand,
+        'brand_slug': brand_slug(brand),
         'in_stock': stock_count > 0,
         'stock_count': stock_count,
         'num_in_stock': stock_count,

@@ -7,7 +7,7 @@ from oscar.apps.checkout.utils import CheckoutSessionData
 from oscar.apps.shipping.methods import FixedPrice, Free, NoShippingRequired
 from oscar.core.loading import get_class
 
-from apps.common.currency import convert_amount, resolve_display_currency
+from apps.common.currency import convert_amount, default_currency, resolve_display_currency
 from apps.common.products import serialize_product_card
 from apps.inventory.services import available_quantity_for_line, reserved_quantity_for_line
 from apps.common.taxes import calculate_checkout_taxes
@@ -252,7 +252,18 @@ def shipping_country_code(shipping_address) -> str:
 
 
 def basket_currency(basket) -> str:
-    return getattr(basket, 'currency', None) or 'USD'
+    return getattr(basket, 'currency', None) or default_currency()
+
+
+def ensure_basket_default_currency(basket):
+    if not basket or getattr(basket, 'pk', None) is None:
+        return
+    if not basket.is_empty:
+        return
+    if basket_currency(basket) == default_currency():
+        return
+    basket.currency = default_currency()
+    basket.save(update_fields=['currency'])
 
 
 def basket_subtotal(basket) -> Decimal:

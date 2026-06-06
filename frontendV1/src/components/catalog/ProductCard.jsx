@@ -18,6 +18,8 @@ export default function ProductCard({ product }) {
   const hasRating = Number.isFinite(rating) && rating > 0;
   const ratingText = hasRating ? rating.toFixed(1) : "New";
   const image = productImageUrl(product);
+  const brandName = product.brand || product.brand_name || product.manufacturer || "";
+  const brandSlug = product.brand_slug || slugify(brandName);
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";
 
@@ -56,6 +58,7 @@ export default function ProductCard({ product }) {
         <h3>
           <Link to={`/products/${product.id}`}>{product.title}</Link>
         </h3>
+        {brandName ? <Link className="product-card__brand" to={`/catalog/brand/${encodeURIComponent(brandSlug)}`}>{brandName}</Link> : null}
         <span className="product-card__price">
           <span className={price.previousLabel ? "product-card__price-row product-card__price-row--discounted" : "product-card__price-row"}>
             <strong>{price.label}</strong>
@@ -83,4 +86,12 @@ export default function ProductCard({ product }) {
       </div>
     </article>
   );
+}
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

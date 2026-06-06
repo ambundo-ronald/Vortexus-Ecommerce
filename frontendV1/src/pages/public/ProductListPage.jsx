@@ -9,16 +9,20 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import { useCategories } from "../../hooks/useCategories";
 import { useProducts } from "../../hooks/useProducts";
+import { useSearchFacets } from "../../hooks/useSearchFacets";
 
 export default function ProductListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
+  const { facets, error: facetsError } = useSearchFacets();
   const { products, pagination, loading, error, fetchProducts } = useProducts({}, { auto: false });
+  const filterCategories = facets.categories.length ? facets.categories : categories.flatMap((category) => [category, ...(category.children || [])]);
 
   const params = useMemo(() => ({
     q: searchParams.get("q") || "",
     category: searchParams.get("category") || "",
+    brand: searchParams.get("brand") || "",
     in_stock: searchParams.get("in_stock") === "true" || undefined,
     min_price: searchParams.get("min_price") || undefined,
     max_price: searchParams.get("max_price") || undefined,
@@ -29,6 +33,7 @@ export default function ProductListPage() {
 
   const displayFilters = useMemo(() => ({
     category: params.category,
+    brand: params.brand,
     in_stock: Boolean(params.in_stock),
     min_price: searchParams.get("min_price") || "",
     max_price: searchParams.get("max_price") || ""
@@ -36,8 +41,13 @@ export default function ProductListPage() {
 
   const activeCategory = useMemo(() => {
     if (!params.category) return null;
-    return categories.find((category) => category.slug === params.category) || null;
-  }, [categories, params.category]);
+    return filterCategories.find((category) => category.slug === params.category) || null;
+  }, [filterCategories, params.category]);
+
+  const activeBrand = useMemo(() => {
+    if (!params.brand) return null;
+    return facets.brands.find((brand) => (brand.slug || brand.name) === params.brand) || null;
+  }, [facets.brands, params.brand]);
 
   useEffect(() => {
     void fetchProducts(params);
@@ -59,7 +69,7 @@ export default function ProductListPage() {
 
   function clearFilters() {
     const next = new URLSearchParams(searchParams);
-    ["category", "in_stock", "min_price", "max_price", "page"].forEach((key) => next.delete(key));
+    ["category", "brand", "in_stock", "min_price", "max_price", "page"].forEach((key) => next.delete(key));
     setSearchParams(next);
     setFiltersOpen(false);
   }
@@ -74,13 +84,14 @@ export default function ProductListPage() {
   return (
     <>
       <section className="catalog-page">
-        <Alert>{categoriesError || error}</Alert>
+        <Alert>{categoriesError || facetsError || error}</Alert>
 
         <div className="catalog-layout">
           <aside className="catalog-sidebar">
             <ProductFilters
               filters={displayFilters}
-              categories={categories}
+              categories={filterCategories}
+              brands={facets.brands}
               onApply={setCatalogParams}
               onClear={clearFilters}
             />
@@ -92,7 +103,7 @@ export default function ProductListPage() {
                 Filters
               </button>
               <span className="catalog-active-category">
-                {categoriesLoading ? "Loading categories..." : activeCategory?.name || "All products"}
+                {categoriesLoading ? "Loading categories..." : activeBrand?.name || activeCategory?.name || "All products"}
               </span>
             </div>
             <ProductSortBar
@@ -123,7 +134,8 @@ export default function ProductListPage() {
           </div>
           <ProductFilters
             filters={displayFilters}
-            categories={categories}
+            categories={filterCategories}
+            brands={facets.brands}
             onApply={setCatalogParams}
             onClear={clearFilters}
           />

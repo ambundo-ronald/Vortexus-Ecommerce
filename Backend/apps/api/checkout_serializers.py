@@ -38,6 +38,7 @@ class BasketItemCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({'quantity': str(reason)})
 
         attrs['product'] = product
+        attrs['stockrecord'] = stock_info.stockrecord
         attrs['options'] = options
         return attrs
 

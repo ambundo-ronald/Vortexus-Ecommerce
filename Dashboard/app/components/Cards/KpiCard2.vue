@@ -11,7 +11,7 @@ interface KpiCategory {
 
 const props = withDefaults(defineProps<KpiCategory>(), {
   format: "number",
-  currency: "USD",
+  currency: "KES",
 });
 
 const numericValue = computed(() => {

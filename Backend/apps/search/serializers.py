@@ -4,6 +4,7 @@ from rest_framework import serializers
 class SearchQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True, default='')
     category = serializers.CharField(required=False, allow_blank=True)
+    brand = serializers.CharField(required=False, allow_blank=True)
     in_stock = serializers.BooleanField(required=False)
     min_price = serializers.DecimalField(required=False, max_digits=12, decimal_places=2, min_value=0)
     max_price = serializers.DecimalField(required=False, max_digits=12, decimal_places=2, min_value=0)
@@ -32,4 +33,5 @@ class SearchQuerySerializer(serializers.Serializer):
 class SearchSuggestionQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True, default='')
     category = serializers.CharField(required=False, allow_blank=True)
+    brand = serializers.CharField(required=False, allow_blank=True)
     limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=8)

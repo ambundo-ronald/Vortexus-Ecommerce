@@ -119,7 +119,7 @@ function formatCell(row: any, column: { key: string, type?: string }) {
   if (value === null || value === undefined || value === '')
     return 'Not recorded'
   if (column.type === 'money')
-    return new Intl.NumberFormat('en', { style: 'currency', currency: row.currency || 'USD' }).format(Number(value || 0))
+    return new Intl.NumberFormat('en', { style: 'currency', currency: row.currency || 'KES' }).format(Number(value || 0))
   if (column.type === 'date')
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   if (column.type === 'boolean')

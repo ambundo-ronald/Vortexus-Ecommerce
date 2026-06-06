@@ -80,7 +80,7 @@ function resetBandForm() {
 }
 
 function formatMoney(value: number | string) {
-  return new Intl.NumberFormat('en', { style: 'currency', currency: 'USD' }).format(Number(value || 0))
+  return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(Number(value || 0))
 }
 
 function formatWeight(value: number | string) {

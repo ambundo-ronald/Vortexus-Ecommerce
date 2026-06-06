@@ -6,7 +6,7 @@ import { formatCurrency } from "../../utils/currency";
 export default function OrderSummaryPanel({ basket, shipping, action, actionTo, loading = false }) {
   const totals = shipping?.totals || basket?.totals || {};
   const lines = basket?.lines || [];
-  const currency = totals.currency || basket?.currency || "USD";
+  const currency = totals.currency || basket?.currency || "KES";
   const subtotal = totals.subtotal ?? basket?.totals?.subtotal ?? 0;
   const shippingTotal = totals.shipping ?? 0;
   const tax = totals.tax ?? 0;

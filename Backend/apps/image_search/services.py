@@ -10,7 +10,8 @@ from opensearchpy.exceptions import OpenSearchException
 from PIL import Image, UnidentifiedImageError
 
 from apps.common.clients import get_opensearch_client
-from apps.common.currency import convert_product_payload
+from apps.common.catalog import filter_queryset_by_brand, filter_queryset_by_category_slug
+from apps.common.currency import convert_product_payload, default_currency
 from apps.common.products import serialize_product_card
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ class ImageSearchService:
         image_file,
         top_k: int,
         category: str | None = None,
+        brand: str | None = None,
         display_currency: str | None = None,
     ) -> dict[str, Any]:
         query_vector = self.embedding_service.embed_image(image_file)
@@ -120,12 +122,14 @@ class ImageSearchService:
                 query_vector=query_vector,
                 top_k=top_k,
                 category=category,
+                brand=brand,
                 display_currency=display_currency,
             )
         except (OpenSearchException, KeyError):
             return self._search_database_fallback(
                 top_k=top_k,
                 category=category,
+                brand=brand,
                 display_currency=display_currency,
             )
 
@@ -134,6 +138,7 @@ class ImageSearchService:
         query_vector: list[float],
         top_k: int,
         category: str | None = None,
+        brand: str | None = None,
         display_currency: str | None = None,
     ) -> dict[str, Any]:
         client = get_opensearch_client()
@@ -147,11 +152,27 @@ class ImageSearchService:
             }
         }
 
+        filters = []
         if category:
+            filters.append(
+                {
+                    'bool': {
+                        'should': [
+                            {'term': {'category_slugs': category}},
+                            {'term': {'category_slug': category}},
+                        ],
+                        'minimum_should_match': 1,
+                    }
+                }
+            )
+        if brand:
+            filters.append({'term': {'brand_slug': brand}})
+
+        if filters:
             query: dict[str, Any] = {
                 'bool': {
                     'must': [knn_clause],
-                    'filter': [{'term': {'category_slug': category}}],
+                    'filter': filters,
                 }
             }
         else:
@@ -177,10 +198,10 @@ class ImageSearchService:
                     'base_price': source.get('price'),
                     'previous_price': source.get('previous_price'),
                     'base_previous_price': source.get('previous_price'),
-                    'currency': source.get('currency', 'USD'),
-                    'base_currency': source.get('currency', 'USD'),
-                    'previous_currency': source.get('previous_currency', source.get('currency', 'USD')),
-                    'base_previous_currency': source.get('previous_currency', source.get('currency', 'USD')),
+                    'currency': source.get('currency', default_currency()),
+                    'base_currency': source.get('currency', default_currency()),
+                    'previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
+                    'base_previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
                     'thumbnail': source.get('thumbnail', ''),
                     'in_stock': source.get('in_stock', False),
                     'stock_count': source.get('stock_count', source.get('num_in_stock', 0)),
@@ -201,13 +222,20 @@ class ImageSearchService:
         self,
         top_k: int,
         category: str | None = None,
+        brand: str | None = None,
         display_currency: str | None = None,
     ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
 
-        queryset = Product.objects.filter(is_public=True).prefetch_related('stockrecords').order_by('-date_updated')
+        queryset = (
+            Product.objects.filter(is_public=True)
+            .prefetch_related('stockrecords', 'images', 'categories', 'attribute_values__attribute')
+            .order_by('-date_updated')
+        )
         if category:
-            queryset = queryset.filter(categories__slug=category)
+            queryset = filter_queryset_by_category_slug(queryset, category)
+        if brand:
+            queryset = filter_queryset_by_brand(queryset, brand)
 
         products = queryset.distinct()[:top_k]
         results = [serialize_product_card(product=product, display_currency=display_currency) for product in products]
