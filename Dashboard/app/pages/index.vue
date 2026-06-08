@@ -17,7 +17,7 @@ const rangeOptions = [
 const moneyFormatter = computed(() =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: summary.value?.currency || "USD",
+    currency: summary.value?.currency || "KES",
     maximumFractionDigits: 0,
   }),
 );
@@ -144,7 +144,7 @@ watch(selectedRange, loadDashboard, { immediate: true });
         :value="summary?.kpis?.revenue || 0"
         :budget="summary?.kpis?.revenue || 0"
         format="currency"
-        :currency="summary?.currency || 'USD'"
+        :currency="summary?.currency || 'KES'"
         color="var(--color-success)"
         icon="i-lucide-banknote"
         :loading="isLoading"

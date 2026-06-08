@@ -30,6 +30,10 @@ def supported_currencies() -> set[str]:
     return set(currency_rates().keys())
 
 
+def default_currency() -> str:
+    return normalize_currency_code(getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'KES')) or 'KES'
+
+
 def currency_for_country(country_code: str | None) -> str | None:
     normalized = normalize_country_code(country_code)
     if not normalized:
@@ -94,14 +98,14 @@ def resolve_display_currency(request=None, user=None, country_code: str | None =
     if user_currency:
         return user_currency
 
-    return normalize_currency_code(getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'USD')) or 'USD'
+    return default_currency()
 
 
 def convert_amount(amount, source_currency: str | None, target_currency: str | None) -> tuple[float | None, str]:
     if amount is None:
-        return None, normalize_currency_code(target_currency) or normalize_currency_code(source_currency) or 'USD'
+        return None, normalize_currency_code(target_currency) or normalize_currency_code(source_currency) or default_currency()
 
-    source = normalize_currency_code(source_currency) or 'USD'
+    source = normalize_currency_code(source_currency) or default_currency()
     target = normalize_currency_code(target_currency) or source
 
     rates = currency_rates()

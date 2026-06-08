@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 
-export default function ProductFilters({ filters, categories = [], onApply, onClear }) {
+export default function ProductFilters({ filters, categories = [], brands = [], onApply, onClear }) {
   const [draft, setDraft] = useState(filters);
 
   useEffect(() => {
@@ -17,6 +17,7 @@ export default function ProductFilters({ filters, categories = [], onApply, onCl
     event.preventDefault();
     onApply({
       category: draft.category || "",
+      brand: draft.brand || "",
       in_stock: Boolean(draft.in_stock),
       min_price: draft.min_price || "",
       max_price: draft.max_price || ""
@@ -36,7 +37,19 @@ export default function ProductFilters({ filters, categories = [], onApply, onCl
           <option value="">All categories</option>
           {categories.map((category) => (
             <option key={category.id} value={category.slug}>
-              {category.name}
+              {category.depth && category.depth > 1 ? `${"\u00a0".repeat(Math.max(0, category.depth - 1) * 2)}${category.name}` : category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field-control">
+        <span>Brand</span>
+        <select value={draft.brand || ""} onChange={(event) => updateField("brand", event.target.value)}>
+          <option value="">All brands</option>
+          {brands.map((brand) => (
+            <option key={brand.slug || brand.name} value={brand.slug || brand.name}>
+              {brand.name}
             </option>
           ))}
         </select>

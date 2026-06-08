@@ -7,7 +7,8 @@ from django.db.models import Avg, Count, Min, Q
 from opensearchpy.exceptions import OpenSearchException
 
 from apps.common.clients import get_opensearch_client
-from apps.common.currency import convert_product_payload
+from apps.common.catalog import filter_queryset_by_brand, filter_queryset_by_category_slug
+from apps.common.currency import convert_product_payload, default_currency
 from apps.common.products import serialize_product_card
 
 
@@ -43,7 +44,7 @@ class ProductSearchService:
             display_currency=display_currency,
         )
 
-    def suggest(self, query: str, category: str | None = None, limit: int = 8) -> dict[str, Any]:
+    def suggest(self, query: str, category: str | None = None, brand: str | None = None, limit: int = 8) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
         queryset = Product.objects.filter(is_public=True).exclude(structure='parent')
 
@@ -52,7 +53,10 @@ class ProductSearchService:
             queryset = queryset.filter(Q(title__icontains=cleaned) | Q(upc__icontains=cleaned))
 
         if category:
-            queryset = queryset.filter(categories__slug=category)
+            queryset = filter_queryset_by_category_slug(queryset, category)
+
+        if brand:
+            queryset = filter_queryset_by_brand(queryset, brand)
 
         products = queryset.order_by('title').values('id', 'title', 'upc')[:limit]
         return {
@@ -82,7 +86,21 @@ class ProductSearchService:
 
         category = filters.get('category')
         if category:
-            os_filters.append({'term': {'category_slug': category}})
+            os_filters.append(
+                {
+                    'bool': {
+                        'should': [
+                            {'term': {'category_slugs': category}},
+                            {'term': {'category_slug': category}},
+                        ],
+                        'minimum_should_match': 1,
+                    }
+                }
+            )
+
+        brand = filters.get('brand')
+        if brand:
+            os_filters.append({'term': {'brand_slug': brand}})
 
         in_stock = filters.get('in_stock')
         if in_stock is True:
@@ -110,7 +128,7 @@ class ProductSearchService:
                         {
                             'multi_match': {
                                 'query': query,
-                                'fields': ['title^3', 'description', 'attributes_text'],
+                                'fields': ['title^3', 'sku^2', 'description', 'brand^2', 'attributes_text'],
                                 'fuzziness': 'AUTO',
                             }
                         },
@@ -146,10 +164,10 @@ class ProductSearchService:
                         'base_price': source.get('price'),
                         'previous_price': source.get('previous_price'),
                         'base_previous_price': source.get('previous_price'),
-                        'currency': source.get('currency', 'USD'),
-                        'base_currency': source.get('currency', 'USD'),
-                        'previous_currency': source.get('previous_currency', source.get('currency', 'USD')),
-                        'base_previous_currency': source.get('previous_currency', source.get('currency', 'USD')),
+                        'currency': source.get('currency', default_currency()),
+                        'base_currency': source.get('currency', default_currency()),
+                        'previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
+                        'base_previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
                         'thumbnail': source.get('thumbnail', ''),
                         'in_stock': stock_count > 0,
                         'stock_count': stock_count,
@@ -190,7 +208,7 @@ class ProductSearchService:
         queryset = (
             Product.objects.filter(is_public=True)
             .exclude(structure='parent')
-            .prefetch_related('stockrecords', 'images', 'categories')
+            .prefetch_related('stockrecords', 'images', 'categories', 'attribute_values__attribute')
             .annotate(
                 list_price=Min('stockrecords__price'),
                 average_review_score=Avg(
@@ -211,7 +229,11 @@ class ProductSearchService:
 
         category = filters.get('category')
         if category:
-            queryset = queryset.filter(categories__slug=category)
+            queryset = filter_queryset_by_category_slug(queryset, category)
+
+        brand = filters.get('brand')
+        if brand:
+            queryset = filter_queryset_by_brand(queryset, brand)
 
         in_stock = filters.get('in_stock')
         if in_stock is True:
@@ -301,6 +323,7 @@ class ProductSearchService:
         return {
             'q': (query or '').strip(),
             'category': filters.get('category') or '',
+            'brand': filters.get('brand') or '',
             'in_stock': filters.get('in_stock'),
             'min_price': filters.get('min_price'),
             'max_price': filters.get('max_price'),

@@ -13,6 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
 from apps.common.products import serialize_product_card
 from apps.notifications.services import queue_quote_request_notifications
@@ -60,6 +61,7 @@ def _product_queryset(include_hidden: bool = False):
 
 def _build_product_detail(product, display_currency: str | None = None) -> dict:
     card = serialize_product_card(product=product, display_currency=display_currency)
+    brand = product_brand(product)
     specs = []
     for attribute_value in product.attribute_values.all():
         attribute = getattr(attribute_value, "attribute", None)
@@ -89,6 +91,8 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         "images": images,
         "primary_image": _get_primary_image_url(product),
         "categories": [_serialize_category(category) for category in product.categories.all()],
+        "brand": brand,
+        "brand_slug": brand_slug(brand),
         "specifications": specs,
         "options": options,
         "has_options": bool(options),
@@ -243,7 +247,7 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         queryset = (
             Product.objects.filter(is_public=True)
             .exclude(structure="parent")
-            .prefetch_related("stockrecords", "images", "categories")
+            .prefetch_related("stockrecords", "images", "categories", "attribute_values__attribute")
             .annotate(list_price=Min("stockrecords__price"))
             .distinct()
         )
@@ -256,7 +260,11 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         category = params.get("category")
         if category:
-            queryset = queryset.filter(categories__slug=category, categories__is_public=True)
+            queryset = filter_queryset_by_category_slug(queryset, category)
+
+        brand = params.get("brand", "").strip()
+        if brand:
+            queryset = filter_queryset_by_brand(queryset, brand)
 
         in_stock = params.get("in_stock")
         if in_stock is True:
@@ -303,6 +311,7 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
                 "filters": {
                     "q": query,
                     "category": category,
+                    "brand": brand,
                     "in_stock": in_stock,
                     "min_price": min_price,
                     "max_price": max_price,

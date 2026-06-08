@@ -118,7 +118,7 @@ class AdminDashboardAPIView(APIView):
                 'customer': _order_customer_name(order),
                 'date': order.date_placed,
                 'total': _decimal_to_float(order.total_incl_tax),
-                'currency': order.currency or getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'USD'),
+                'currency': order.currency or getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'KES'),
                 'status': order.status or 'Pending',
             }
             for order in orders.select_related('user').order_by('-date_placed', '-id')[:8]
@@ -190,7 +190,7 @@ class AdminDashboardAPIView(APIView):
         return Response(
             {
                 'range': {'days': days, 'start': start.date(), 'end': now.date()},
-                'currency': getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'USD'),
+                'currency': getattr(settings, 'OSCAR_DEFAULT_CURRENCY', 'KES'),
                 'kpis': {
                     'orders': orders.count(),
                     'recent_orders': recent_orders.count(),

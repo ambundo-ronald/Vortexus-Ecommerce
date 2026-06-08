@@ -22,6 +22,7 @@ class ProductSearchAPIView(APIView):
             query=params.get('q', ''),
             filters={
                 'category': params.get('category'),
+                'brand': params.get('brand'),
                 'in_stock': params.get('in_stock'),
                 'min_price': params.get('min_price'),
                 'max_price': params.get('max_price'),
@@ -47,6 +48,7 @@ class ProductSearchSuggestionAPIView(APIView):
             self.service.suggest(
                 query=params.get('q', ''),
                 category=params.get('category') or None,
+                brand=params.get('brand') or None,
                 limit=params.get('limit', 8),
             )
         )

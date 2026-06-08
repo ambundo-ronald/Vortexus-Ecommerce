@@ -30,6 +30,7 @@ import RegisterPage from "../pages/auth/RegisterPage.jsx";
 import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
 import VerifyEmailPage from "../pages/auth/VerifyEmailPage.jsx";
 import CategoryPage from "../pages/public/CategoryPage.jsx";
+import BrandPage from "../pages/public/BrandPage.jsx";
 import GuestOrderDetailPage from "../pages/public/GuestOrderDetailPage.jsx";
 import GuestOrderLookupPage from "../pages/public/GuestOrderLookupPage.jsx";
 import HomePage from "../pages/public/HomePage.jsx";
@@ -48,6 +49,7 @@ export default function AppRouter() {
     <Routes>
       <Route path="/" element={<PageWrapper><HomePage /></PageWrapper>} />
       <Route path="/catalog" element={<PageWrapper><ProductListPage /></PageWrapper>} />
+      <Route path="/catalog/brand/:brandSlug" element={<PageWrapper><BrandPage /></PageWrapper>} />
       <Route path="/catalog/category/:categorySlug" element={<PageWrapper><CategoryPage /></PageWrapper>} />
       <Route path="/products/:productId" element={<PageWrapper><ProductDetailPage /></PageWrapper>} />
       <Route path="/quote" element={<PageWrapper><QuoteRequestPage /></PageWrapper>} />

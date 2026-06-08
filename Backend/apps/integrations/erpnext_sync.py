@@ -1,5 +1,6 @@
 import json
 import hashlib
+import re
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
@@ -133,6 +134,11 @@ def _first_image_reference(item: dict) -> str:
     return ''
 
 
+def _extract_unpermitted_field(error_message: str) -> str:
+    match = re.search(r'Field not permitted in query:\s*([A-Za-z0-9_]+)', error_message or '')
+    return match.group(1) if match else ''
+
+
 def _filename_from_image_reference(image_reference: str, item_code: str) -> str:
     path = urlparse(image_reference).path if image_reference else ''
     filename = Path(path).name or f'{item_code or "erpnext-item"}.jpg'
@@ -178,24 +184,33 @@ class ERPNextSyncService:
         )
 
     def _fetch_items(self) -> list[dict]:
-        return self.client.fetch_all(
-            '/api/resource/Item',
-            query={
-                'fields': json.dumps([
-                    'name',
-                    'item_name',
-                    'description',
-                    'item_group',
-                    'stock_uom',
-                    'disabled',
-                    'image',
-                    'website_image',
-                    'thumbnail',
-                    'modified',
-                ]),
-            },
-            page_length=self.page_length,
-        )
+        fields = [
+            'name',
+            'item_name',
+            'description',
+            'item_group',
+            'stock_uom',
+            'disabled',
+            'image',
+            'website_image',
+            'thumbnail',
+            'modified',
+        ]
+        optional_fields = {'image', 'website_image', 'thumbnail'}
+        rejected_fields = set()
+
+        while True:
+            try:
+                return self.client.fetch_all(
+                    '/api/resource/Item',
+                    query={'fields': json.dumps([field for field in fields if field not in rejected_fields])},
+                    page_length=self.page_length,
+                )
+            except ERPNextIntegrationError as exc:
+                rejected_field = _extract_unpermitted_field(str(exc))
+                if rejected_field not in optional_fields or rejected_field in rejected_fields:
+                    raise
+                rejected_fields.add(rejected_field)
 
     def _fetch_prices(self) -> list[dict]:
         return self.client.fetch_all(

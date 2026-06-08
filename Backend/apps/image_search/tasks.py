@@ -8,6 +8,7 @@ from opensearchpy import NotFoundError
 from opensearchpy.exceptions import OpenSearchException
 
 from apps.common.clients import get_opensearch_client
+from apps.common.catalog import brand_slug, product_brand
 from apps.common.products import (
     stockrecord_count,
     stockrecord_currency,
@@ -47,20 +48,33 @@ def _safe_file_url(file_field) -> str:
 
 
 def _category_slug(product) -> str:
-    category = product.categories.first()
-    if category:
-        return category.slug
-    return ''
+    slugs = _category_slugs(product)
+    return slugs[-1] if slugs else ''
+
+
+def _category_slugs(product) -> list[str]:
+    slugs: list[str] = []
+    for category in product.categories.all():
+        try:
+            ancestors = list(category.get_ancestors()) + [category]
+        except Exception:
+            ancestors = [category]
+        slugs.extend(item.slug for item in ancestors if getattr(item, 'slug', ''))
+    return list(dict.fromkeys(slugs))
 
 
 def _index_document(product, embedding: list[float], file_field) -> dict[str, Any]:
     stockrecord = product.stockrecords.first()
+    brand = product_brand(product)
 
     return {
         'product_id': product.id,
         'title': product.title,
         'sku': product.upc,
         'category_slug': _category_slug(product),
+        'category_slugs': _category_slugs(product),
+        'brand': brand,
+        'brand_slug': brand_slug(brand),
         'price': stockrecord_price(stockrecord),
         'currency': stockrecord_currency(stockrecord),
         'previous_price': stockrecord_previous_price(stockrecord),
@@ -97,7 +111,7 @@ def sync_product_image_index(self, product_id: int, regenerate_embedding: bool =
     Product = apps.get_model('catalogue', 'Product')
     product = (
         Product.objects.filter(id=product_id, is_public=True)
-        .prefetch_related('categories', 'stockrecords')
+        .prefetch_related('categories', 'stockrecords', 'attribute_values__attribute')
         .first()
     )
 

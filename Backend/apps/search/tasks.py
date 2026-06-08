@@ -9,6 +9,7 @@ from opensearchpy.exceptions import OpenSearchException
 from opensearchpy.helpers import bulk
 
 from apps.common.clients import get_opensearch_client
+from apps.common.catalog import brand_slug, product_brand
 from apps.common.products import (
     stockrecord_count,
     stockrecord_currency,
@@ -40,10 +41,16 @@ def _build_product_document(product: Any) -> dict[str, Any]:
             value.value_as_text for value in product.attribute_values.all() if value.value_as_text
         )
 
-    category_slug = ''
-    first_category = product.categories.first()
-    if first_category:
-        category_slug = first_category.slug
+    category_slugs: list[str] = []
+    for category in product.categories.all():
+        try:
+            ancestors = list(category.get_ancestors()) + [category]
+        except Exception:
+            ancestors = [category]
+        category_slugs.extend(item.slug for item in ancestors if getattr(item, 'slug', ''))
+    category_slugs = list(dict.fromkeys(category_slugs))
+    category_slug = category_slugs[-1] if category_slugs else ''
+    brand = product_brand(product)
 
     return {
         'id': product.id,
@@ -51,6 +58,9 @@ def _build_product_document(product: Any) -> dict[str, Any]:
         'sku': product.upc,
         'description': product.description,
         'category_slug': category_slug,
+        'category_slugs': category_slugs,
+        'brand': brand,
+        'brand_slug': brand_slug(brand),
         'price': stockrecord_price(stockrecord),
         'currency': stockrecord_currency(stockrecord),
         'previous_price': stockrecord_previous_price(stockrecord),

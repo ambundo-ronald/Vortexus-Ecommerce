@@ -135,6 +135,11 @@ export const navSections: NavSection[] = [
         to: '/email-logs',
       },
       {
+        label: 'Payment Logs',
+        icon: 'i-lucide-credit-card',
+        to: '/payment-logs',
+      },
+      {
         label: 'Email Suppressions',
         icon: 'i-lucide-mail-x',
         to: '/email-suppressions',

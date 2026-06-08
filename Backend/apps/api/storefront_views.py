@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.common.catalog import brand_slug
 from apps.common.currency import (
     currency_for_country,
     is_supported_currency,
@@ -472,6 +473,22 @@ class AddressSerializer(serializers.Serializer):
                 setattr(instance, field, value)
         instance.save()
         return instance
+
+    def to_session_fields(self) -> dict:
+        data = self.validated_data.copy()
+        country = data.pop('country_code')
+        return {
+            **data,
+            'country_id': country.pk,
+        }
+
+    def to_address_payload(self) -> dict:
+        data = self.validated_data.copy()
+        country = data.pop('country_code')
+        return {
+            **data,
+            'country_code': country.iso_3166_1_a2,
+        }
 
 
 class AccountAddressCollectionAPIView(APIView):
@@ -957,27 +974,52 @@ class SearchFacetAPIView(APIView):
     def get(self, request):
         Product = apps.get_model('catalogue', 'Product')
         products = Product.objects.filter(is_public=True).exclude(structure='parent')
-        categories = apps.get_model('catalogue', 'Category').objects.filter(product__in=products).distinct()[:50]
+        Category = apps.get_model('catalogue', 'Category')
+        ProductCategory = apps.get_model('catalogue', 'ProductCategory')
+        direct_category_ids = (
+            ProductCategory.objects.filter(product__in=products)
+            .values_list('category_id', flat=True)
+            .distinct()
+        )
+        direct_categories = Category.objects.filter(id__in=direct_category_ids, is_public=True)
+        category_ids = set()
+        for category in direct_categories:
+            try:
+                category_ids.update(category.get_ancestors().filter(is_public=True).values_list('id', flat=True))
+            except Exception:
+                pass
+            category_ids.add(category.id)
+        categories = Category.objects.filter(id__in=category_ids, is_public=True).order_by('path', 'name')[:100]
         brands = (
             products.filter(attribute_values__attribute__code='brand')
             .values_list('attribute_values__value_text', flat=True)
-            .distinct()[:50]
+            .distinct()
+            .order_by('attribute_values__value_text')[:100]
         )
-        return Response(
-            {
-                'facets': {
-                    'categories': [{'name': category.name, 'slug': category.slug} for category in categories],
-                    'price_ranges': [
-                        {'label': 'Under 100', 'min': None, 'max': 100},
-                        {'label': '100 to 500', 'min': 100, 'max': 500},
-                        {'label': '500 to 1000', 'min': 500, 'max': 1000},
-                        {'label': '1000+', 'min': 1000, 'max': None},
-                    ],
-                    'brands': [{'name': brand} for brand in brands if brand],
-                    'availability': [{'value': True, 'label': 'In stock'}],
+        category_payload = []
+        for category in categories:
+            parent = category.get_parent()
+            category_payload.append(
+                {
+                    'id': category.id,
+                    'name': category.name,
+                    'slug': category.slug,
+                    'depth': category.depth,
+                    'parent_id': parent.id if parent else None,
                 }
-            }
-        )
+            )
+        facets = {
+            'categories': category_payload,
+            'price_ranges': [
+                {'label': 'Under 100', 'min': None, 'max': 100},
+                {'label': '100 to 500', 'min': 100, 'max': 500},
+                {'label': '500 to 1000', 'min': 500, 'max': 1000},
+                {'label': '1000+', 'min': 1000, 'max': None},
+            ],
+            'brands': [{'name': brand, 'slug': brand_slug(brand)} for brand in brands if brand],
+            'availability': [{'value': True, 'label': 'In stock'}],
+        }
+        return Response({'facets': facets, **facets})
 
 
 class BillingStateAPIView(APIView):
@@ -994,10 +1036,8 @@ class BillingAddressAPIView(APIView):
     def put(self, request):
         serializer = AddressSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data.copy()
-        country = data.pop('country_code')
-        get_checkout_session(request).bill_to_new_address({**data, 'country': country})
-        return Response({'billing': {'address': request.data}})
+        get_checkout_session(request).bill_to_new_address(serializer.to_session_fields())
+        return Response({'billing': {'address': serializer.to_address_payload()}})
 
 
 class AccountPreferenceAPIView(APIView):

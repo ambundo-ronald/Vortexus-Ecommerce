@@ -10,12 +10,15 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import { useCategories } from "../../hooks/useCategories";
 import { useSearch } from "../../hooks/useSearch";
+import { useSearchFacets } from "../../hooks/useSearchFacets";
 
 export default function SearchPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const { categories } = useCategories();
+  const { facets, error: facetsError } = useSearchFacets();
+  const filterCategories = facets.categories.length ? facets.categories : categories.flatMap((category) => [category, ...(category.children || [])]);
   const query = searchParams.get("q") || "";
   const imageMode = searchParams.get("image") === "1";
   const imagePayload = location.state?.imagePayload;
@@ -26,6 +29,7 @@ export default function SearchPage() {
   const params = useMemo(() => ({
     q: query,
     category: searchParams.get("category") || "",
+    brand: searchParams.get("brand") || "",
     in_stock: searchParams.get("in_stock") === "true" || undefined,
     min_price: searchParams.get("min_price") || undefined,
     max_price: searchParams.get("max_price") || undefined,
@@ -36,10 +40,11 @@ export default function SearchPage() {
 
   const displayFilters = useMemo(() => ({
     category: params.category,
+    brand: params.brand,
     in_stock: Boolean(params.in_stock),
     min_price: searchParams.get("min_price") || "",
     max_price: searchParams.get("max_price") || ""
-  }), [params.category, params.in_stock, searchParams]);
+  }), [params.brand, params.category, params.in_stock, searchParams]);
 
   useEffect(() => {
     if (imageMode && imagePayload) {
@@ -88,7 +93,7 @@ export default function SearchPage() {
 
   function clearFilters() {
     const next = new URLSearchParams(searchParams);
-    ["category", "in_stock", "min_price", "max_price", "page"].forEach((key) => next.delete(key));
+    ["category", "brand", "in_stock", "min_price", "max_price", "page"].forEach((key) => next.delete(key));
     setSearchParams(next);
     setFiltersOpen(false);
   }
@@ -110,7 +115,7 @@ export default function SearchPage() {
           <h1>{imageMode ? "Image search results" : query ? `Results for "${query}"` : "Find products faster"}</h1>
           <p>{imageMode && imageName ? imageName : `${total} result${total === 1 ? "" : "s"}`}</p>
         </div>
-        <SearchBar initialValue={query} compact />
+        <SearchBar initialValue={query} filters={{ category: params.category, brand: params.brand }} compact />
       </section>
 
       {!query && !imageMode && recentSearches.length ? (
@@ -145,7 +150,7 @@ export default function SearchPage() {
           )}
         </div>
 
-        <Alert>{imageError || error}</Alert>
+        <Alert>{imageError || facetsError || error}</Alert>
         {loading ? <ProductGrid products={[]} loading skeletonCount={12} /> : <ProductGrid products={results} emptyTitle="No search results" />}
         {!imageMode ? (
           <Pagination
@@ -167,7 +172,8 @@ export default function SearchPage() {
           </div>
           <ProductFilters
             filters={displayFilters}
-            categories={categories}
+            categories={filterCategories}
+            brands={facets.brands}
             onApply={setSearchValues}
             onClear={clearFilters}
           />

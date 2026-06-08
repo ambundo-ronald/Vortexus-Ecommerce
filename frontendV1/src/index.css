@@ -1993,6 +1993,22 @@ img {
   -webkit-box-orient: vertical;
 }
 
+.product-card__brand {
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-card__brand:hover {
+  text-decoration: underline;
+}
+
 .product-card__foot {
   position: absolute;
   right: 8px;

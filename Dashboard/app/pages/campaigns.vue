@@ -17,7 +17,7 @@ const rangeOptions = [
 const numberFormatter = new Intl.NumberFormat("en-US");
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
-  currency: "USD",
+  currency: "KES",
   maximumFractionDigits: 0,
 });
 

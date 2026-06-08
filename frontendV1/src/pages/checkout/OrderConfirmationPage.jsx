@@ -61,7 +61,7 @@ export default function OrderConfirmationPage() {
     if (!order) return;
     trackStorefrontEvent("order_confirmation_viewed", {
       order_number: order.number || order.order_number,
-      currency: order.currency || "USD",
+      currency: order.currency || "KES",
       total: order.totals?.total_incl_tax || order.total_incl_tax || order.total || order.order_total
     });
   }, [order]);
@@ -111,7 +111,7 @@ export default function OrderConfirmationPage() {
         <div className="confirmation-grid">
           <div>
             <span>Total</span>
-            <strong>{formatCurrency(order.totals?.total_incl_tax || order.total_incl_tax || order.total || order.order_total, order.currency || "USD")}</strong>
+            <strong>{formatCurrency(order.totals?.total_incl_tax || order.total_incl_tax || order.total || order.order_total, order.currency || "KES")}</strong>
           </div>
           <div>
             <span>Payment</span>
@@ -146,7 +146,7 @@ export default function OrderConfirmationPage() {
                     <small>{line.options.map((option) => `${option.name || option.code}: ${option.value}`).join(" / ")}</small>
                   ) : null}
                 </strong>
-                <em>{formatCurrency(line.line_price_incl_tax ?? line.line_total ?? line.total_incl_tax, line.currency || order.currency || "USD")}</em>
+                <em>{formatCurrency(line.line_price_incl_tax ?? line.line_total ?? line.total_incl_tax, line.currency || order.currency || "KES")}</em>
               </div>
             ))}
           </div>

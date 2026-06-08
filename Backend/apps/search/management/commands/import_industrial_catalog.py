@@ -33,7 +33,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--default-currency',
-            default='USD',
+            default='KES',
             help='Fallback currency when CSV column currency is empty.',
         )
         parser.add_argument('--dry-run', action='store_true', help='Validate and parse, then rollback changes.')

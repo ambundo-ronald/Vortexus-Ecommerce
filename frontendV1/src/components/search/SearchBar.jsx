@@ -6,7 +6,7 @@ import { searchApi } from "../../api/search.api";
 import { useCategories } from "../../hooks/useCategories";
 import { trackStorefrontEvent } from "../../utils/analytics";
 
-export default function SearchBar({ initialValue = "", compact = false }) {
+export default function SearchBar({ initialValue = "", filters = {}, compact = false }) {
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -43,7 +43,12 @@ export default function SearchBar({ initialValue = "", compact = false }) {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       try {
-        const payload = await searchApi.suggestions({ q: trimmed, limit: 6 });
+        const payload = await searchApi.suggestions({
+          q: trimmed,
+          limit: 6,
+          category: filters.category || undefined,
+          brand: filters.brand || undefined,
+        });
         if (!cancelled) {
           setSuggestions(payload.results || []);
           setSuggestionsOpen(true);
@@ -57,7 +62,7 @@ export default function SearchBar({ initialValue = "", compact = false }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [filters.brand, filters.category, query]);
 
   function submitSearch(event) {
     event.preventDefault();
@@ -92,6 +97,8 @@ export default function SearchBar({ initialValue = "", compact = false }) {
       const formData = new FormData();
       formData.append("image", file);
       formData.append("top_k", "24");
+      if (filters.category) formData.append("category", filters.category);
+      if (filters.brand) formData.append("brand", filters.brand);
       const payload = await searchApi.image(formData);
       navigate("/search?image=1", { state: { imagePayload: payload, imageName: file.name } });
     } catch (error) {

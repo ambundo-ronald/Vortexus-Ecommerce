@@ -26,6 +26,7 @@ class ImageSearchAPIView(APIView):
                 image_file=data['image'],
                 top_k=data.get('top_k', 12),
                 category=data.get('category') or None,
+                brand=data.get('brand') or None,
                 display_currency=resolve_display_currency(request),
             )
         except ValueError as exc:

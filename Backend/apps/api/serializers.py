@@ -3,12 +3,14 @@ from django.db import transaction
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
 
+from apps.common.currency import default_currency
 from apps.common.media import normalize_uploaded_image
 
 
 class ProductListQuerySerializer(serializers.Serializer):
     q = serializers.CharField(required=False, allow_blank=True, default="")
     category = serializers.CharField(required=False, allow_blank=True)
+    brand = serializers.CharField(required=False, allow_blank=True)
     status = serializers.ChoiceField(required=False, choices=["active", "draft"], allow_blank=True)
     in_stock = serializers.BooleanField(required=False)
     min_price = serializers.DecimalField(required=False, max_digits=12, decimal_places=2, min_value=0)
@@ -80,7 +82,7 @@ class ProductWriteSerializer(serializers.Serializer):
 
     DEFAULT_PRODUCT_CLASS = 'Industrial Product'
     DEFAULT_PARTNER_NAME = 'Default Partner'
-    DEFAULT_CURRENCY = 'USD'
+    DEFAULT_CURRENCY = default_currency()
 
     def validate(self, attrs):
         Product = apps.get_model('catalogue', 'Product')
