@@ -16,6 +16,7 @@ export function useProductReviews(productId, { auto = true } = {}) {
   const [reviews, setReviews] = useState([]);
   const [summary, setSummary] = useState(null);
   const [yourReview, setYourReview] = useState(null);
+  const [reviewEligibility, setReviewEligibility] = useState(null);
   const [loading, setLoading] = useState(Boolean(auto));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -29,6 +30,7 @@ export function useProductReviews(productId, { auto = true } = {}) {
       setReviews(payload?.results || []);
       setSummary(payload?.summary || null);
       setYourReview(payload?.your_review || null);
+      setReviewEligibility(payload?.review_eligibility || null);
       return payload;
     } catch (error) {
       setError(messageFromError(error));
@@ -77,7 +79,18 @@ export function useProductReviews(productId, { auto = true } = {}) {
     if (auto) void loadReviews();
   }, [auto, loadReviews]);
 
-  return { reviews, summary, yourReview, loading, saving, error, loadReviews, createReview, voteReview };
+  return {
+    reviews,
+    summary,
+    yourReview,
+    reviewEligibility,
+    loading,
+    saving,
+    error,
+    loadReviews,
+    createReview,
+    voteReview
+  };
 }
 
 export function useAccountReviews({ auto = true, status = "" } = {}) {

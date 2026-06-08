@@ -3,6 +3,8 @@ from django.db.models import Avg, Count
 from oscar.apps.catalogue.reviews.utils import get_default_review_status
 from rest_framework import serializers
 
+INELIGIBLE_ORDER_STATUSES = ['Failed', 'Cancelled', 'Canceled', 'Refunded']
+
 
 def get_product_model():
     return apps.get_model('catalogue', 'Product')
@@ -10,6 +12,10 @@ def get_product_model():
 
 def get_review_model():
     return apps.get_model('reviews', 'ProductReview')
+
+
+def get_order_line_model():
+    return apps.get_model('order', 'Line')
 
 
 def public_product_queryset():
@@ -21,7 +27,53 @@ def review_status_label(review) -> str:
     return review.get_status_display() if hasattr(review, 'get_status_display') else str(review.status)
 
 
-def review_payload(review, request_user=None) -> dict:
+def user_has_purchased_product(user, product) -> bool:
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    return (
+        get_order_line_model()
+        .objects.filter(product=product, order__user=user)
+        .exclude(order__status__in=INELIGIBLE_ORDER_STATUSES)
+        .exists()
+    )
+
+
+def verified_reviewer_ids_for_product(product) -> set[int]:
+    return set(
+        get_order_line_model()
+        .objects.filter(product=product, order__user_id__isnull=False)
+        .exclude(order__status__in=INELIGIBLE_ORDER_STATUSES)
+        .values_list('order__user_id', flat=True)
+        .distinct()
+    )
+
+
+def review_eligibility_for_user(user, product) -> dict:
+    if not user or not getattr(user, 'is_authenticated', False):
+        return {
+            'eligible': False,
+            'has_purchased': False,
+            'has_reviewed': False,
+            'reason': 'Sign in with the account used to purchase this product.',
+        }
+
+    has_reviewed = get_review_model().objects.filter(product=product, user=user).exists()
+    has_purchased = user_has_purchased_product(user, product)
+    if has_reviewed:
+        reason = 'You have already reviewed this product.'
+    elif not has_purchased:
+        reason = 'Only customers who purchased this product can leave a review.'
+    else:
+        reason = ''
+    return {
+        'eligible': has_purchased and not has_reviewed,
+        'has_purchased': has_purchased,
+        'has_reviewed': has_reviewed,
+        'reason': reason,
+    }
+
+
+def review_payload(review, request_user=None, verified_purchase=None) -> dict:
     reviewer_name = review.reviewer_name
     if review.user and str(reviewer_name).strip().lower() == 'anonymous':
         reviewer_name = review.user.username
@@ -32,6 +84,12 @@ def review_payload(review, request_user=None) -> dict:
         existing_vote = review.votes.filter(user=request_user).first()
         user_vote = existing_vote.delta if existing_vote else None
         can_vote = not is_owner and existing_vote is None
+    if verified_purchase is None:
+        verified_purchase = bool(
+            review.user_id
+            and review.product_id
+            and user_has_purchased_product(review.user, review.product)
+        )
     return {
         'id': review.id,
         'product_id': review.product_id,
@@ -51,25 +109,39 @@ def review_payload(review, request_user=None) -> dict:
         'date_created': review.date_created,
         'can_edit': is_owner,
         'can_delete': is_owner,
+        'verified_purchase': bool(verified_purchase),
     }
 
 
 def review_summary_for_product(product) -> dict:
     Review = get_review_model()
-    stats = Review.objects.filter(product=product, status=Review.APPROVED).aggregate(
+    approved_reviews = Review.objects.filter(product=product, status=Review.APPROVED)
+    review_count = approved_reviews.count()
+    verified_reviewer_ids = verified_reviewer_ids_for_product(product)
+    verified_reviews = approved_reviews.filter(user_id__in=verified_reviewer_ids)
+    stats = verified_reviews.aggregate(
         average_score=Avg('score'),
-        review_count=Count('id'),
     )
+    score_counts = {
+        int(row['score']): row['count']
+        for row in verified_reviews.values('score').annotate(count=Count('id'))
+    }
+    verified_count = verified_reviews.count()
     average_score = stats['average_score']
     return {
         'average_score': float(average_score) if average_score is not None else None,
-        'review_count': stats['review_count'] or 0,
+        'review_count': review_count,
+        'verified_rating_count': verified_count,
+        'rating_distribution': [
+            {'score': score, 'count': score_counts.get(score, 0)}
+            for score in range(5, 0, -1)
+        ],
         'product_rating': float(product.rating) if getattr(product, 'rating', None) is not None else None,
     }
 
 
 class ProductReviewCreateSerializer(serializers.Serializer):
-    score = serializers.IntegerField(min_value=0, max_value=5)
+    score = serializers.IntegerField(min_value=1, max_value=5)
     title = serializers.CharField(max_length=255)
     body = serializers.CharField(max_length=5000)
 
@@ -94,6 +166,10 @@ class ProductReviewCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'product': 'You have already reviewed this product. Update your existing review instead.'}
             )
+        if not user_has_purchased_product(request.user, product):
+            raise serializers.ValidationError(
+                {'product': 'Only customers who purchased this product can leave a review.'}
+            )
         return attrs
 
     def create(self, validated_data):
@@ -115,7 +191,7 @@ class ProductReviewCreateSerializer(serializers.Serializer):
 
 
 class ProductReviewUpdateSerializer(serializers.Serializer):
-    score = serializers.IntegerField(required=False, min_value=0, max_value=5)
+    score = serializers.IntegerField(required=False, min_value=1, max_value=5)
     title = serializers.CharField(required=False, max_length=255)
     body = serializers.CharField(required=False, max_length=5000)
 

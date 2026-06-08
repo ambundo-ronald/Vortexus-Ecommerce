@@ -10,8 +10,10 @@ from .review_serializers import (
     filter_reviews_for_status,
     get_review_model,
     public_product_queryset,
+    review_eligibility_for_user,
     review_payload,
     review_summary_for_product,
+    verified_reviewer_ids_for_product,
 )
 
 
@@ -33,9 +35,18 @@ class ProductReviewCollectionAPIView(APIView):
             .select_related('user', 'product')
             .order_by('-date_created', '-id')
         )
+        verified_reviewer_ids = verified_reviewer_ids_for_product(product)
         payload = {
             'summary': review_summary_for_product(product),
-            'results': [review_payload(review, request_user=request.user) for review in reviews],
+            'results': [
+                review_payload(
+                    review,
+                    request_user=request.user,
+                    verified_purchase=review.user_id in verified_reviewer_ids,
+                )
+                for review in reviews
+            ],
+            'review_eligibility': review_eligibility_for_user(request.user, product),
         }
 
         if request.user.is_authenticated:

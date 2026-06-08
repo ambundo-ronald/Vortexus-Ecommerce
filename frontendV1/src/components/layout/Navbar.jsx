@@ -124,7 +124,6 @@ export default function Navbar() {
           </div>
         ) : null}
       </header>
-      {showCategoryNavigation ? <CategoryNav categories={categories} activeCategory={activeCategory} variant="mobile" /> : null}
     </>
   );
 }
