@@ -3,7 +3,7 @@ import logging
 from django.apps import apps
 from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
-from django.db.models import Min, Q
+from django.db.models import Avg, Count, F, Min, Q
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 from rest_framework import permissions, status
@@ -49,9 +49,21 @@ def _get_primary_image_url(product) -> str:
 
 def _product_queryset(include_hidden: bool = False):
     Product = apps.get_model("catalogue", "Product")
+    Review = apps.get_model("reviews", "ProductReview")
     queryset = (
         Product.objects.exclude(structure="parent")
         .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images", "recommended_products")
+        .annotate(
+            average_review_score=Avg(
+                "reviews__score",
+                filter=Q(reviews__status=Review.APPROVED),
+            ),
+            review_count=Count(
+                "reviews",
+                filter=Q(reviews__status=Review.APPROVED),
+                distinct=True,
+            ),
+        )
         .distinct()
     )
     if include_hidden:
@@ -244,11 +256,23 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         display_currency = resolve_display_currency(request)
 
         Product = apps.get_model("catalogue", "Product")
+        Review = apps.get_model("reviews", "ProductReview")
         queryset = (
             Product.objects.filter(is_public=True)
             .exclude(structure="parent")
             .prefetch_related("stockrecords", "images", "categories", "attribute_values__attribute")
-            .annotate(list_price=Min("stockrecords__price"))
+            .annotate(
+                list_price=Min("stockrecords__price"),
+                average_review_score=Avg(
+                    "reviews__score",
+                    filter=Q(reviews__status=Review.APPROVED),
+                ),
+                review_count=Count(
+                    "reviews",
+                    filter=Q(reviews__status=Review.APPROVED),
+                    distinct=True,
+                ),
+            )
             .distinct()
         )
 
@@ -268,7 +292,7 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         in_stock = params.get("in_stock")
         if in_stock is True:
-            queryset = queryset.filter(stockrecords__num_in_stock__gt=0)
+            queryset = queryset.filter(stockrecords__num_in_stock__gt=F("stockrecords__num_allocated"))
 
         min_price = params.get("min_price")
         if min_price is not None:
@@ -432,7 +456,7 @@ class AdminProductCollectionAPIView(APIView):
 
         in_stock = params.get('in_stock')
         if in_stock is True:
-            queryset = queryset.filter(stockrecords__num_in_stock__gt=0)
+            queryset = queryset.filter(stockrecords__num_in_stock__gt=F('stockrecords__num_allocated'))
 
         min_price = params.get('min_price')
         if min_price is not None:

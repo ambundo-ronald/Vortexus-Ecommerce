@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { paymentsApi } from "../api/payments.api";
+import {
+  isPaymentComplete,
+  isPaymentFailed
+} from "../utils/payment";
 
-const COMPLETE_STATUSES = new Set(["authorized", "paid"]);
-const FAILED_STATUSES = new Set(["cancelled", "failed"]);
 const POLL_DELAY_MS = 4000;
 const MAX_PAYMENT_POLLS = 30;
 
@@ -38,7 +40,13 @@ export function usePayment({ auto = true } = {}) {
     }
   }, []);
 
-  const initializePayment = useCallback(async ({ method, phoneNumber = "", payerEmail = "" }) => {
+  const initializePayment = useCallback(async ({
+    method,
+    phoneNumber = "",
+    payerEmail = "",
+    customerName = "",
+    cardDetails = {}
+  }) => {
     setProcessing(true);
     setError("");
     try {
@@ -47,17 +55,21 @@ export function usePayment({ auto = true } = {}) {
         payload = await paymentsApi.initializeCard({
           method,
           payer_email: payerEmail,
-          payment_token: "tok_test_visa",
-          card_brand: method === "debit_card" ? "debit" : "visa",
-          last4: method === "debit_card" ? "0005" : "4242",
-          expiry_month: 12,
-          expiry_year: 2030,
-          holder_name: "Online Customer"
+          payment_token: cardDetails.paymentToken || (method === "debit_card" ? "tok_test_debit" : "tok_test_visa"),
+          card_brand: cardDetails.cardBrand || (method === "debit_card" ? "debit" : "visa"),
+          last4: cardDetails.last4 || (method === "debit_card" ? "0005" : "4242"),
+          expiry_month: cardDetails.expiryMonth || 12,
+          expiry_year: cardDetails.expiryYear || 2030,
+          holder_name: cardDetails.holderName || "Online Customer"
         });
       } else if (method === "mpesa") {
         payload = await paymentsApi.initializeMpesa({ phone_number: phoneNumber, payer_email: payerEmail });
       } else if (method === "pesapal") {
-        payload = await paymentsApi.initializePesapal({ phone_number: phoneNumber, payer_email: payerEmail });
+        payload = await paymentsApi.initializePesapal({
+          phone_number: phoneNumber,
+          payer_email: payerEmail,
+          customer_name: customerName
+        });
       } else if (method === "airtel_money") {
         payload = await paymentsApi.initializeAirtel({ phone_number: phoneNumber, payer_email: payerEmail });
       } else {
@@ -97,13 +109,20 @@ export function usePayment({ auto = true } = {}) {
     return nextPayment;
   }, []);
 
-  const waitForPayment = useCallback(async (createdPayment, { maxPolls = MAX_PAYMENT_POLLS, delayMs = POLL_DELAY_MS } = {}) => {
+  const waitForPayment = useCallback(async (
+    createdPayment,
+    {
+      maxPolls = MAX_PAYMENT_POLLS,
+      delayMs = POLL_DELAY_MS,
+      onUpdate
+    } = {}
+  ) => {
     if (!createdPayment?.reference) {
       throw new Error("Payment was not created. Choose another payment option.");
     }
 
-    if (COMPLETE_STATUSES.has(createdPayment.status)) return createdPayment;
-    if (FAILED_STATUSES.has(createdPayment.status)) {
+    if (isPaymentComplete(createdPayment)) return createdPayment;
+    if (isPaymentFailed(createdPayment)) {
       throw new Error("Payment was not completed. Choose another payment option.");
     }
 
@@ -113,8 +132,9 @@ export function usePayment({ auto = true } = {}) {
       for (let attempt = 0; attempt < maxPolls; attempt += 1) {
         if (attempt > 0) await delay(delayMs);
         const nextPayment = await getPaymentStatus(createdPayment.reference, createdPayment.method);
-        if (COMPLETE_STATUSES.has(nextPayment?.status)) return nextPayment;
-        if (FAILED_STATUSES.has(nextPayment?.status)) {
+        onUpdate?.(nextPayment);
+        if (isPaymentComplete(nextPayment)) return nextPayment;
+        if (isPaymentFailed(nextPayment)) {
           throw new Error("Payment was not completed. Choose another payment option.");
         }
       }

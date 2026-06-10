@@ -6,12 +6,12 @@ from typing import Any
 
 from django.apps import apps
 from django.conf import settings
+from django.db.models import Avg, Count, Q
 from opensearchpy.exceptions import OpenSearchException
 from PIL import Image, UnidentifiedImageError
 
 from apps.common.clients import get_opensearch_client
 from apps.common.catalog import filter_queryset_by_brand, filter_queryset_by_category_slug
-from apps.common.currency import convert_product_payload, default_currency
 from apps.common.products import serialize_product_card
 
 logger = logging.getLogger(__name__)
@@ -185,30 +185,44 @@ class ImageSearchService:
 
         response = client.search(index=settings.SEARCH_INDEX_IMAGE_EMBEDDINGS, body=body)
         results = []
+        hits = response['hits']['hits']
+        product_ids = [
+            hit.get('_source', {}).get('product_id')
+            for hit in hits
+            if hit.get('_source', {}).get('product_id')
+        ]
+        Product = apps.get_model('catalogue', 'Product')
+        Review = apps.get_model('reviews', 'ProductReview')
+        products = {
+            product.id: product
+            for product in (
+                Product.objects.filter(id__in=product_ids, is_public=True)
+                .exclude(structure='parent')
+                .prefetch_related('stockrecords', 'images', 'categories', 'attribute_values__attribute')
+                .annotate(
+                    average_review_score=Avg(
+                        'reviews__score',
+                        filter=Q(reviews__status=Review.APPROVED),
+                    ),
+                    review_count=Count(
+                        'reviews',
+                        filter=Q(reviews__status=Review.APPROVED),
+                        distinct=True,
+                    ),
+                )
+            )
+        }
 
-        for hit in response['hits']['hits']:
+        for hit in hits:
             source = hit.get('_source', {})
+            product = products.get(source.get('product_id'))
+            if not product:
+                continue
             results.append(
-                convert_product_payload(
-                {
-                    'id': source.get('product_id'),
-                    'title': source.get('title'),
-                    'sku': source.get('sku'),
-                    'price': source.get('price'),
-                    'base_price': source.get('price'),
-                    'previous_price': source.get('previous_price'),
-                    'base_previous_price': source.get('previous_price'),
-                    'currency': source.get('currency', default_currency()),
-                    'base_currency': source.get('currency', default_currency()),
-                    'previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
-                    'base_previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
-                    'thumbnail': source.get('thumbnail', ''),
-                    'in_stock': source.get('in_stock', False),
-                    'stock_count': source.get('stock_count', source.get('num_in_stock', 0)),
-                    'num_in_stock': source.get('num_in_stock', source.get('stock_count', 0)),
-                    'score': hit.get('_score'),
-                },
-                display_currency,
+                serialize_product_card(
+                    product=product,
+                    score=hit.get('_score'),
+                    display_currency=display_currency,
                 )
             )
 
@@ -226,10 +240,22 @@ class ImageSearchService:
         display_currency: str | None = None,
     ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
+        Review = apps.get_model('reviews', 'ProductReview')
 
         queryset = (
             Product.objects.filter(is_public=True)
             .prefetch_related('stockrecords', 'images', 'categories', 'attribute_values__attribute')
+            .annotate(
+                average_review_score=Avg(
+                    'reviews__score',
+                    filter=Q(reviews__status=Review.APPROVED),
+                ),
+                review_count=Count(
+                    'reviews',
+                    filter=Q(reviews__status=Review.APPROVED),
+                    distinct=True,
+                ),
+            )
             .order_by('-date_updated')
         )
         if category:

@@ -150,3 +150,49 @@ export function BrandStrip({ blocks = [] }) {
     </section>
   );
 }
+
+export function TopCategoryStrip({ blocks = [] }) {
+  const trackRef = useRef(null);
+
+  if (!blocks.length) return null;
+
+  function scrollTrack(direction) {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollBy({
+      left: direction * Math.max(260, track.clientWidth * 0.78),
+      behavior: "smooth"
+    });
+  }
+
+  return (
+    <section className="marketing-category-section" aria-label="Top categories">
+      <div className="section-heading section-heading--marketing">
+        <h2>Top categories</h2>
+        <Link to="/catalog">View all</Link>
+      </div>
+      <button className="marketing-category-nav marketing-category-nav--prev" type="button" aria-label="Previous categories" onClick={() => scrollTrack(-1)}>
+        <MaterialIcon name="chevron_left" size={28} />
+      </button>
+      <div className="marketing-category-track" ref={trackRef}>
+        {blocks.map((block) => (
+          <MarketingLink block={block} className="marketing-category-card" key={block.id || block.slug} style={blockStyle(block)}>
+            <span className="marketing-category-card__media">
+              {block.image_url ? (
+                <img src={mediaUrl(block.image_url)} alt={block.image_alt || block.title} loading="lazy" />
+              ) : (
+                <MaterialIcon name="category" size={28} />
+              )}
+            </span>
+            <strong>{block.headline || block.title}</strong>
+            {block.body ? <small>{block.body}</small> : null}
+            <MaterialIcon name="arrow_forward" size={18} />
+          </MarketingLink>
+        ))}
+      </div>
+      <button className="marketing-category-nav marketing-category-nav--next" type="button" aria-label="Next categories" onClick={() => scrollTrack(1)}>
+        <MaterialIcon name="chevron_right" size={28} />
+      </button>
+    </section>
+  );
+}

@@ -9,6 +9,10 @@ import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import {
+  paymentStatusView,
+  readablePaymentMethod
+} from "../../utils/payment";
 import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
 
@@ -45,6 +49,7 @@ export default function OrderConfirmationPage() {
 
   const order = payload?.order;
   const payment = payload?.payment;
+  const paymentView = paymentStatusView(payment);
   const address = order?.shipping_address;
   const lines = order?.lines || [];
   const emailActions = order?.guest_email
@@ -115,17 +120,28 @@ export default function OrderConfirmationPage() {
           </div>
           <div>
             <span>Payment</span>
-            <strong>{payment?.status || "received"}</strong>
+            <strong>{paymentView.label}</strong>
           </div>
           <div>
             <span>Method</span>
-            <strong>{readablePayment(payment?.method)}</strong>
+            <strong>{readablePaymentMethod(payment?.method)}</strong>
           </div>
           <div>
             <span>Delivery</span>
             <strong>{address?.line4 || order.shipping_method || "Saved"}</strong>
           </div>
         </div>
+
+        {payment ? (
+          <div className={`confirmation-payment confirmation-payment--${paymentView.tone}`}>
+            <MaterialIcon name={paymentView.icon} size={20} />
+            <div>
+              <strong>{paymentView.title}</strong>
+              <span>{paymentView.message}</span>
+              {payment.reference ? <small>Reference: {payment.reference}</small> : null}
+            </div>
+          </div>
+        ) : null}
 
         {address ? (
           <div className="confirmation-address">
@@ -165,8 +181,4 @@ export default function OrderConfirmationPage() {
       </div>
     </section>
   );
-}
-
-function readablePayment(method = "") {
-  return method.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Payment";
 }

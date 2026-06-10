@@ -198,7 +198,7 @@ def queue_account_registration_email(user) -> None:
 
 
 def build_email_verification_url(user) -> str:
-    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://127.0.0.1:5174'
+    base_url = settings.STOREFRONT_BASE_URL
     query = urlencode(
         {
             'uid': urlsafe_base64_encode(force_bytes(user.pk)),
@@ -209,7 +209,7 @@ def build_email_verification_url(user) -> str:
 
 
 def build_password_reset_url(user) -> str:
-    base_url = getattr(settings, 'STOREFRONT_BASE_URL', '').rstrip('/') or 'http://127.0.0.1:5174'
+    base_url = settings.STOREFRONT_BASE_URL
     query = urlencode(
         {
             'uid': urlsafe_base64_encode(force_bytes(user.pk)),

@@ -5,7 +5,7 @@ import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productId, productInitials, productPrice, productTitle, stockTone } from "../../utils/productDisplay";
+import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
 
 export default function ProductCard({ product }) {
   const addItem = useCartStore((state) => state.addItem);
@@ -15,12 +15,10 @@ export default function ProductCard({ product }) {
   const stock = stockTone(product);
   const resolvedProductId = productId(product);
   const title = productTitle(product);
-  const reviewCount = Number(product.review_count ?? product.reviews_count ?? product.num_reviews ?? 0);
-  const rating = Number(product.rating ?? product.average_rating ?? product.average_review_score ?? product.review_score ?? 0);
-  const hasRating = Number.isFinite(rating) && rating > 0;
+  const { rating, reviewCount, hasRating } = productRating(product);
   const ratingText = hasRating ? rating.toFixed(1) : "New";
   const image = productImageUrl(product);
-  const brandName = product.brand || product.brand_name || product.manufacturer || "";
+  const brandName = productBrand(product);
   const brandSlug = product.brand_slug || slugify(brandName);
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";

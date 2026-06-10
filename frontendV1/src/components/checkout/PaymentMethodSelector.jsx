@@ -1,28 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { paymentMethodCopy } from "../../utils/payment";
 
 const preferredOrder = ["pesapal", "cash_on_delivery", "bank_transfer", "credit_card", "debit_card", "mpesa", "airtel_money"];
 
-const methodIcons = {
-  cash_on_delivery: "payments",
-  bank_transfer: "account_balance",
-  credit_card: "credit_card",
-  debit_card: "credit_card",
-  pesapal: "account_balance_wallet",
-  mpesa: "phone_iphone",
-  airtel_money: "phone_iphone"
-};
-
-const reliableMethods = new Set(["cash_on_delivery", "bank_transfer", "credit_card", "debit_card"]);
-
-export default function PaymentMethodSelector({ methods = [], processing = false, onSubmit, submitLabel = "Continue to review" }) {
+export default function PaymentMethodSelector({
+  methods = [],
+  processing = false,
+  onSubmit,
+  submitLabel = "Continue to review",
+  defaultEmail = "",
+  defaultPhone = ""
+}) {
   const sortedMethods = useMemo(() => {
     return [...methods].sort((a, b) => methodRank(a.code) - methodRank(b.code));
   }, [methods]);
   const [method, setMethod] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [payerEmail, setPayerEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(defaultPhone);
+  const [payerEmail, setPayerEmail] = useState(defaultEmail);
+  const [holderName, setHolderName] = useState("");
 
   useEffect(() => {
     if (!method && sortedMethods.length) {
@@ -31,12 +28,23 @@ export default function PaymentMethodSelector({ methods = [], processing = false
   }, [method, sortedMethods]);
 
   const selected = sortedMethods.find((item) => item.code === method);
+  const selectedCopy = paymentMethodCopy(selected);
   const requiresPhone = Boolean(selected?.requires_phone || method === "mpesa" || method === "airtel_money");
-  const gatewayDependent = selected && !reliableMethods.has(selected.code);
+  const isCard = method === "credit_card" || method === "debit_card";
 
   function handleSubmit(event) {
     event.preventDefault();
-    onSubmit?.({ method, phoneNumber, payerEmail });
+    onSubmit?.({
+      method,
+      phoneNumber,
+      payerEmail,
+      cardDetails: {
+        holderName,
+        paymentToken: method === "debit_card" ? "tok_test_debit" : "tok_test_visa",
+        cardBrand: method === "debit_card" ? "debit" : "visa",
+        last4: method === "debit_card" ? "0005" : "4242"
+      }
+    });
   }
 
   return (
@@ -57,26 +65,31 @@ export default function PaymentMethodSelector({ methods = [], processing = false
       ) : null}
 
       <div className="choice-list">
-        {sortedMethods.map((item) => (
-          <button
-            className={`choice-card ${method === item.code ? "active" : ""}`}
-            type="button"
-            key={item.code}
-            onClick={() => setMethod(item.code)}
-          >
-            <span className="choice-card__icon">
-              <MaterialIcon name={methodIcons[item.code] || "payments"} size={22} />
-            </span>
-            <span className="choice-card__copy">
-              <strong>
-                {item.name}
-                {reliableMethods.has(item.code) ? <em>Ready</em> : <em className="muted">Mobile</em>}
-              </strong>
-              <small>{paymentHint(item)}</small>
-            </span>
-            <MaterialIcon name={method === item.code ? "radio_button_checked" : "radio_button_unchecked"} size={22} />
-          </button>
-        ))}
+        {sortedMethods.map((item) => {
+          const copy = paymentMethodCopy(item);
+          return (
+            <button
+              className={`choice-card ${method === item.code ? "active" : ""}`}
+              type="button"
+              key={item.code}
+              onClick={() => setMethod(item.code)}
+            >
+              <span className="choice-card__icon">
+                <MaterialIcon name={copy.icon} size={22} />
+              </span>
+              <span className="choice-card__copy">
+                <strong>
+                  {item.name}
+                  <em className={item.is_sandbox ? "muted" : ""}>
+                    {item.is_sandbox ? "Test" : item.requires_prepayment ? "Pay now" : "Pay later"}
+                  </em>
+                </strong>
+                <small>{copy.hint}</small>
+              </span>
+              <MaterialIcon name={method === item.code ? "radio_button_checked" : "radio_button_unchecked"} size={22} />
+            </button>
+          );
+        })}
       </div>
 
       {requiresPhone ? (
@@ -91,17 +104,23 @@ export default function PaymentMethodSelector({ methods = [], processing = false
         <input type="email" value={payerEmail} onChange={(event) => setPayerEmail(event.target.value)} placeholder="you@example.com" required />
       </label>
 
-      {(method === "credit_card" || method === "debit_card") ? (
-        <div className="checkout-note-panel">
-          <MaterialIcon name="lock" size={18} />
-          <span>Card authorization is protected. No card number is stored in this browser.</span>
-        </div>
+      {isCard ? (
+        <>
+          <label>
+            <span>Name on card</span>
+            <input value={holderName} onChange={(event) => setHolderName(event.target.value)} placeholder="Cardholder name" required />
+          </label>
+          <div className="checkout-note-panel warning">
+            <MaterialIcon name="science" size={18} />
+            <span>This backend currently exposes a sandbox card token flow. No real card details will be collected or charged.</span>
+          </div>
+        </>
       ) : null}
 
-      {gatewayDependent ? (
+      {selected?.is_sandbox && !isCard ? (
         <div className="checkout-note-panel warning">
-          <MaterialIcon name="warning" size={18} />
-          <span>This option may be temporarily unavailable. If it fails, choose cash, bank transfer, or card.</span>
+          <MaterialIcon name="science" size={18} />
+          <span>{selectedCopy.shortName} is connected to a sandbox environment and will not collect real money.</span>
         </div>
       ) : null}
 
@@ -116,13 +135,4 @@ export default function PaymentMethodSelector({ methods = [], processing = false
 function methodRank(code) {
   const index = preferredOrder.indexOf(code);
   return index === -1 ? preferredOrder.length + 1 : index;
-}
-
-function paymentHint(method) {
-  if (method.code === "pesapal") return "Secure hosted checkout";
-  if (method.code === "cash_on_delivery") return "Pay when your order arrives";
-  if (method.code === "bank_transfer") return "Order is reserved for transfer";
-  if (method.code === "credit_card" || method.code === "debit_card") return "Secure card authorization";
-  if (method.requires_prepayment) return "Pay before order is placed";
-  return "Available for this order";
 }

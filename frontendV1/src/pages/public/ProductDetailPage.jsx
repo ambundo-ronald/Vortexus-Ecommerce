@@ -21,7 +21,16 @@ import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { trackStorefrontEvent } from "../../utils/analytics";
-import { productId as resolveProductId, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
+import {
+  productBrand,
+  productCategory,
+  productId as resolveProductId,
+  productPrice,
+  productRating,
+  productSku,
+  productTitle,
+  stockTone
+} from "../../utils/productDisplay";
 import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
@@ -43,7 +52,7 @@ export default function ProductDetailPage() {
     [productOptions, selectedOptions]
   );
   const category = useMemo(() => product?.categories?.[0] || null, [product]);
-  const categoryLabel = category?.name || "Uncategorized";
+  const categoryLabel = productCategory(product || {}, "Uncategorized");
   const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
   const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
   const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
@@ -82,9 +91,8 @@ export default function ProductDetailPage() {
   const price = productPrice(product);
   const stock = stockTone(product);
   const canAddToCart = stock.isAvailable && !price.isQuote;
-  const reviewCount = Number(product.review_count || product.reviews_count || 0);
-  const rating = Number(product.rating || product.average_review_score || 0);
-  const brandLabel = product.brand || product.brand_name || product.manufacturer || "Not specified";
+  const { rating, reviewCount } = productRating(product);
+  const brandLabel = productBrand(product, "Not specified");
   const maxQuantity = stock.count > 0 ? stock.count : 99;
   const boundedQuantity = Math.max(1, Math.min(quantity, maxQuantity || 1));
 
@@ -383,8 +391,8 @@ function buildProductSpecs(product) {
   }
 
   addSpec("SKU", product.sku || product.upc || product.code, "sku");
-  addSpec("Brand", product.brand || product.brand_name || product.manufacturer, "brand");
-  addSpec("Category", product.categories?.[0]?.name, "category");
+  addSpec("Brand", productBrand(product), "brand");
+  addSpec("Category", productCategory(product), "category");
   addSpec("Tags", Array.isArray(product.tags) ? product.tags.join(", ") : product.tags, "tags");
   addSpec("Weight", product.weight || product.weight_grams, "weight");
   addSpec("Dimensions", product.dimensions, "dimensions");

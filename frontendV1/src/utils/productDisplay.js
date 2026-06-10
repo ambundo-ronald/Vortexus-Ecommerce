@@ -31,6 +31,60 @@ export function productSku(product = {}, fallback = "") {
   );
 }
 
+export function productBrand(product = {}, fallback = "") {
+  return (
+    product.brand ||
+    product.brand_name ||
+    product.manufacturer ||
+    product.product?.brand ||
+    product.product?.brand_name ||
+    product.product?.manufacturer ||
+    fallback
+  );
+}
+
+export function productCategory(product = {}, fallback = "") {
+  const category =
+    product.category ||
+    product.categories?.[0] ||
+    product.product?.category ||
+    product.product?.categories?.[0];
+
+  if (typeof category === "string") return category || fallback;
+  return category?.name || category?.title || fallback;
+}
+
+export function productRating(product = {}) {
+  const rating = Number(
+    firstValue(
+      product.rating,
+      product.average_rating,
+      product.average_review_score,
+      product.review_score,
+      product.product?.rating,
+      product.product?.average_rating,
+      product.product?.average_review_score,
+      product.product?.review_score
+    ) ?? 0
+  );
+  const reviewCount = Number(
+    firstValue(
+      product.review_count,
+      product.reviews_count,
+      product.num_reviews,
+      product.product?.review_count,
+      product.product?.reviews_count,
+      product.product?.num_reviews
+    ) ?? 0
+  );
+
+  return {
+    rating: Number.isFinite(rating) ? rating : 0,
+    reviewCount: Number.isFinite(reviewCount) ? reviewCount : 0,
+    hasRating: Number.isFinite(rating) && rating > 0
+  };
+}
+
 export function productInitials(title = "") {
   const words = String(title)
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")

@@ -1,11 +1,12 @@
 import axios from "axios";
 
 import { API_PREFIX, ENDPOINTS } from "../constants/apiEndpoints";
+import { buildApiRoot } from "../utils/urlConfig";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+export const API_BASE_URL = buildApiRoot(import.meta.env.VITE_API_BASE_URL, API_PREFIX);
 
 export const apiClient = axios.create({
-  baseURL: `${API_BASE_URL}${API_PREFIX}`,
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     Accept: "application/json"

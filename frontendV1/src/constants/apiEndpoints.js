@@ -1,4 +1,6 @@
-export const API_PREFIX = import.meta.env.VITE_API_PREFIX || "/api/v1";
+import { normalizePath } from "../utils/urlConfig";
+
+export const API_PREFIX = normalizePath(import.meta.env.VITE_API_PREFIX, "/api/v1");
 
 export const ENDPOINTS = {
   docs: {

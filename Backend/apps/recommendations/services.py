@@ -2,9 +2,29 @@ from typing import Any
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Count
+from django.db.models import Avg, Count, Q
 
 from apps.common.products import serialize_product_card
+
+
+def _product_card_queryset(queryset):
+    Review = apps.get_model('reviews', 'ProductReview')
+    return queryset.prefetch_related(
+        'stockrecords',
+        'images',
+        'categories',
+        'attribute_values__attribute',
+    ).annotate(
+        average_review_score=Avg(
+            'reviews__score',
+            filter=Q(reviews__status=Review.APPROVED),
+        ),
+        review_count=Count(
+            'reviews',
+            filter=Q(reviews__status=Review.APPROVED),
+            distinct=True,
+        ),
+    )
 
 
 class RecommendationService:
@@ -58,13 +78,10 @@ class RecommendationService:
 
         category_ids = list(product.categories.values_list('id', flat=True))
 
-        queryset = (
+        queryset = _product_card_queryset(
             Product.objects.filter(is_public=True, categories__id__in=category_ids)
             .exclude(id=product.id)
-            .prefetch_related('stockrecords')
-            .distinct()
-            .order_by('-date_updated')
-        )
+        ).distinct().order_by('-date_updated')
 
         results = [
             serialize_product_card(product=item, reason='similar-category', display_currency=display_currency)
@@ -80,14 +97,12 @@ class RecommendationService:
         )
 
         if not user_product_ids:
-            return self.trending(limit=limit)
+            return self.trending(limit=limit, display_currency=display_currency)
 
         Product = apps.get_model('catalogue', 'Product')
-        queryset = (
+        queryset = _product_card_queryset(
             Product.objects.filter(is_public=True, id__in=user_product_ids)
-            .prefetch_related('stockrecords')
-            .order_by('-date_updated')
-        )
+        ).order_by('-date_updated')
 
         results = [
             serialize_product_card(product=item, reason='history-based', display_currency=display_currency)
@@ -120,7 +135,7 @@ class RecommendationService:
             .values_list('product_id', flat=True)[: max(limit * 2, 24)]
         )
 
-        queryset = Product.objects.filter(is_public=True).prefetch_related('stockrecords')
+        queryset = _product_card_queryset(Product.objects.filter(is_public=True))
         if trending_ids:
             queryset = queryset.filter(id__in=trending_ids)
 

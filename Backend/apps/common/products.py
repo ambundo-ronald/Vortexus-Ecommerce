@@ -59,7 +59,16 @@ def stockrecord_previous_currency(stockrecord: Any) -> str:
 def stockrecord_count(stockrecord: Any) -> int:
     if not stockrecord:
         return 0
-    return int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+
+    net_stock_level = getattr(stockrecord, 'net_stock_level', None)
+    if callable(net_stock_level):
+        net_stock_level = net_stock_level()
+    if net_stock_level is not None:
+        return max(0, int(net_stock_level or 0))
+
+    num_in_stock = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+    num_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
+    return max(0, num_in_stock - num_allocated)
 
 
 def serialize_product_card(
@@ -75,6 +84,8 @@ def serialize_product_card(
     base_previous_currency = stockrecord_previous_currency(stockrecord)
     stock_count = stockrecord_count(stockrecord)
     brand = product_brand(product)
+    categories = list(product.categories.all()) if hasattr(product, 'categories') else []
+    primary_category = categories[0] if categories else None
 
     image_url = ''
     try:
@@ -99,11 +110,22 @@ def serialize_product_card(
         'thumbnail': image_url,
         'brand': brand,
         'brand_slug': brand_slug(brand),
+        'category': getattr(primary_category, 'name', '') if primary_category else '',
+        'category_slug': getattr(primary_category, 'slug', '') if primary_category else '',
+        'categories': [
+            {
+                'id': category.id,
+                'name': category.name,
+                'slug': category.slug,
+            }
+            for category in categories
+        ],
         'in_stock': stock_count > 0,
         'stock_count': stock_count,
         'num_in_stock': stock_count,
         'rating': _product_rating(product),
         'review_count': _product_review_count(product),
+        'updated_at': getattr(product, 'date_updated', None),
     }
 
     if score is not None:
@@ -126,4 +148,8 @@ def _product_review_count(product: Any) -> int:
     annotated_count = getattr(product, 'review_count', None)
     if annotated_count is not None:
         return int(annotated_count or 0)
-    return 0
+
+    try:
+        return int(product.num_approved_reviews or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0

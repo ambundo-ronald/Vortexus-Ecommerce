@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import HeroImageCarousel from "../../components/home/HeroImageCarousel.jsx";
-import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks } from "../../components/home/MarketingBlocks.jsx";
+import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks, TopCategoryStrip } from "../../components/home/MarketingBlocks.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
@@ -12,10 +12,16 @@ import { useRecommendations } from "../../hooks/useRecommendations";
 import { mediaUrl } from "../../utils/media";
 import { productImageUrl } from "../../utils/productImages";
 import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
 
 export default function HomePage() {
-  const { blocks: marketingBlocks, loading: marketingLoading } = useMarketingBlocks();
+  const {
+    blocks: marketingBlocks,
+    blocksByPlacement,
+    loading: marketingLoading,
+    error: marketingError
+  } = useMarketingBlocks();
   const {
     recommendations,
     loading: recommendationsLoading,
@@ -31,10 +37,7 @@ export default function HomePage() {
     page_size: 8
   });
 
-  const marketingByPlacement = marketingBlocks.reduce((groups, block) => {
-    const placement = block.placement || "featured";
-    return { ...groups, [placement]: [...(groups[placement] || []), block] };
-  }, {});
+  const marketingByPlacement = groupMarketingBlocks(marketingBlocks, blocksByPlacement);
   const newestPreview = newestProducts.length ? newestProducts.slice(0, 6) : recommendations.slice(0, 6);
 
   return (
@@ -43,7 +46,11 @@ export default function HomePage() {
 
       <section className="home-showcase" aria-label="Store highlights">
         <div className="home-showcase__main">
-          <HeroImageCarousel blocks={marketingByPlacement.home_hero} loading={marketingLoading} />
+          <HeroImageCarousel
+            blocks={marketingByPlacement.home_hero}
+            loading={marketingLoading}
+            useFallback={Boolean(marketingError)}
+          />
           <section className="home-arrivals-strip" aria-label="New arrivals preview">
             <div>
               <span>New arrivals</span>
@@ -64,6 +71,8 @@ export default function HomePage() {
 
       <BrandStrip blocks={marketingByPlacement.brand_strip} />
 
+      <TopCategoryStrip blocks={marketingByPlacement.top_category} />
+
       <FeaturedMarketingBlocks blocks={marketingByPlacement.featured} />
 
       <section className="content-section home-product-section">
@@ -75,7 +84,7 @@ export default function HomePage() {
         <ProductGrid products={newestProducts.slice(0, 5).length ? newestProducts.slice(0, 5) : recommendations.slice(0, 5)} loading={newestLoading || recommendationsLoading} skeletonCount={5} />
       </section>
 
-      <PromoBannerCarousel blocks={marketingByPlacement.promo_banner} />
+      <PromoBannerCarousel blocks={marketingByPlacement.promo_banner} loading={marketingLoading} />
 
       <section className="content-section home-product-section home-product-section--dense">
         <div className="section-heading">
@@ -98,21 +107,9 @@ export default function HomePage() {
   );
 }
 
-function PromoBannerCarousel({ blocks = [] }) {
+function PromoBannerCarousel({ blocks = [], loading = false }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const slides = blocks.length
-    ? blocks
-    : [
-        {
-          id: "fallback-promo",
-          eyebrow: "Flash sales",
-          headline: "Ending in 2hrs",
-          body: "Take a chance to buy within the time.",
-          cta_text: "Shop the sale",
-          cta_url: "/offers",
-          image_url: "/hero%20landing%20images/television%20and%20sound%20system%20.png"
-        }
-      ];
+  const slides = blocks;
 
   useEffect(() => {
     if (slides.length < 2) return undefined;
@@ -127,6 +124,12 @@ function PromoBannerCarousel({ blocks = [] }) {
   useEffect(() => {
     setActiveIndex(0);
   }, [blocks.length]);
+
+  if (loading && !slides.length) {
+    return <section className="home-deal-carousel skeleton-block" aria-label="Loading promotional banners" />;
+  }
+
+  if (!slides.length) return null;
 
   return (
     <section className="home-deal-section" aria-label="Promotional banners">
@@ -155,7 +158,7 @@ function PromoBannerCarousel({ blocks = [] }) {
 function PromoBannerSlide({ block, eager = false }) {
   const href = block.cta_url || "/offers";
   const external = /^https?:\/\//i.test(href);
-  const imageUrl = block.id === "fallback-promo" ? block.image_url : mediaUrl(block.image_url);
+  const imageUrl = mediaUrl(block.image_url);
   const content = (
     <>
       {imageUrl ? <img src={imageUrl} alt={block.image_alt || block.title || block.headline || "Promotion"} loading={eager ? "eager" : "lazy"} /> : null}

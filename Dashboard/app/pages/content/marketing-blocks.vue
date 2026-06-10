@@ -56,6 +56,19 @@ const placementOptions = computed(() => placements.value.length
 
 const inactiveCount = computed(() => Math.max(totalItems.value - activeCount.value, 0))
 const currentCount = computed(() => blocks.value.filter(block => block.is_current).length)
+const placementHelp = computed(() => {
+  const messages: Record<string, string> = {
+    home_hero: 'Large homepage carousel image. Add a headline, image, and destination.',
+    announcement: 'Compact rotating notice. An image is optional.',
+    promo_banner: 'Wide campaign banner shown between product sections.',
+    featured: 'Square campaign tile. An image is recommended; text-only is supported.',
+    brand_strip: 'Circular brand or collection item. Use a transparent product or logo image.',
+    top_category: 'Storefront category shortcut. Add an image and link it to /catalog/category/category-slug.',
+  }
+  return messages[form.placement] || ''
+})
+const imageRequired = computed(() => ['home_hero', 'promo_banner', 'brand_strip', 'top_category'].includes(form.placement))
+const ctaRequired = computed(() => form.placement === 'top_category')
 
 function slugify(value: string) {
   return value
@@ -176,9 +189,30 @@ async function loadMediaItems() {
 }
 
 function selectMedia(file: MediaAsset) {
-  form.image_url = file.url
+  form.image_url = persistedMediaUrl(file.url)
   form.image_alt = file.alt || file.name || form.image_alt
   mediaPickerOpen.value = false
+}
+
+function persistedMediaUrl(value: string) {
+  if (!value)
+    return ''
+
+  try {
+    const parsed = new URL(value)
+    const config = useRuntimeConfig()
+    const apiBase = String(config.public.apiBase || '')
+    const fallbackOrigin = import.meta.client ? window.location.origin : parsed.origin
+    const apiOrigin = new URL(apiBase, fallbackOrigin).origin
+
+    if (parsed.origin !== apiOrigin)
+      return value
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  }
+  catch {
+    return value
+  }
 }
 
 async function submitBlock() {
@@ -189,6 +223,14 @@ async function submitBlock() {
   }
   if (!form.placement) {
     saveError.value = 'Placement is required.'
+    return
+  }
+  if (imageRequired.value && !form.image_url.trim()) {
+    saveError.value = 'This placement requires an image.'
+    return
+  }
+  if (ctaRequired.value && !form.cta_url.trim()) {
+    saveError.value = 'Top categories require a storefront destination.'
     return
   }
 
@@ -209,7 +251,7 @@ async function submitBlock() {
     is_active: form.is_active,
     starts_at: toIsoOrNull(form.starts_at),
     ends_at: toIsoOrNull(form.ends_at),
-    metadata: {},
+    metadata: editingBlock.value?.metadata || {},
   }
 
   isSaving.value = true
@@ -349,7 +391,10 @@ watch(mediaSearch, () => {
           <UInput v-model="form.slug" placeholder="industrial-pumps-hero" />
         </UFormField>
         <UFormField label="Placement" required>
-          <USelect v-model="form.placement" :items="placementOptions" value-key="value" label-key="label" />
+          <div class="space-y-1">
+            <USelect v-model="form.placement" :items="placementOptions" value-key="value" label-key="label" />
+            <p class="text-xs text-slate-500">{{ placementHelp }}</p>
+          </div>
         </UFormField>
         <UFormField label="Sort order">
           <UInput v-model.number="form.sort_order" type="number" min="0" />
@@ -363,13 +408,19 @@ watch(mediaSearch, () => {
         <UFormField class="md:col-span-2" label="Body">
           <UTextarea v-model="form.body" :rows="4" placeholder="Short promo copy shown on the storefront." />
         </UFormField>
-        <UFormField label="Image URL">
+        <UFormField label="Image URL" :required="imageRequired">
           <div class="flex gap-2">
             <UInput v-model="form.image_url" class="min-w-0 flex-1" placeholder="/media/cache/..." />
             <UButton color="neutral" variant="outline" icon="i-lucide-image" @click="openMediaPicker">
               Choose
             </UButton>
           </div>
+          <img
+            v-if="form.image_url"
+            :src="mediaUrl(form.image_url)"
+            :alt="form.image_alt || form.title || 'Marketing preview'"
+            class="mt-2 aspect-[16/7] w-full rounded-lg border border-slate-200 bg-slate-50 object-contain"
+          >
         </UFormField>
         <UFormField label="Image alt">
           <UInput v-model="form.image_alt" placeholder="Worker inspecting industrial pump" />
@@ -377,8 +428,8 @@ watch(mediaSearch, () => {
         <UFormField label="CTA text">
           <UInput v-model="form.cta_text" placeholder="Shop now" />
         </UFormField>
-        <UFormField label="CTA URL">
-          <UInput v-model="form.cta_url" placeholder="/catalog/products/?category=pumps" />
+        <UFormField label="CTA URL" :required="ctaRequired">
+          <UInput v-model="form.cta_url" placeholder="/catalog/category/pumps" />
         </UFormField>
         <UFormField label="Background color">
           <UInput v-model="form.background_color" placeholder="#0f172a" />

@@ -9,7 +9,11 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 from apps.content.models import MarketingBlock
 
-from .marketing_content_serializers import MarketingBlockSerializer, PublicMarketingBlockSerializer
+from .marketing_content_serializers import (
+    IMAGE_PLACEMENTS,
+    MarketingBlockSerializer,
+    PublicMarketingBlockSerializer,
+)
 
 
 def _parse_pagination(request, *, default_page_size=24, max_page_size=100):
@@ -145,9 +149,27 @@ class PublicMarketingBlockCollectionAPIView(APIView):
         if placement:
             queryset = queryset.filter(placement=placement)
 
+        renderable_blocks = []
+        for block in queryset.iterator():
+            if block.placement in IMAGE_PLACEMENTS and not (block.image_url or '').strip():
+                continue
+            if block.placement == MarketingBlock.PLACEMENT_TOP_CATEGORY and not (block.cta_url or '').strip():
+                continue
+            renderable_blocks.append(block)
+            if len(renderable_blocks) >= 300:
+                break
+
+        results = PublicMarketingBlockSerializer(renderable_blocks, many=True).data
+        grouped = {
+            value: [block for block in results if block['placement'] == value]
+            for value, _label in MarketingBlock.PLACEMENT_CHOICES
+        }
+
         return Response(
             {
-                'results': PublicMarketingBlockSerializer(queryset[:100], many=True).data,
+                'results': results,
+                'by_placement': grouped,
                 'placements': [{'value': value, 'label': label} for value, label in MarketingBlock.PLACEMENT_CHOICES],
+                'generated_at': now,
             }
         )

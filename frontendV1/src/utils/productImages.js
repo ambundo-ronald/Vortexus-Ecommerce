@@ -29,7 +29,7 @@ export function productImageUrl(product = {}) {
   }
 
   const first = candidates.map(imageCandidate).find(Boolean);
-  return mediaUrl(first || "");
+  return withProductVersion(mediaUrl(first || ""), product);
 }
 
 export function productImageList(product = {}) {
@@ -39,10 +39,24 @@ export function productImageList(product = {}) {
 
   if (Array.isArray(product.images)) {
     for (const image of product.images) {
-      const url = mediaUrl(imageCandidate(image));
+      const url = withProductVersion(mediaUrl(imageCandidate(image)), product);
       if (url && !images.includes(url)) images.push(url);
     }
   }
 
   return images;
+}
+
+function withProductVersion(url, product = {}) {
+  if (!url || /^(data|blob):/i.test(url)) return url;
+  const version =
+    product.updated_at ||
+    product.date_updated ||
+    product.updatedAt ||
+    product.product?.updated_at ||
+    product.product?.date_updated ||
+    product.product?.updatedAt;
+  if (!version || /[?&]v=/.test(url)) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${encodeURIComponent(String(version))}`;
 }

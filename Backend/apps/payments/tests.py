@@ -1,12 +1,31 @@
 from decimal import Decimal
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
 
 from .models import PaymentSession
 from .pesapal import PesapalGatewayError, handle_transaction_status
+from .services import _payment_method_capabilities
+
+
+class PaymentMethodCapabilityTests(SimpleTestCase):
+    @override_settings(PESAPAL_BASE_URL='https://cybqa.pesapal.com/pesapalv3/api')
+    @patch('apps.payments.services.get_payment_setting', return_value='https://cybqa.pesapal.com/pesapalv3/api')
+    def test_pesapal_sandbox_is_exposed_to_the_storefront(self, _get_payment_setting):
+        self.assertEqual(
+            _payment_method_capabilities('pesapal', 'pesapal'),
+            {'flow': 'redirect', 'is_sandbox': True},
+        )
+
+    @override_settings(CARD_SANDBOX_ENABLED=True)
+    def test_card_sandbox_is_exposed_to_the_storefront(self):
+        self.assertEqual(
+            _payment_method_capabilities('credit_card', 'card'),
+            {'flow': 'card_token', 'is_sandbox': True},
+        )
 
 
 class PesapalStatusHandlingTests(TestCase):

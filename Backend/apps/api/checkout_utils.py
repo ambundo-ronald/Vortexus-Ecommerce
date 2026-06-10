@@ -255,17 +255,6 @@ def basket_currency(basket) -> str:
     return getattr(basket, 'currency', None) or default_currency()
 
 
-def ensure_basket_default_currency(basket):
-    if not basket or getattr(basket, 'pk', None) is None:
-        return
-    if not basket.is_empty:
-        return
-    if basket_currency(basket) == default_currency():
-        return
-    basket.currency = default_currency()
-    basket.save(update_fields=['currency'])
-
-
 def basket_subtotal(basket) -> Decimal:
     total = getattr(basket, 'total_incl_tax', None)
     if total is None:
