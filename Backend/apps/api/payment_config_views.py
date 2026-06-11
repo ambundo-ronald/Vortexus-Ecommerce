@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Prefetch, Q, Sum
 from rest_framework import permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,7 +14,8 @@ from apps.payments.config import (
     provider_is_enabled,
     provider_missing_requirements,
 )
-from apps.payments.models import PaymentProviderConfiguration, PaymentSession
+from apps.payments.models import PaymentEvent, PaymentProviderConfiguration, PaymentSession
+from apps.payments.services import payment_reconciliation
 
 
 class MpesaConfigSerializer(serializers.Serializer):
@@ -254,6 +255,7 @@ class AdminPaymentConfigurationAPIView(APIView):
 
 
 def _payment_session_payload(payment: PaymentSession) -> dict:
+    reconciliation = payment_reconciliation(payment)
     return {
         'id': payment.id,
         'reference': payment.reference,
@@ -268,9 +270,24 @@ def _payment_session_payload(payment: PaymentSession) -> dict:
         'order_number': payment.order.number if payment.order_id else '',
         'metadata': payment.metadata or {},
         'provider_payload': _safe_provider_payload(payment.provider_payload or {}),
+        'reconciliation': reconciliation,
+        'events': [_payment_event_payload(event) for event in list(getattr(payment, 'prefetched_events', []))[:8]],
         'created_at': payment.created_at,
         'updated_at': payment.updated_at,
         'paid_at': payment.paid_at,
+    }
+
+
+def _payment_event_payload(event: PaymentEvent) -> dict:
+    return {
+        'id': event.id,
+        'kind': event.kind,
+        'status_before': event.status_before,
+        'status_after': event.status_after,
+        'external_reference': event.external_reference,
+        'message': event.message,
+        'payload': _safe_provider_payload(event.payload or {}),
+        'created_at': event.created_at,
     }
 
 
@@ -290,16 +307,48 @@ def _safe_provider_payload(payload: dict) -> dict:
     return safe
 
 
+def _matches_reconciliation_filter(payment: PaymentSession, reconciliation_filter: str) -> bool:
+    if not reconciliation_filter:
+        return True
+    reconciliation = payment_reconciliation(payment)
+    if reconciliation_filter == 'needs_attention':
+        return bool(reconciliation.get('needs_attention'))
+    return reconciliation.get('status') == reconciliation_filter
+
+
+def _reconciliation_summary(queryset) -> dict:
+    counts = {}
+    needs_attention = 0
+    for payment in queryset.select_related('order'):
+        reconciliation = payment_reconciliation(payment)
+        key = reconciliation['status']
+        counts[key] = counts.get(key, 0) + 1
+        if reconciliation.get('needs_attention'):
+            needs_attention += 1
+    return {'counts': counts, 'needs_attention': needs_attention}
+
+
 class AdminPaymentSessionLogCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        queryset = PaymentSession.objects.select_related('user', 'order').order_by('-created_at')
+        queryset = (
+            PaymentSession.objects.select_related('user', 'order')
+            .prefetch_related(
+                Prefetch(
+                    'events',
+                    queryset=PaymentEvent.objects.order_by('-created_at', '-id'),
+                    to_attr='prefetched_events',
+                )
+            )
+            .order_by('-created_at')
+        )
 
         search = (request.query_params.get('q') or '').strip()
         method = (request.query_params.get('method') or '').strip()
         status_filter = (request.query_params.get('status') or '').strip()
         provider = (request.query_params.get('provider') or '').strip()
+        reconciliation_filter = (request.query_params.get('reconciliation') or '').strip()
 
         if search:
             queryset = queryset.filter(
@@ -315,6 +364,12 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
             queryset = queryset.filter(status=status_filter)
         if provider:
             queryset = queryset.filter(provider=provider)
+        if reconciliation_filter:
+            queryset = [
+                payment
+                for payment in queryset
+                if _matches_reconciliation_filter(payment, reconciliation_filter)
+            ]
 
         page = max(1, int(request.query_params.get('page') or 1))
         page_size = min(100, max(1, int(request.query_params.get('page_size') or 50)))
@@ -328,6 +383,7 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
             'by_method': list(base_queryset.values('method').annotate(count=Count('id')).order_by('method')),
             'paid_total': float(base_queryset.filter(status=PaymentSession.STATUS_PAID).aggregate(total=Sum('amount'))['total'] or 0),
             'authorized_total': float(base_queryset.filter(status=PaymentSession.STATUS_AUTHORIZED).aggregate(total=Sum('amount'))['total'] or 0),
+            'reconciliation': _reconciliation_summary(base_queryset),
         }
 
         return Response(

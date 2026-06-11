@@ -1,12 +1,15 @@
 from decimal import Decimal
+from datetime import timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
 
-from .models import PaymentSession
+from .models import PaymentEvent, PaymentSession
 from .pesapal import PesapalGatewayError, handle_transaction_status
+from .services import payment_reconciliation
 
 
 class PesapalStatusHandlingTests(TestCase):
@@ -43,6 +46,26 @@ class PesapalStatusHandlingTests(TestCase):
         self.assertIsNotNone(payment.paid_at)
         self.assertEqual(payment.metadata['pesapal_status_code'], '1')
         self.assertEqual(payment.metadata['pesapal_confirmation_code'], 'CONFIRM-1')
+        self.assertTrue(PaymentEvent.objects.filter(payment_session=payment, kind=PaymentEvent.KIND_STATUS_APPLIED).exists())
+
+    def test_duplicate_success_status_is_ignored_after_paid(self):
+        payment = self._payment(status=PaymentSession.STATUS_PAID)
+
+        handle_transaction_status(
+            payment,
+            {
+                'status_code': 1,
+                'payment_status_description': 'Completed',
+                'merchant_reference': payment.reference,
+                'amount': '1250.00',
+                'currency': 'KES',
+                'confirmation_code': 'CONFIRM-1',
+            },
+        )
+
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentSession.STATUS_PAID)
+        self.assertTrue(PaymentEvent.objects.filter(payment_session=payment, kind=PaymentEvent.KIND_STATUS_IGNORED).exists())
 
     def test_status_payload_amount_mismatch_is_rejected(self):
         payment = self._payment()
@@ -74,6 +97,41 @@ class PesapalStatusHandlingTests(TestCase):
                     'currency': 'KES',
                 },
             )
+
+
+class PaymentReconciliationTests(TestCase):
+    def _payment(self, **overrides):
+        defaults = {
+            'method': 'pesapal',
+            'provider': 'pesapal',
+            'reference': 'PAY-ABC123',
+            'amount': Decimal('1250.00'),
+            'currency': 'KES',
+            'external_reference': 'TRACK-123',
+            'status': PaymentSession.STATUS_PENDING,
+        }
+        defaults.update(overrides)
+        return PaymentSession.objects.create(**defaults)
+
+    def test_paid_payment_without_order_needs_attention(self):
+        payment = self._payment(status=PaymentSession.STATUS_PAID)
+
+        reconciliation = payment_reconciliation(payment)
+
+        self.assertEqual(reconciliation['status'], 'paid_no_order')
+        self.assertTrue(reconciliation['needs_attention'])
+        self.assertEqual(reconciliation['severity'], 'critical')
+
+    def test_old_pending_payment_is_flagged(self):
+        payment = self._payment()
+        PaymentSession.objects.filter(pk=payment.pk).update(created_at=timezone.now() - timedelta(minutes=31))
+        payment.refresh_from_db()
+
+        reconciliation = payment_reconciliation(payment)
+
+        self.assertEqual(reconciliation['status'], 'pending_too_long')
+        self.assertFalse(reconciliation['needs_attention'])
+        self.assertEqual(reconciliation['severity'], 'warning')
 
 
 class PesapalNotificationSerializerTests(TestCase):

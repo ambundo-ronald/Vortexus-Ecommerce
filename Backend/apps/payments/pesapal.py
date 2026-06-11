@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 
 from .config import get_payment_setting, provider_is_enabled
-from .services import confirm_payment_session
+from .services import confirm_payment_session, log_payment_event
 
 
 class PesapalConfigurationError(Exception):
@@ -62,6 +62,7 @@ def submit_order_request(payment_session, *, customer_name: str = '') -> dict:
     if branch:
         payload['branch'] = branch
 
+    previous_status = payment_session.status
     response_data = _post_json('/Transactions/SubmitOrderRequest', payload, token=token)
     order_tracking_id = response_data.get('order_tracking_id') or ''
     redirect_url = response_data.get('redirect_url') or ''
@@ -83,6 +84,14 @@ def submit_order_request(payment_session, *, customer_name: str = '') -> dict:
         'integration': 'pesapal_api_3',
     }
     payment_session.save(update_fields=['status', 'external_reference', 'provider_payload', 'metadata', 'updated_at'])
+    log_payment_event(
+        payment_session,
+        kind='provider_submitted',
+        status_before=previous_status,
+        status_after=payment_session.status,
+        external_reference=order_tracking_id,
+        payload={'pesapal_response': response_data},
+    )
     return payment_session.provider_payload
 
 
@@ -97,6 +106,8 @@ def query_transaction_status(payment_session) -> dict:
 def handle_transaction_status(payment_session, status_payload: dict):
     _validate_status_payload(payment_session, status_payload)
 
+    previous_status = payment_session.status
+
     payment_status_code = str(status_payload.get('status_code') or status_payload.get('payment_status_code') or '').strip()
     payment_status = str(status_payload.get('payment_status_description') or status_payload.get('payment_status') or '').strip()
     confirmation_code = str(status_payload.get('confirmation_code') or '').strip()
@@ -108,6 +119,14 @@ def handle_transaction_status(payment_session, status_payload: dict):
         'last_status': status_payload,
     }
     payment_session.save(update_fields=['provider_payload', 'updated_at'])
+    log_payment_event(
+        payment_session,
+        kind='status_queried',
+        status_before=previous_status,
+        status_after=payment_session.status,
+        external_reference=payment_session.external_reference,
+        payload={'status_payload': status_payload},
+    )
 
     metadata = {
         'pesapal_status_code': payment_status_code,

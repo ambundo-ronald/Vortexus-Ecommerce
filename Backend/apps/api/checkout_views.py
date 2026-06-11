@@ -17,7 +17,7 @@ from apps.inventory.services import (
     release_basket_line_reservation,
     sync_basket_line_reservation,
 )
-from apps.payments.services import link_payment_to_order, payment_requires_prepayment
+from apps.payments.services import link_payment_to_order, payment_requires_prepayment, serialize_payment_session
 from apps.marketplace.orders import ensure_supplier_order_groups
 from .checkout_serializers import (
     BasketItemCreateSerializer,
@@ -235,13 +235,28 @@ class OrderPlacementAPIView(APIView):
         pricing = build_order_prices(basket, shipping_address, shipping_method)
         payment_session = None
         if payment_reference:
-            payment_session = get_object_or_404(PaymentSession, reference=payment_reference)
-            if payment_session.order_id:
-                raise serializers.ValidationError({'payment_reference': 'This payment has already been used for an order.'})
-            if payment_session.basket_id and payment_session.basket_id != basket.id:
-                raise serializers.ValidationError({'payment_reference': 'This payment session does not belong to the current basket.'})
+            payment_session = get_object_or_404(
+                PaymentSession.objects.select_for_update().select_related('order', 'user'),
+                reference=payment_reference,
+            )
             if request.user.is_authenticated and payment_session.user_id and payment_session.user_id != request.user.id:
                 raise serializers.ValidationError({'payment_reference': 'This payment session belongs to a different account.'})
+            if payment_session.order_id:
+                linked_order = payment_session.order
+                if request.user.is_authenticated and linked_order.user_id and linked_order.user_id != request.user.id:
+                    raise serializers.ValidationError({'payment_reference': 'This payment is linked to a different account.'})
+                checkout_session.set_order_number(linked_order.number)
+                return Response(
+                    {
+                        'detail': 'Order already placed for this payment.',
+                        'order': OrderSummarySerializer(linked_order).data,
+                        'payment': serialize_payment_session(payment_session),
+                        'taxes': {},
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if payment_session.basket_id and payment_session.basket_id != basket.id:
+                raise serializers.ValidationError({'payment_reference': 'This payment session does not belong to the current basket.'})
             if payment_session.currency != pricing['order_total'].currency:
                 raise serializers.ValidationError({'payment_reference': 'Payment currency does not match the current order currency.'})
             if payment_session.amount != pricing['order_total'].incl_tax:
