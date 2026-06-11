@@ -256,14 +256,9 @@ def basket_currency(basket) -> str:
 
 
 def ensure_basket_default_currency(basket):
-    if not basket or getattr(basket, 'pk', None) is None:
-        return
-    if not basket.is_empty:
-        return
-    if basket_currency(basket) == default_currency():
-        return
-    basket.currency = default_currency()
-    basket.save(update_fields=['currency'])
+    # Oscar exposes basket.currency as a derived, read-only property. Empty
+    # baskets naturally serialize with the configured fallback currency.
+    return
 
 
 def basket_subtotal(basket) -> Decimal:

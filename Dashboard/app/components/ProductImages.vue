@@ -99,10 +99,11 @@ const previewSrc = ref('')
 const isDragging = ref(false)
 
 function removeImage(idx: number) {
-  const image = model.value[idx]
+  const nextImages = [...model.value]
+  const [image] = nextImages.splice(idx, 1)
   if (image?.file && image.src.startsWith('blob:'))
     URL.revokeObjectURL(image.src)
-  model.value.splice(idx, 1)
+  model.value = nextImages
 }
 
 function previewImage(src: string) {
@@ -114,11 +115,13 @@ function addFiles(files: FileList | File[]) {
   if (!files)
     return
 
+  const nextImages = [...model.value]
+
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/'))
       continue
 
-    if (model.value.length >= 5) {
+    if (nextImages.length >= 5) {
       toast.add({
         title: 'Image limit reached',
         description: 'You can upload up to 5 product images per item.',
@@ -136,12 +139,14 @@ function addFiles(files: FileList | File[]) {
       continue
     }
 
-    model.value.push({
+    nextImages.push({
       src: URL.createObjectURL(file),
       alt: file.name,
       file,
     })
   }
+
+  model.value = nextImages
 }
 
 function onFilesSelected(e: Event) {

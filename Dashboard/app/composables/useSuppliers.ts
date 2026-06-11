@@ -22,6 +22,8 @@ export interface SupplierItem {
   country_code: string
   website: string
   notes: string
+  status_note: string
+  account_manager?: { id: number, email: string, name: string } | null
   partner: SupplierPartner
   user: SupplierUser
   created_at: string
@@ -36,6 +38,8 @@ export interface SupplierPayload {
   country_code?: string
   website?: string
   notes?: string
+  status_note?: string
+  account_manager_id?: number | null
 }
 
 function readApiError(err: any) {

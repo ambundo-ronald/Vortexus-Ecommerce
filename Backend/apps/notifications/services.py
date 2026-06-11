@@ -382,6 +382,60 @@ def queue_quote_request_notifications(payload: dict, product=None) -> None:
     )
 
 
+def send_supplier_application_submitted_email(supplier_profile, *, raise_on_failure: bool = False) -> bool:
+    user = supplier_profile.user
+    context = {
+        'shop_name': settings.OSCAR_SHOP_NAME,
+        'supplier': supplier_profile,
+        'user': user,
+        'display_name': _display_name_for_user(user),
+    }
+    return notification_service.send(
+        event_type='supplier_application_submitted',
+        to_email=user.email,
+        subject_template='emails/supplier_application_submitted_subject.txt',
+        body_template='emails/supplier_application_submitted_body.txt',
+        context=context,
+        related_object_type='supplier_profile',
+        related_object_id=str(supplier_profile.id),
+        metadata={'supplier_id': supplier_profile.id, 'status': supplier_profile.status},
+        raise_on_failure=raise_on_failure,
+    )
+
+
+def queue_supplier_application_submitted_email(supplier_profile) -> None:
+    from .tasks import send_supplier_application_submitted_email_task
+
+    dispatch_background_task(send_supplier_application_submitted_email_task, run_kwargs={'supplier_id': supplier_profile.id})
+
+
+def send_supplier_status_changed_email(supplier_profile, *, raise_on_failure: bool = False) -> bool:
+    user = supplier_profile.user
+    context = {
+        'shop_name': settings.OSCAR_SHOP_NAME,
+        'supplier': supplier_profile,
+        'user': user,
+        'display_name': _display_name_for_user(user),
+    }
+    return notification_service.send(
+        event_type='supplier_status_changed',
+        to_email=user.email,
+        subject_template='emails/supplier_status_changed_subject.txt',
+        body_template='emails/supplier_status_changed_body.txt',
+        context=context,
+        related_object_type='supplier_profile',
+        related_object_id=str(supplier_profile.id),
+        metadata={'supplier_id': supplier_profile.id, 'status': supplier_profile.status},
+        raise_on_failure=raise_on_failure,
+    )
+
+
+def queue_supplier_status_changed_email(supplier_profile) -> None:
+    from .tasks import send_supplier_status_changed_email_task
+
+    dispatch_background_task(send_supplier_status_changed_email_task, run_kwargs={'supplier_id': supplier_profile.id})
+
+
 def send_order_confirmation_email(order, *, raise_on_failure: bool = False) -> bool:
     if getattr(order, 'user_id', None) and not _user_allows_order_updates(order.user):
         return notification_service._log_skip(

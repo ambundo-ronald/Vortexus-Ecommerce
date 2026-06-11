@@ -60,6 +60,8 @@ class EmailNotification(models.Model):
         ('quote_request_internal', 'Quote Request Internal'),
         ('order_confirmation', 'Order Confirmation'),
         ('shipping_update', 'Shipping Update'),
+        ('supplier_application_submitted', 'Supplier Application Submitted'),
+        ('supplier_status_changed', 'Supplier Status Changed'),
     ]
 
     STATUS_CHOICES = [

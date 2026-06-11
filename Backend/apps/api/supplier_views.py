@@ -1,14 +1,21 @@
 from django.apps import apps
+from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.text import slugify
 from rest_framework import permissions, status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
-from apps.notifications.services import queue_shipping_update_email
+from apps.notifications.services import (
+    queue_shipping_update_email,
+    queue_supplier_application_submitted_email,
+    queue_supplier_status_changed_email,
+)
 
 from .supplier_order_serializers import (
     SupplierOrderDetailSerializer,
@@ -18,12 +25,16 @@ from .supplier_order_serializers import (
 from .supplier_serializers import (
     SupplierAdminStatusSerializer,
     SupplierDashboardSerializer,
+    SupplierProductModerationListSerializer,
+    SupplierProductModerationSerializer,
     SupplierProductListSerializer,
     SupplierProductWriteSerializer,
     SupplierProfileSerializer,
     SupplierProfileWriteSerializer,
 )
-from .views import _build_product_detail
+from .serializers import ProductImageUploadSerializer
+from .media_utils import delete_product_image_with_file
+from .views import _build_product_detail, _serialize_product_image
 
 
 class SupplierOnlyPermission(permissions.BasePermission):
@@ -49,6 +60,7 @@ def _supplier_product_queryset(supplier_profile):
     return (
         Product.objects.exclude(structure='parent')
         .filter(stockrecords__partner=supplier_profile.partner)
+        .select_related('supplier_submission__reviewed_by')
         .prefetch_related('stockrecords', 'categories', 'attribute_values__attribute', 'images')
         .distinct()
     )
@@ -162,6 +174,7 @@ class SupplierProfileAPIView(APIView):
             message='Supplier profile application created.',
             metadata={'company_name': supplier_profile.company_name, 'status': supplier_profile.status},
         )
+        queue_supplier_application_submitted_email(supplier_profile)
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data}, status=status.HTTP_201_CREATED)
 
     def patch(self, request):
@@ -181,6 +194,8 @@ class SupplierProfileAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         previous_status = supplier_profile.status
         supplier_profile = serializer.save()
+        if supplier_profile.status != previous_status:
+            queue_supplier_status_changed_email(supplier_profile)
         record_audit_event(
             event_type='supplier.profile_updated',
             request=request,
@@ -333,6 +348,157 @@ class SupplierProductDetailAPIView(APIView):
         )
 
 
+class SupplierProductImageCollectionAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, product_id: int):
+        ProductImage = apps.get_model('catalogue', 'ProductImage')
+        supplier_profile = request.user.supplier_profile
+        product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product_id)
+        serializer = ProductImageUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        uploaded_file = serializer.validated_data['image']
+        alt = (serializer.validated_data.get('alt') or product.title or '').strip()
+        filename_root = slugify(product.title or product.upc or f'product-{product.id}') or f'product-{product.id}'
+        upload_name = getattr(uploaded_file, 'name', '') or f'{filename_root}.webp'
+        final_name = upload_name if '.' in upload_name else f'{filename_root}.webp'
+
+        product_image = ProductImage(product=product, caption=alt, display_order=product.images.count())
+        product_image.original.save(final_name, ContentFile(uploaded_file.read()), save=False)
+        product_image.save()
+
+        record_audit_event(
+            event_type='supplier.product_image_uploaded',
+            request=request,
+            actor=request.user,
+            target=product,
+            message='Supplier uploaded product image.',
+            metadata={
+                'partner_id': supplier_profile.partner_id,
+                'image_id': product_image.id,
+                'product_id': product.id,
+                'filename': final_name,
+            },
+        )
+        return Response({'image': _serialize_product_image(product_image, fallback_alt=product.title)}, status=status.HTTP_201_CREATED)
+
+
+class SupplierProductImageDetailAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+
+    def delete(self, request, product_id: int, image_id: int):
+        supplier_profile = request.user.supplier_profile
+        product = get_object_or_404(_supplier_product_queryset(supplier_profile), id=product_id)
+        image = get_object_or_404(product.images.all(), id=image_id)
+        filename = delete_product_image_with_file(image)
+
+        record_audit_event(
+            event_type='supplier.product_image_deleted',
+            request=request,
+            actor=request.user,
+            target=product,
+            message='Supplier deleted product image.',
+            metadata={
+                'partner_id': supplier_profile.partner_id,
+                'image_id': image_id,
+                'product_id': product.id,
+                'filename': filename,
+            },
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _supplier_product_submission_queryset():
+    SupplierProductSubmission = apps.get_model('marketplace', 'SupplierProductSubmission')
+    return (
+        SupplierProductSubmission.objects.select_related(
+            'supplier',
+            'supplier__user',
+            'supplier__partner',
+            'product',
+            'reviewed_by',
+        )
+        .prefetch_related('product__stockrecords', 'product__categories', 'product__images', 'product__attribute_values__attribute')
+        .order_by('-updated_at', '-id')
+    )
+
+
+class SupplierProductModerationCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        queryset = _supplier_product_submission_queryset()
+        status_filter = (request.query_params.get('status') or '').strip()
+        supplier_id = (request.query_params.get('supplier_id') or '').strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if supplier_id:
+            queryset = queryset.filter(supplier_id=supplier_id)
+
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 24) or 24), 1), 100)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_pagination',
+                        'detail': 'Page and page_size must be integers.',
+                        'status': 400,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProductModerationListSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+
+class SupplierProductModerationDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, submission_id: int):
+        submission = get_object_or_404(_supplier_product_submission_queryset(), id=submission_id)
+        return Response({'submission': SupplierProductModerationListSerializer(submission).data})
+
+    def patch(self, request, submission_id: int):
+        submission = get_object_or_404(_supplier_product_submission_queryset(), id=submission_id)
+        previous_status = submission.status
+        serializer = SupplierProductModerationSerializer(instance=submission, data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        submission = serializer.save()
+        record_audit_event(
+            event_type='supplier.product_moderation_changed',
+            request=request,
+            actor=request.user,
+            target=submission.product,
+            message='Supplier product moderation status updated.',
+            metadata={
+                'submission_id': submission.id,
+                'supplier_id': submission.supplier_id,
+                'supplier_name': submission.supplier.company_name,
+                'product_id': submission.product_id,
+                'previous_status': previous_status,
+                'current_status': submission.status,
+            },
+        )
+        return Response({'submission': SupplierProductModerationListSerializer(submission).data})
+
+
 class SupplierAdminCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -360,6 +526,8 @@ class SupplierAdminDetailAPIView(APIView):
         serializer = SupplierAdminStatusSerializer(instance=supplier_profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         supplier_profile = serializer.save()
+        if supplier_profile.status != previous_status:
+            queue_supplier_status_changed_email(supplier_profile)
         record_audit_event(
             event_type='supplier.status_changed',
             request=request,

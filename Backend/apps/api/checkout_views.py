@@ -19,8 +19,6 @@ from apps.inventory.services import (
 )
 from apps.payments.services import link_payment_to_order, payment_requires_prepayment
 from apps.marketplace.orders import ensure_supplier_order_groups
-from apps.common.currency import default_currency
-
 from .checkout_serializers import (
     BasketItemCreateSerializer,
     BasketLineUpdateSerializer,
@@ -68,9 +66,6 @@ class BasketItemCollectionAPIView(APIView):
             request.basket.save()
         serializer = BasketItemCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        if request.basket.is_empty:
-            request.basket.currency = getattr(serializer.validated_data['stockrecord'], 'price_currency', None) or default_currency()
-            request.basket.save(update_fields=['currency'])
         try:
             line, _ = request.basket.add_product(
                 serializer.validated_data['product'],

@@ -11,6 +11,20 @@ export interface ProductListParams {
 
 const DEFAULT_CURRENCY = 'KES'
 
+function normalizeImageId(id: unknown): number | undefined {
+  const value = Number(id)
+  return Number.isInteger(value) && value > 0 ? value : undefined
+}
+
+function mapProductImage(image: any): ProductImageItem {
+  return {
+    ...image,
+    id: normalizeImageId(image?.id),
+    alt: image?.alt || '',
+    src: mediaUrl(image?.src),
+  }
+}
+
 function mapSort(sortBy?: string, sortDir: 'asc' | 'desc' = 'asc') {
   if (sortBy === 'price')
     return sortDir === 'desc' ? 'price_desc' : 'price_asc'
@@ -55,10 +69,7 @@ function mapProductDetailToForm(product: any) {
     category: firstCategoryId,
     brand: product.brand || specificationMap.brand || '',
     tags: product.tags || specificationMap.tags || '',
-    images: (product.images || []).map((image: any) => ({
-      ...image,
-      src: mediaUrl(image.src),
-    })),
+    images: (product.images || []).map((image: any) => mapProductImage(image)),
   }
 }
 
@@ -258,16 +269,20 @@ export function useProduct() {
         method: 'POST',
         body: formData,
       })
-      return { success: true, data: { ...result.image, src: mediaUrl(result.image.src) } }
+      return { success: true, data: mapProductImage(result.image) }
     }
     catch (err: any) {
       return { success: false, error: err?.data?.error?.detail || err?.message || 'Unknown error' }
     }
   }
 
-  async function deleteProductImage(productId: number | string, imageId: number) {
+  async function deleteProductImage(productId: number | string, imageId: number | string) {
+    const normalizedImageId = normalizeImageId(imageId)
+    if (!normalizedImageId)
+      return { success: false, error: 'This image could not be removed because it is missing its saved image ID.' }
+
     try {
-      await request(`/admin/products/${productId}/images/${imageId}/`, {
+      await request(`/admin/products/${productId}/images/${normalizedImageId}/`, {
         method: 'DELETE',
       })
       return { success: true }
@@ -278,8 +293,8 @@ export function useProduct() {
   }
 
   async function syncProductImages(productId: number | string, nextImages: ProductImageItem[], previousImages: ProductImageItem[] = []) {
-    const previousIds = new Set(previousImages.map(image => image.id).filter((id): id is number => typeof id === 'number'))
-    const nextIds = new Set(nextImages.map(image => image.id).filter((id): id is number => typeof id === 'number'))
+    const previousIds = new Set(previousImages.map(image => normalizeImageId(image.id)).filter((id): id is number => typeof id === 'number'))
+    const nextIds = new Set(nextImages.map(image => normalizeImageId(image.id)).filter((id): id is number => typeof id === 'number'))
 
     const removedIds = [...previousIds].filter(id => !nextIds.has(id))
     for (const imageId of removedIds) {
@@ -298,7 +313,8 @@ export function useProduct() {
     }
 
     const persistedImages = nextImages
-      .filter(image => typeof image.id === 'number' && !image.file)
+      .filter(image => normalizeImageId(image.id) && !image.file)
+      .map(image => ({ ...image, id: normalizeImageId(image.id) }))
       .concat(uploadedImages)
 
     return { success: true, data: persistedImages }

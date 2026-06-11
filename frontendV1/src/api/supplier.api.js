@@ -15,5 +15,9 @@ export const supplierApi = {
   product: (productId) => apiClient.get(ENDPOINTS.supplier.product(productId)).then((response) => response.data),
   updateProduct: (productId, payload) =>
     apiClient.patch(ENDPOINTS.supplier.product(productId), payload).then((response) => response.data),
+  uploadProductImage: (productId, formData) =>
+    apiClient.post(ENDPOINTS.supplier.productImages(productId), formData).then((response) => response.data),
+  removeProductImage: (productId, imageId) =>
+    apiClient.delete(ENDPOINTS.supplier.productImage(productId, imageId)).then((response) => response.data),
   removeProduct: (productId) => apiClient.delete(ENDPOINTS.supplier.product(productId)).then((response) => response.data)
 };

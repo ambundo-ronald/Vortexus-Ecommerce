@@ -27,6 +27,8 @@ const form = reactive({
   country_code: '',
   website: '',
   notes: '',
+  status_note: '',
+  account_manager_id: '',
   status: 'pending',
 })
 
@@ -72,6 +74,8 @@ function fillForm(supplier: SupplierItem) {
   form.country_code = supplier.country_code || ''
   form.website = supplier.website || ''
   form.notes = supplier.notes || ''
+  form.status_note = supplier.status_note || ''
+  form.account_manager_id = supplier.account_manager?.id ? String(supplier.account_manager.id) : ''
   form.status = supplier.status || 'pending'
 }
 
@@ -156,6 +160,8 @@ async function submitSupplier() {
     country_code: form.country_code.trim().toUpperCase(),
     website: form.website.trim(),
     notes: form.notes.trim(),
+    status_note: form.status_note.trim(),
+    account_manager_id: form.account_manager_id ? Number(form.account_manager_id) : null,
     status: form.status,
   }
   const result = await updateSupplier(selectedSupplier.value.id, payload)
@@ -323,6 +329,14 @@ onMounted(loadSuppliers)
               <dd class="mt-1 whitespace-pre-wrap text-slate-950">{{ selectedSupplier.notes || 'No notes recorded.' }}</dd>
             </div>
             <div>
+              <dt class="font-semibold text-slate-500">Status note</dt>
+              <dd class="mt-1 whitespace-pre-wrap text-slate-950">{{ selectedSupplier.status_note || 'No supplier-facing note.' }}</dd>
+            </div>
+            <div>
+              <dt class="font-semibold text-slate-500">Account manager</dt>
+              <dd class="mt-1 text-slate-950">{{ selectedSupplier.account_manager?.name || selectedSupplier.account_manager?.email || 'Not assigned' }}</dd>
+            </div>
+            <div>
               <dt class="font-semibold text-slate-500">Updated</dt>
               <dd class="mt-1 text-slate-950">{{ formatDate(selectedSupplier.updated_at) }}</dd>
             </div>
@@ -369,7 +383,9 @@ onMounted(loadSuppliers)
           <UFormField label="Phone"><UInput v-model="form.phone" autocomplete="off" /></UFormField>
           <UFormField label="Country code"><UInput v-model="form.country_code" maxlength="2" autocomplete="off" /></UFormField>
           <UFormField label="Website"><UInput v-model="form.website" type="url" autocomplete="off" /></UFormField>
+          <UFormField label="Account manager ID"><UInput v-model="form.account_manager_id" type="number" min="1" autocomplete="off" /></UFormField>
           <UFormField label="Notes" class="md:col-span-2"><UTextarea v-model="form.notes" :rows="5" /></UFormField>
+          <UFormField label="Supplier-facing status note" class="md:col-span-2"><UTextarea v-model="form.status_note" :rows="4" /></UFormField>
         </div>
 
         <template #footer>
