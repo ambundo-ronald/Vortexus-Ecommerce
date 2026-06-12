@@ -1,0 +1,10 @@
+[
+  {
+    "identifier": "loadtest1@example.com",
+    "password": "replace-with-test-password"
+  },
+  {
+    "identifier": "loadtest2@example.com",
+    "password": "replace-with-test-password"
+  }
+]

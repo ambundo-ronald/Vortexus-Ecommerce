@@ -1,0 +1,3 @@
+data/users.local.json
+results/*.json
+!results/.gitkeep

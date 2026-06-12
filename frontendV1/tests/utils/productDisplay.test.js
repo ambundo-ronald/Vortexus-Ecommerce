@@ -1,11 +1,26 @@
 import {
   productBrand,
   productCategory,
+  productId,
   productRating,
   stockTone
 } from "../../src/utils/productDisplay";
 
 describe("product display helpers", () => {
+  test("uses the nested product id instead of a basket or order line id", () => {
+    expect(productId({
+      id: 12,
+      product: {
+        id: 91,
+        title: "1000LPH RO System"
+      }
+    })).toBe(91);
+  });
+
+  test("continues to resolve a direct product id", () => {
+    expect(productId({ id: 91, title: "1000LPH RO System" })).toBe(91);
+  });
+
   test("uses nested product metadata consistently", () => {
     const line = {
       product: {
