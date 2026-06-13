@@ -12,6 +12,8 @@ from .services import (
     send_password_reset_email,
     send_quote_request_notifications,
     send_shipping_update_email,
+    send_supplier_application_submitted_email,
+    send_supplier_status_changed_email,
 )
 
 
@@ -74,6 +76,24 @@ def send_quote_request_notifications_task(self, payload: dict, product_id: int |
     Product = apps.get_model('catalogue', 'Product')
     product = Product.objects.filter(id=product_id).first() if product_id else None
     return send_quote_request_notifications(payload, product=product, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_supplier_application_submitted_email_task(self, supplier_id: int) -> bool:
+    SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
+    supplier_profile = SupplierProfile.objects.filter(id=supplier_id).select_related('user').first()
+    if not supplier_profile:
+        return False
+    return send_supplier_application_submitted_email(supplier_profile, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_supplier_status_changed_email_task(self, supplier_id: int) -> bool:
+    SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
+    supplier_profile = SupplierProfile.objects.filter(id=supplier_id).select_related('user').first()
+    if not supplier_profile:
+        return False
+    return send_supplier_status_changed_email(supplier_profile, raise_on_failure=True)
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})

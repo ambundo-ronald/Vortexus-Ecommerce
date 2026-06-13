@@ -115,6 +115,11 @@ export const navSections: NavSection[] = [
         to: '/suppliers',
       },
       {
+        label: 'Product Reviews',
+        icon: 'i-lucide-package-check',
+        to: '/supplier-product-reviews',
+      },
+      {
         label: 'Shipping',
         icon: 'i-lucide-truck',
         to: '/shipping',

@@ -21,7 +21,15 @@ class SupplierProfile(models.Model):
     country_code = models.CharField(max_length=2, blank=True)
     website = models.URLField(blank=True)
     notes = models.TextField(blank=True)
+    status_note = models.TextField(blank=True)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    account_manager = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='managed_supplier_profiles',
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -77,3 +85,55 @@ class SupplierOrderGroup(models.Model):
 
     def __str__(self) -> str:
         return f'{self.order.number}::{self.partner.name}'
+
+
+class SupplierProductSubmission(models.Model):
+    STATUS_DRAFT = 'draft'
+    STATUS_PENDING_REVIEW = 'pending_review'
+    STATUS_CHANGES_REQUESTED = 'changes_requested'
+    STATUS_APPROVED = 'approved'
+    STATUS_REJECTED = 'rejected'
+    STATUS_SUSPENDED = 'suspended'
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_PENDING_REVIEW, 'Pending Review'),
+        (STATUS_CHANGES_REQUESTED, 'Changes Requested'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_REJECTED, 'Rejected'),
+        (STATUS_SUSPENDED, 'Suspended'),
+    ]
+
+    product = models.OneToOneField('catalogue.Product', on_delete=models.CASCADE, related_name='supplier_submission')
+    supplier = models.ForeignKey(SupplierProfile, on_delete=models.CASCADE, related_name='product_submissions')
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING_REVIEW)
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='supplier_product_submissions',
+        null=True,
+        blank=True,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_supplier_product_submissions',
+        null=True,
+        blank=True,
+    )
+    supplier_note = models.TextField(blank=True)
+    review_note = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        indexes = [
+            models.Index(fields=['status', 'updated_at']),
+            models.Index(fields=['supplier', 'status']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.product_id}::{self.supplier.company_name}::{self.status}'

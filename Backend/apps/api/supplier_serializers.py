@@ -1,6 +1,8 @@
 from django.apps import apps
+from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from django.template.defaultfilters import slugify
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.common.products import serialize_product_card
@@ -21,11 +23,17 @@ class SupplierProfileSerializer(serializers.Serializer):
             'country_code': supplier_profile.country_code,
             'website': supplier_profile.website,
             'notes': supplier_profile.notes,
+            'status_note': supplier_profile.status_note,
             'partner': {
                 'id': partner.id,
                 'name': partner.name,
                 'code': partner.code,
             },
+            'account_manager': {
+                'id': supplier_profile.account_manager_id,
+                'email': supplier_profile.account_manager.email,
+                'name': supplier_profile.account_manager.get_full_name() or supplier_profile.account_manager.username or supplier_profile.account_manager.email,
+            } if supplier_profile.account_manager else None,
             'user': {
                 'id': user.id,
                 'email': user.email,
@@ -110,17 +118,33 @@ class SupplierProfileWriteSerializer(serializers.Serializer):
 
 class SupplierAdminStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=['pending', 'approved', 'suspended'])
+    account_manager_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     company_name = serializers.CharField(required=False, max_length=255)
     contact_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     phone = serializers.CharField(required=False, allow_blank=True, max_length=40)
     country_code = serializers.CharField(required=False, allow_blank=True, max_length=2)
     website = serializers.URLField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
+    status_note = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_account_manager_id(self, value):
+        if value is None:
+            return None
+        User = get_user_model()
+        try:
+            return User.objects.get(id=value, is_staff=True)
+        except User.DoesNotExist as exc:
+            raise serializers.ValidationError('Choose an active staff user as account manager.') from exc
 
     def update(self, instance, validated_data):
         dirty_fields = []
 
-        for field in ('status', 'company_name', 'contact_name', 'phone', 'website', 'notes'):
+        account_manager = validated_data.pop('account_manager_id', serializers.empty)
+        if account_manager is not serializers.empty and instance.account_manager_id != getattr(account_manager, 'id', None):
+            instance.account_manager = account_manager
+            dirty_fields.append('account_manager')
+
+        for field in ('status', 'company_name', 'contact_name', 'phone', 'website', 'notes', 'status_note'):
             if field in validated_data:
                 value = validated_data[field].strip() if isinstance(validated_data[field], str) else validated_data[field]
                 if getattr(instance, field) != value:
@@ -152,6 +176,7 @@ class SupplierDashboardSerializer(serializers.Serializer):
         stockrecords = StockRecord.objects.filter(partner=partner).select_related('product')
         product_ids = stockrecords.values_list('product_id', flat=True)
         products = Product.objects.filter(id__in=product_ids).exclude(structure='parent').distinct()
+        SupplierProductSubmission = apps.get_model('marketplace', 'SupplierProductSubmission')
 
         return {
             'supplier': SupplierProfileSerializer(supplier_profile).data,
@@ -159,6 +184,10 @@ class SupplierDashboardSerializer(serializers.Serializer):
                 'product_count': products.count(),
                 'stockrecord_count': stockrecords.count(),
                 'public_product_count': products.filter(is_public=True).count(),
+                'pending_product_count': SupplierProductSubmission.objects.filter(
+                    supplier=supplier_profile,
+                    status=SupplierProductSubmission.STATUS_PENDING_REVIEW,
+                ).count(),
                 'low_stock_count': stockrecords.filter(num_in_stock__lte=5).count(),
                 'inventory_units': stockrecords.aggregate(total=Sum('num_in_stock')).get('total') or 0,
             },
@@ -170,11 +199,44 @@ class SupplierProductWriteSerializer(ProductWriteSerializer):
         attrs = super().validate(attrs)
         attrs.pop('partner_id', None)
         attrs.pop('partner_name', None)
+        attrs.pop('is_public', None)
         return attrs
+
+    def create(self, validated_data):
+        validated_data['is_public'] = False
+        product = super().create(validated_data)
+        self._mark_pending_review(product)
+        return product
+
+    def update(self, instance, validated_data):
+        validated_data['is_public'] = False
+        product = super().update(instance, validated_data)
+        self._mark_pending_review(product)
+        return product
 
     def _resolve_partner(self, product, payload):
         supplier_profile = self.context['supplier_profile']
         return supplier_profile.partner
+
+    def _mark_pending_review(self, product):
+        SupplierProductSubmission = apps.get_model('marketplace', 'SupplierProductSubmission')
+        supplier_profile = self.context['supplier_profile']
+        user = self.context['request'].user
+        submission, _ = SupplierProductSubmission.objects.update_or_create(
+            product=product,
+            defaults={
+                'supplier': supplier_profile,
+                'status': SupplierProductSubmission.STATUS_PENDING_REVIEW,
+                'submitted_by': user,
+                'reviewed_by': None,
+                'reviewed_at': None,
+                'review_note': '',
+            },
+        )
+        if product.is_public:
+            product.is_public = False
+            product.save(update_fields=['is_public'])
+        return submission
 
 
 class SupplierProductListSerializer(serializers.Serializer):
@@ -194,6 +256,31 @@ class SupplierProductListSerializer(serializers.Serializer):
             'num_in_stock': stockrecord.num_in_stock if stockrecord else 0,
         }
 
+    @staticmethod
+    def build_moderation(product, supplier_profile):
+        submission = getattr(product, 'supplier_submission', None)
+        if submission is None:
+            fallback_status = 'approved' if product.is_public else 'pending_review'
+            return {
+                'status': fallback_status,
+                'review_note': '',
+                'submitted_at': None,
+                'reviewed_at': None,
+                'reviewed_by': None,
+            }
+        return {
+            'id': submission.id,
+            'status': submission.status,
+            'review_note': submission.review_note,
+            'supplier_note': submission.supplier_note,
+            'submitted_at': submission.submitted_at,
+            'reviewed_at': submission.reviewed_at,
+            'reviewed_by': {
+                'id': submission.reviewed_by_id,
+                'email': submission.reviewed_by.email,
+            } if submission.reviewed_by else None,
+        }
+
     def to_representation(self, product):
         supplier_profile = self.context['supplier_profile']
         item = serialize_product_card(product, display_currency=None)
@@ -204,5 +291,60 @@ class SupplierProductListSerializer(serializers.Serializer):
             'status': supplier_profile.status,
         }
         item['offer'] = self.build_offer(product, supplier_profile)
+        item['moderation'] = self.build_moderation(product, supplier_profile)
         item['shared_catalog'] = product.stockrecords.exclude(partner=supplier_profile.partner).exists()
         return item
+
+
+class SupplierProductModerationSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=['approved', 'rejected', 'changes_requested', 'suspended', 'pending_review']
+    )
+    review_note = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        status_value = attrs['status']
+        review_note = (attrs.get('review_note') or '').strip()
+        if status_value in {'rejected', 'changes_requested', 'suspended'} and not review_note:
+            raise serializers.ValidationError({'review_note': 'A review note is required for this decision.'})
+        attrs['review_note'] = review_note
+        return attrs
+
+    def update(self, instance, validated_data):
+        status_value = validated_data['status']
+        review_note = validated_data.get('review_note', '')
+        user = self.context['request'].user
+        product = instance.product
+
+        instance.status = status_value
+        instance.review_note = review_note
+        instance.reviewed_by = user
+        instance.reviewed_at = timezone.now()
+        instance.save(update_fields=['status', 'review_note', 'reviewed_by', 'reviewed_at', 'updated_at'])
+
+        should_be_public = status_value == instance.STATUS_APPROVED
+        if product.is_public != should_be_public:
+            product.is_public = should_be_public
+            product.save(update_fields=['is_public'])
+
+        return instance
+
+
+class SupplierProductModerationListSerializer(serializers.Serializer):
+    def to_representation(self, submission):
+        supplier = submission.supplier
+        product = submission.product
+        return {
+            'id': submission.id,
+            'status': submission.status,
+            'review_note': submission.review_note,
+            'supplier_note': submission.supplier_note,
+            'submitted_at': submission.submitted_at,
+            'reviewed_at': submission.reviewed_at,
+            'supplier': SupplierProfileSerializer(supplier).data,
+            'product': serialize_product_card(product, display_currency=None),
+            'reviewed_by': {
+                'id': submission.reviewed_by_id,
+                'email': submission.reviewed_by.email,
+            } if submission.reviewed_by else None,
+        }

@@ -62,6 +62,47 @@ class PaymentSession(models.Model):
         return f'{self.reference}:{self.method}:{self.status}'
 
 
+class PaymentEvent(models.Model):
+    KIND_INITIALIZED = 'initialized'
+    KIND_PROVIDER_SUBMITTED = 'provider_submitted'
+    KIND_NOTIFICATION_RECEIVED = 'notification_received'
+    KIND_STATUS_QUERIED = 'status_queried'
+    KIND_STATUS_APPLIED = 'status_applied'
+    KIND_STATUS_IGNORED = 'status_ignored'
+    KIND_GATEWAY_ERROR = 'gateway_error'
+    KIND_ORDER_LINKED = 'order_linked'
+
+    KIND_CHOICES = [
+        (KIND_INITIALIZED, 'Initialized'),
+        (KIND_PROVIDER_SUBMITTED, 'Provider submitted'),
+        (KIND_NOTIFICATION_RECEIVED, 'Notification received'),
+        (KIND_STATUS_QUERIED, 'Status queried'),
+        (KIND_STATUS_APPLIED, 'Status applied'),
+        (KIND_STATUS_IGNORED, 'Status ignored'),
+        (KIND_GATEWAY_ERROR, 'Gateway error'),
+        (KIND_ORDER_LINKED, 'Order linked'),
+    ]
+
+    payment_session = models.ForeignKey(PaymentSession, on_delete=models.CASCADE, related_name='events')
+    kind = models.CharField(max_length=40, choices=KIND_CHOICES)
+    status_before = models.CharField(max_length=16, blank=True)
+    status_after = models.CharField(max_length=16, blank=True)
+    external_reference = models.CharField(max_length=128, blank=True)
+    message = models.CharField(max_length=255, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['kind', '-created_at']),
+            models.Index(fields=['payment_session', '-created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.payment_session.reference}:{self.kind}:{self.status_after or self.status_before}'
+
+
 class PaymentProviderConfiguration(models.Model):
     PROVIDER_MPESA = 'mpesa'
     PROVIDER_PESAPAL = 'pesapal'

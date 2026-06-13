@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import timedelta
 from uuid import uuid4
 
 from django.apps import apps
@@ -9,6 +10,8 @@ from .config import get_payment_setting, provider_is_configured, provider_is_ena
 
 
 OFFLINE_PAYMENT_PROVIDERS = {'bank_transfer', 'cash_on_delivery'}
+SUCCESS_PAYMENT_STATUSES = {'authorized', 'paid'}
+PAYMENT_ATTENTION_SEVERITIES = {'critical', 'error'}
 
 
 def available_payment_methods() -> list[dict]:
@@ -119,25 +122,70 @@ def initialize_payment_session(
         metadata=metadata or {},
         provider_payload=provider_payload or _initial_provider_payload(method_code, reference, amount, currency),
     )
+    log_payment_event(
+        session,
+        kind='initialized',
+        status_after=session.status,
+        external_reference=session.external_reference,
+        payload={
+            'method': method_code,
+            'provider': provider,
+            'amount': str(amount),
+            'currency': currency,
+            'basket_id': getattr(basket, 'id', None),
+        },
+    )
     return session
 
 
 def confirm_payment_session(payment_session, *, success: bool, external_reference: str = '', metadata: dict | None = None):
+    previous_status = payment_session.status
+    next_status = _success_status_for_method(payment_session.method) if success else payment_session.STATUS_FAILED
+
+    if previous_status in SUCCESS_PAYMENT_STATUSES or previous_status == next_status:
+        payment_session.external_reference = external_reference or payment_session.external_reference
+        if metadata:
+            payment_session.metadata = {**payment_session.metadata, **metadata}
+            payment_session.save(update_fields=['external_reference', 'metadata', 'updated_at'])
+        elif external_reference:
+            payment_session.save(update_fields=['external_reference', 'updated_at'])
+        log_payment_event(
+            payment_session,
+            kind='status_ignored',
+            status_before=previous_status,
+            status_after=payment_session.status,
+            external_reference=payment_session.external_reference,
+            message='Ignored duplicate terminal payment update.',
+            payload={'requested_success': success, 'requested_status': next_status, 'metadata': metadata or {}},
+        )
+        return payment_session
+
     payment_session.external_reference = external_reference or payment_session.external_reference
     merged_metadata = payment_session.metadata.copy()
     if metadata:
         merged_metadata.update(metadata)
     payment_session.metadata = merged_metadata
     if success:
-        payment_session.status = _success_status_for_method(payment_session.method)
+        payment_session.status = next_status
         payment_session.paid_at = timezone.now()
     else:
-        payment_session.status = payment_session.STATUS_FAILED
+        payment_session.status = next_status
     payment_session.save(update_fields=['external_reference', 'metadata', 'status', 'paid_at', 'updated_at'])
+    log_payment_event(
+        payment_session,
+        kind='status_applied',
+        status_before=previous_status,
+        status_after=payment_session.status,
+        external_reference=payment_session.external_reference,
+        payload={'success': success, 'metadata': metadata or {}},
+    )
     return payment_session
 
 
 def link_payment_to_order(payment_session, order):
+    if payment_session.order_id == order.id:
+        return None
+
     payment_session.order = order
     payment_session.save(update_fields=['order', 'updated_at'])
 
@@ -171,8 +219,111 @@ def link_payment_to_order(payment_session, order):
         reference=payment_session.external_reference or payment_session.reference,
         status=payment_session.status,
     )
+    log_payment_event(
+        payment_session,
+        kind='order_linked',
+        status_before=payment_session.status,
+        status_after=payment_session.status,
+        external_reference=payment_session.external_reference,
+        payload={'order_id': order.id, 'order_number': order.number},
+    )
 
     return source
+
+
+def payment_reconciliation(payment_session, *, now=None) -> dict:
+    now = now or timezone.now()
+    issues = []
+    status = 'ok'
+    severity = 'ok'
+    order = getattr(payment_session, 'order', None)
+    is_success = payment_session.status in SUCCESS_PAYMENT_STATUSES
+
+    if is_success and not payment_session.order_id:
+        status = 'paid_no_order'
+        severity = 'critical'
+        issues.append('Payment is confirmed but no order is linked.')
+    elif payment_session.status in {payment_session.STATUS_FAILED, payment_session.STATUS_CANCELLED} and payment_session.order_id:
+        status = 'failed_linked_order'
+        severity = 'critical'
+        issues.append('A failed or cancelled payment is linked to an order.')
+    elif payment_session.status == payment_session.STATUS_PENDING and payment_session.created_at:
+        if payment_session.created_at <= now - timedelta(minutes=30):
+            status = 'pending_too_long'
+            severity = 'warning'
+            issues.append('Payment has been pending for more than 30 minutes.')
+
+    if order and is_success:
+        order_currency = getattr(order, 'currency', '') or ''
+        order_total = getattr(order, 'total_incl_tax', None)
+        if order_currency and payment_session.currency and order_currency != payment_session.currency:
+            status = 'order_mismatch'
+            severity = 'critical'
+            issues.append(f'Order currency {order_currency} does not match payment currency {payment_session.currency}.')
+        if order_total is not None:
+            payment_amount = Decimal(str(payment_session.amount)).quantize(Decimal('0.01'))
+            order_amount = Decimal(str(order_total)).quantize(Decimal('0.01'))
+            if payment_amount != order_amount:
+                status = 'order_mismatch'
+                severity = 'critical'
+                issues.append(f'Order total {order_amount} does not match payment amount {payment_amount}.')
+
+    if not issues:
+        if payment_session.status == payment_session.STATUS_PENDING:
+            status = 'pending'
+            severity = 'warning'
+        elif is_success and payment_session.order_id:
+            status = 'matched'
+            severity = 'ok'
+        elif payment_session.status in {payment_session.STATUS_FAILED, payment_session.STATUS_CANCELLED}:
+            status = payment_session.status
+            severity = 'error'
+        else:
+            status = payment_session.status or 'unknown'
+            severity = 'info'
+
+    labels = {
+        'matched': 'Matched',
+        'paid_no_order': 'Paid, no order',
+        'failed_linked_order': 'Failed, linked order',
+        'order_mismatch': 'Order mismatch',
+        'pending_too_long': 'Pending too long',
+        'pending': 'Pending',
+        'failed': 'Failed',
+        'cancelled': 'Cancelled',
+        'authorized': 'Authorized',
+        'paid': 'Paid',
+        'ok': 'OK',
+    }
+    return {
+        'status': status,
+        'label': labels.get(status, status.replace('_', ' ').title()),
+        'severity': severity,
+        'issues': issues,
+        'needs_attention': severity in PAYMENT_ATTENTION_SEVERITIES,
+    }
+
+
+def log_payment_event(
+    payment_session,
+    *,
+    kind: str,
+    status_before: str = '',
+    status_after: str = '',
+    external_reference: str = '',
+    message: str = '',
+    payload: dict | None = None,
+):
+    PaymentEvent = apps.get_model('payments', 'PaymentEvent')
+    return PaymentEvent.objects.create(
+        payment_session=payment_session,
+        kind=kind,
+        status_before=status_before or '',
+        status_after=status_after or '',
+        external_reference=external_reference or '',
+        message=message or '',
+        payload=payload or {},
+    )
 
 
 def serialize_payment_session(payment_session) -> dict:

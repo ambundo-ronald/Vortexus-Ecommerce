@@ -143,7 +143,9 @@ export const ENDPOINTS = {
     order: (orderNumber) => `/supplier/orders/${orderNumber}/`,
     lineStatus: (orderNumber, lineId) => `/supplier/orders/${orderNumber}/lines/${lineId}/status/`,
     products: "/supplier/products/",
-    product: (productId) => `/supplier/products/${productId}/`
+    product: (productId) => `/supplier/products/${productId}/`,
+    productImages: (productId) => `/supplier/products/${productId}/images/`,
+    productImage: (productId, imageId) => `/supplier/products/${productId}/images/${imageId}/`
   },
   admin: {
     dashboardSummary: "/admin/dashboard/summary/",

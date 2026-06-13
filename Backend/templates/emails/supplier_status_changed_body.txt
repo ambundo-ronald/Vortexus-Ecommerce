@@ -1,0 +1,9 @@
+Hi {{ display_name }},
+
+Your supplier account for {{ supplier.company_name }} is now {{ supplier.status }}.
+
+{% if supplier.status_note %}Note from our team:
+{{ supplier.status_note }}
+{% endif %}
+
+{{ shop_name }}
