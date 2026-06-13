@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { productImageUrl } from "../../utils/productImages";
 
-export default function SupplierProductTable({ products = [], loading = false, onEdit }) {
+export default function SupplierProductTable({ products = [], loading = false, onEdit, onDelete, deletingId = null }) {
   if (loading) {
     return (
       <div className="supplier-empty-state">
@@ -59,6 +59,15 @@ export default function SupplierProductTable({ products = [], loading = false, o
             <button className="secondary-button" type="button" onClick={() => onEdit?.(product)}>
               <MaterialIcon name="edit" size={18} />
               Edit
+            </button>
+            <button
+              className="danger-link supplier-product-delete"
+              type="button"
+              disabled={deletingId === product.id}
+              onClick={() => onDelete?.(product)}
+              aria-label={`Remove ${product.title}`}
+            >
+              <MaterialIcon name={deletingId === product.id ? "hourglass_top" : "delete"} size={18} />
             </button>
           </div>
         </div>

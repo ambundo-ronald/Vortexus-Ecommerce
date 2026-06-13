@@ -8,6 +8,19 @@ export default function AccountDashboardPage() {
   const { user, logout, loading } = useAuth();
   const name = user?.full_name || user?.first_name || user?.email || "Account";
   const emailVerified = isEmailVerified(user);
+  const supplierAction = user?.supplier?.is_supplier
+    ? {
+        to: "/supplier",
+        icon: "storefront",
+        title: "Supplier portal",
+        description: "Manage products and fulfill orders",
+      }
+    : {
+        to: "/supplier/apply",
+        icon: "add_business",
+        title: "Sell with us",
+        description: "Apply for a supplier account",
+      };
 
   return (
     <section className="account-page">
@@ -81,6 +94,11 @@ export default function AccountDashboardPage() {
           <MaterialIcon name="notifications_active" size={24} />
           <strong>Stock alerts</strong>
           <span>Availability notifications</span>
+        </Link>
+        <Link className="account-action-card" to={supplierAction.to}>
+          <MaterialIcon name={supplierAction.icon} size={24} />
+          <strong>{supplierAction.title}</strong>
+          <span>{supplierAction.description}</span>
         </Link>
       </div>
 
