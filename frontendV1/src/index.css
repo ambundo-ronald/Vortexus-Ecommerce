@@ -2276,30 +2276,12 @@ img {
   color: var(--color-warning);
 }
 
-.loading-state,
 .empty-state,
 .alert {
   border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
   background: var(--card-bg);
   padding: var(--space-4);
-}
-
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-primary-600);
-  border-radius: 999px;
-  animation: spin 0.85s linear infinite;
 }
 
 .empty-state {
