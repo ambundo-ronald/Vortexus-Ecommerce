@@ -47,3 +47,36 @@ class EmailTwoFactorChallenge(models.Model):
 
     def __str__(self):
         return f'EmailTwoFactorChallenge(user_id={self.user_id})'
+
+
+class DeliveryLocation(models.Model):
+    user_address = models.OneToOneField(
+        'address.UserAddress',
+        on_delete=models.CASCADE,
+        related_name='delivery_location',
+        blank=True,
+        null=True,
+    )
+    shipping_address = models.OneToOneField(
+        'order.ShippingAddress',
+        on_delete=models.CASCADE,
+        related_name='delivery_location',
+        blank=True,
+        null=True,
+    )
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    label = models.CharField(max_length=120, blank=True)
+    source = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['latitude', 'longitude']),
+        ]
+
+    def __str__(self):
+        target = self.shipping_address_id or self.user_address_id or 'unassigned'
+        return f'DeliveryLocation({target}: {self.latitude}, {self.longitude})'

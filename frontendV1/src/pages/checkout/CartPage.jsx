@@ -48,7 +48,6 @@ export default function CartPage() {
             <div className="cart-products-panel__head">
               <div>
                 <h1 id="cart-page-title">Your cart</h1>
-                <p>Review your items and proceed to checkout</p>
               </div>
               <span className="cart-products-panel__count">
                 <MaterialIcon name="shopping_cart" size={18} />
@@ -66,10 +65,6 @@ export default function CartPage() {
               {lines.map((line) => (
                 <CartItem key={line.id} line={line} />
               ))}
-            </div>
-            <div className="cart-warranty-note">
-              <MaterialIcon name="verified_user" size={18} />
-              <span>All items are covered by manufacturer warranty and quality guarantee.</span>
             </div>
           </section>
           <CartSummary basket={basket} />
@@ -113,10 +108,6 @@ export default function CartPage() {
               <MaterialIcon name="chevron_right" size={24} />
             </button>
           ) : null}
-          <div className="saved-items-note">
-            <MaterialIcon name="info" size={17} />
-            <span>Move items to your cart or remove them if you no longer need them.</span>
-          </div>
         </section>
       ) : null}
     </div>

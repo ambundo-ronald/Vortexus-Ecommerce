@@ -53,7 +53,6 @@ export default function PaymentMethodSelector({
         <span><MaterialIcon name="payments" size={20} /></span>
         <div>
           <h2>Payment</h2>
-          <p>Select a payment option.</p>
         </div>
       </div>
 

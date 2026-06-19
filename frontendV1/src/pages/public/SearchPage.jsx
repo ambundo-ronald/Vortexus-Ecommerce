@@ -4,7 +4,6 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import ProductFilters from "../../components/catalog/ProductFilters.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import ProductSortBar from "../../components/catalog/ProductSortBar.jsx";
-import SearchBar from "../../components/search/SearchBar.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
@@ -111,11 +110,9 @@ export default function SearchPage() {
     <>
       <section className="surface-panel search-hero">
         <div>
-          <p className="eyebrow">Search</p>
           <h1>{imageMode ? "Image search results" : query ? `Results for "${query}"` : "Find products faster"}</h1>
           <p>{imageMode && imageName ? imageName : `${total} result${total === 1 ? "" : "s"}`}</p>
         </div>
-        <SearchBar initialValue={query} filters={{ category: params.category, brand: params.brand }} compact />
       </section>
 
       {!query && !imageMode && recentSearches.length ? (
@@ -145,13 +142,16 @@ export default function SearchPage() {
           ) : (
             <div>
               <strong>{total} products</strong>
-              <span>Similar products</span>
             </div>
           )}
         </div>
 
         <Alert>{imageError || facetsError || error}</Alert>
-        {loading ? <ProductGrid products={[]} loading skeletonCount={12} /> : <ProductGrid products={results} emptyTitle="No search results" />}
+        {loading ? (
+          <ProductGrid products={[]} loading skeletonCount={12} />
+        ) : (
+          <ProductGrid products={results} emptyTitle="No search results" emptyMessage="Try another search." />
+        )}
         {!imageMode ? (
           <Pagination
             page={pagination?.page || params.page}

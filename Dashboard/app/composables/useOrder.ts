@@ -27,6 +27,9 @@ export interface UpdateOrderShippingAddressPayload {
   country_code?: string
   phone_number?: string
   notes?: string
+  latitude?: string | number | null
+  longitude?: string | number | null
+  location_label?: string
 }
 
 export interface CreateOrderNotePayload {

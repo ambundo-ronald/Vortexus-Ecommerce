@@ -202,7 +202,6 @@ export default function ProductDetailPage() {
       <section className="product-detail">
         <div className="product-detail__media-panel">
           <ProductImageGallery product={product} />
-          <ProductTrustBar />
         </div>
 
         <div className="product-detail__body">
@@ -252,7 +251,6 @@ export default function ProductDetailPage() {
           </dl>
 
           <section className="product-overview" aria-label="Quick overview">
-            <h2>Quick overview</h2>
             <p>{overviewText}</p>
           </section>
 
@@ -307,17 +305,7 @@ export default function ProductDetailPage() {
         onNativeShare={() => void handleNativeShare()}
       />
 
-      <section className="product-info-grid">
-        <article className="product-info-card">
-          <h2>Why choose this product?</h2>
-          <ul className="product-benefit-list">
-            <li><MaterialIcon name="check_circle" size={18} filled /> High performance and reliable operation</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Built with durable project-ready materials</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Easy to install, maintain, and reorder</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Suitable for industrial and commercial use</li>
-          </ul>
-        </article>
-
+      <section className="product-info-grid product-info-grid--single">
         <article className="product-info-card">
           <h2>Technical specifications</h2>
           <ProductSpecifications specifications={detailSpecs} />
@@ -329,25 +317,6 @@ export default function ProductDetailPage() {
       </div>
 
       <RelatedProducts products={related} />
-    </div>
-  );
-}
-
-function ProductTrustBar() {
-  const items = [
-    { icon: "verified_user", title: "Premium quality" },
-    { icon: "workspace_premium", title: "Warranty ready" },
-    { icon: "inventory_2", title: "Secure packaging" }
-  ];
-
-  return (
-    <div className="product-trust-bar" aria-label="Product trust signals">
-      {items.map((item) => (
-        <span key={item.title}>
-          <MaterialIcon name={item.icon} size={19} />
-          {item.title}
-        </span>
-      ))}
     </div>
   );
 }
@@ -440,7 +409,6 @@ function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare })
         </span>
         <div>
           <h2>Scan to share</h2>
-          <p>Open this product quickly on another phone.</p>
         </div>
       </div>
 

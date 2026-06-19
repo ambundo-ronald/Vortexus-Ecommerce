@@ -204,7 +204,6 @@ export default function CheckoutReviewPage() {
               <span><MaterialIcon name="fact_check" size={20} /></span>
               <div>
                 <h2>Confirm details</h2>
-                <p>Check delivery, payment, and items before placing the order.</p>
               </div>
             </div>
 
@@ -217,7 +216,6 @@ export default function CheckoutReviewPage() {
               <div>
                 <span>Delivery method</span>
                 <strong>{preview?.shipping?.selected_method?.name || "Selected"}</strong>
-                <small>{preview?.shipping?.selected_method?.description || "Saved delivery option"}</small>
               </div>
               <div>
                 <span>Delivery address</span>
@@ -232,7 +230,6 @@ export default function CheckoutReviewPage() {
               <span><MaterialIcon name="inventory_2" size={20} /></span>
               <div>
                 <h2>Items</h2>
-                <p>{preview?.basket?.item_count || 0} item{preview?.basket?.item_count === 1 ? "" : "s"} in this order.</p>
               </div>
             </div>
 

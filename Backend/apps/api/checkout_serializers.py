@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.apps import apps
 from phonenumber_field.phonenumber import PhoneNumber
 from rest_framework import serializers
@@ -109,6 +111,9 @@ class ShippingAddressSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=2)
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=128)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    latitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-90'), max_value=Decimal('90'))
+    longitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-180'), max_value=Decimal('180'))
+    location_label = serializers.CharField(required=False, allow_blank=True, max_length=120)
 
     def validate_country_code(self, value):
         Country = apps.get_model('address', 'Country')
@@ -147,6 +152,19 @@ class ShippingAddressSerializer(serializers.Serializer):
             'country_id': country.pk,
             'phone_number': phone_number,
             'notes': data.get('notes', ''),
+        }
+
+    def location_payload(self) -> dict | None:
+        data = self.validated_data
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        if latitude is None or longitude is None:
+            return None
+        return {
+            'latitude': latitude,
+            'longitude': longitude,
+            'label': data.get('location_label', ''),
+            'source': 'customer_pin',
         }
 
 

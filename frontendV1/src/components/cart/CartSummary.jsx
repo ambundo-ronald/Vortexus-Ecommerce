@@ -41,7 +41,6 @@ export default function CartSummary({ basket }) {
         </span>
         <div>
           <h2>Order summary</h2>
-          <p>Review your cart before delivery</p>
         </div>
       </div>
       <div className="summary-group">
@@ -100,12 +99,8 @@ export default function CartSummary({ basket }) {
       ) : null}
       <Link className="primary-button" to="/checkout/shipping">
         <MaterialIcon name="lock" size={19} />
-        Checkout securely
+        Checkout
       </Link>
-      <p className="cart-summary__safe-note">
-        <MaterialIcon name="verified_user" size={17} />
-        Secure checkout. Your data is protected.
-      </p>
       <Link className="cart-summary__continue" to="/catalog">
         <MaterialIcon name="arrow_back" size={18} />
         Continue shopping

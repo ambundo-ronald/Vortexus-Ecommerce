@@ -7,7 +7,13 @@ import { useAuth } from "../../hooks/useAuth";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { productId, productTitle } from "../../utils/productDisplay";
 
-export default function ProductGrid({ products = [], emptyTitle = "No products found", loading = false, skeletonCount = 8 }) {
+export default function ProductGrid({
+  products = [],
+  emptyTitle = "No products found",
+  emptyMessage = "",
+  loading = false,
+  skeletonCount = 8
+}) {
   const { user } = useAuth();
   const loadStatus = useWishlistStore((state) => state.loadStatus);
   const productIds = products.map((product) => productId(product)).filter(Boolean).join(",");
@@ -21,7 +27,7 @@ export default function ProductGrid({ products = [], emptyTitle = "No products f
   }
 
   if (!products.length) {
-    return <EmptyState title={emptyTitle} message="Try another category, search term, or filter." />;
+    return <EmptyState title={emptyTitle} message={emptyMessage} />;
   }
 
   return (

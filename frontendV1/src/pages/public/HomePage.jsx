@@ -53,10 +53,9 @@ export default function HomePage() {
           />
           <section className="home-arrivals-strip" aria-label="New arrivals preview">
             <div>
-              <span>New arrivals</span>
-              <strong>These are the newest products in the store</strong>
+              <strong>New arrivals</strong>
               <Link to="/catalog?sort_by=newest">
-                Check what is new
+                View all
                 <MaterialIcon name="arrow_forward" size={17} />
               </Link>
             </div>
@@ -77,7 +76,7 @@ export default function HomePage() {
 
       <section className="content-section home-product-section">
         <div className="section-heading">
-          <h2>New Arrivals</h2>
+          <h2>New arrivals</h2>
           <Link to="/catalog?sort_by=newest">View all</Link>
         </div>
         <Alert>{newestError || recommendationsError}</Alert>
@@ -97,7 +96,7 @@ export default function HomePage() {
 
       <section className="content-section home-product-section">
         <div className="section-heading">
-          <h2>Recommended now</h2>
+          <h2>Recommended</h2>
           <Link to="/catalog">View all</Link>
         </div>
         <Alert>{recommendationsError}</Alert>

@@ -29,6 +29,7 @@ from apps.common.currency import (
 from apps.common.products import serialize_product_card
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
+from apps.accounts.delivery_locations import location_for_user_address, store_session_location, upsert_user_address_location
 
 from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
 from .order_serializers import OrderSummarySerializer
@@ -84,6 +85,7 @@ def _user_address_payload(address) -> dict:
         'country_code': address.country_id or '',
         'phone_number': str(address.phone_number or ''),
         'notes': address.notes or '',
+        'location': location_for_user_address(address),
         'is_default_for_shipping': address.is_default_for_shipping,
         'is_default_for_billing': address.is_default_for_billing,
     }
@@ -447,6 +449,9 @@ class AddressSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=2)
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=32)
     notes = serializers.CharField(required=False, allow_blank=True)
+    latitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-90'), max_value=Decimal('90'))
+    longitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-180'), max_value=Decimal('180'))
+    location_label = serializers.CharField(required=False, allow_blank=True, max_length=120)
     is_default_for_shipping = serializers.BooleanField(required=False, default=False)
     is_default_for_billing = serializers.BooleanField(required=False, default=False)
 
@@ -460,6 +465,9 @@ class AddressSerializer(serializers.Serializer):
     def save(self, *, user, instance=None):
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        latitude = data.pop('latitude', None)
+        longitude = data.pop('longitude', None)
+        location_label = data.pop('location_label', '')
         defaults = {
             **data,
             'country': country,
@@ -472,11 +480,18 @@ class AddressSerializer(serializers.Serializer):
             for field, value in defaults.items():
                 setattr(instance, field, value)
         instance.save()
+        upsert_user_address_location(
+            instance,
+            {'latitude': latitude, 'longitude': longitude, 'label': location_label, 'source': 'customer_pin'},
+        )
         return instance
 
     def to_session_fields(self) -> dict:
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        data.pop('latitude', None)
+        data.pop('longitude', None)
+        data.pop('location_label', None)
         return {
             **data,
             'country_id': country.pk,
@@ -485,9 +500,15 @@ class AddressSerializer(serializers.Serializer):
     def to_address_payload(self) -> dict:
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        latitude = data.pop('latitude', None)
+        longitude = data.pop('longitude', None)
+        location_label = data.pop('location_label', '')
         return {
             **data,
             'country_code': country.iso_3166_1_a2,
+            'location': {'latitude': float(latitude), 'longitude': float(longitude), 'label': location_label, 'source': 'customer_pin'}
+            if latitude is not None and longitude is not None
+            else None,
         }
 
 
@@ -560,6 +581,7 @@ class CheckoutUseShippingAddressAPIView(APIView):
     def post(self, request):
         address = get_object_or_404(request.user.addresses.all(), id=request.data.get('address_id'))
         get_checkout_session(request).ship_to_user_address(address)
+        store_session_location(request, location_for_user_address(address))
         return Response(build_checkout_payload(request))
 
 

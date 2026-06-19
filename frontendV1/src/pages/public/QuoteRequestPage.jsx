@@ -95,7 +95,6 @@ export default function QuoteRequestPage() {
             <div>
               <span>General request</span>
               <h1>Tell us what you need</h1>
-              <p>Use this form for project supplies, spares, or equipment pricing.</p>
             </div>
           )}
         </aside>

@@ -4,21 +4,19 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import "./StoreFooter.css";
 
 const shopLinks = [
-  { to: "/catalog", label: "Shop products", icon: "shopping_bag" },
-  { to: "/search", label: "Search products", icon: "travel_explore" },
-  { to: "/offers", label: "Offers and deals", icon: "local_offer" },
-  { to: "/quote", label: "Request a quote", icon: "request_quote" },
+  { to: "/catalog", label: "Shop", icon: "shopping_bag" },
+  { to: "/search", label: "Search", icon: "travel_explore" },
+  { to: "/offers", label: "Offers", icon: "local_offer" },
+  { to: "/quote", label: "Quote", icon: "request_quote" },
   { to: "/catalog?sort_by=newest", label: "New arrivals", icon: "new_releases" },
-  { to: "/catalog?in_stock=true", label: "In stock now", icon: "inventory" },
 ];
 
 const supportLinks = [
   { to: "/orders/track", label: "Track order", icon: "local_shipping" },
-  { to: "/quote", label: "Project support", icon: "engineering" },
-  { to: "/account/product-alerts", label: "Product alerts", icon: "notifications_active" },
+  { to: "/quote", label: "Support", icon: "engineering" },
+  { to: "/account/product-alerts", label: "Alerts", icon: "notifications_active" },
   { to: "/account/recently-viewed", label: "Recently viewed", icon: "history" },
   { to: "/account/messages", label: "Inbox", icon: "mail" },
-  { to: "/account/notifications", label: "Notifications", icon: "campaign" },
 ];
 
 const accountLinks = [
@@ -33,9 +31,8 @@ const accountLinks = [
 
 const companyLinks = [
   { to: "/", label: "Home", icon: "home" },
-  { to: "/offers", label: "Campaigns", icon: "sell" },
+  { to: "/offers", label: "Offers", icon: "sell" },
   { to: "/account/reviews", label: "Reviews", icon: "star" },
-  { to: "/account/delete", label: "Account controls", icon: "manage_accounts" },
   { href: "mailto:support@vortexus.local", label: "Email support", icon: "alternate_email" },
 ];
 
@@ -73,7 +70,7 @@ export default function Footer() {
             <div className="store-footer__contact-list">
               <span>
                 <MaterialIcon name="location_on" size={20} />
-                <span>Nairobi, Kenya<br />Serving water projects and industrial supply teams</span>
+                <span>Nairobi, Kenya</span>
               </span>
               <a href="mailto:support@vortexus.local">
                 <MaterialIcon name="mail" size={20} />
@@ -81,7 +78,7 @@ export default function Footer() {
               </a>
               <NavLink to="/quote">
                 <MaterialIcon name="chat" size={20} />
-                <span>Request product or project help</span>
+                <span>Request help</span>
               </NavLink>
             </div>
           </section>
@@ -98,10 +95,9 @@ export default function Footer() {
 
         <div className="store-footer__bottom">
           <span>© {year} Vortexus Industrial Marketplace.</span>
-          <span>Built for mobile purchasing, quotes, checkout, order tracking, and account service.</span>
           <span className="store-footer__legal">
             <NavLink to="/offers">Offers</NavLink>
-            <NavLink to="/quote">Quote support</NavLink>
+            <NavLink to="/quote">Quote</NavLink>
             <NavLink to="/orders/track">Track order</NavLink>
           </span>
         </div>

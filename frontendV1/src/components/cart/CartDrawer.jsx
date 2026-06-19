@@ -28,7 +28,6 @@ export default function CartDrawer() {
             </span>
             <div>
               <strong>Cart</strong>
-              <p>{itemCount} item{itemCount === 1 ? "" : "s"} ready</p>
             </div>
           </div>
           <button className="cart-drawer__close" type="button" onClick={close} aria-label="Close cart">
@@ -43,9 +42,8 @@ export default function CartDrawer() {
                 <MaterialIcon name="shopping_bag" size={30} />
               </span>
               <strong>Your cart is empty</strong>
-              <p>Add products to see them here.</p>
               <Link className="primary-button" to="/catalog" onClick={close}>
-                Browse products
+                Shop
               </Link>
             </div>
           )}

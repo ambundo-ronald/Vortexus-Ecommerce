@@ -36,9 +36,7 @@ export default function OffersPage() {
     <section className="offers-page">
       <div className="offers-hero">
         <div>
-          <p className="eyebrow">Offers</p>
-          <h1>Current store offers</h1>
-          <p>Open offers from the store. Discounts apply automatically in the cart when your basket qualifies.</p>
+          <h1>Offers</h1>
         </div>
         <button className="secondary-button" type="button" disabled={loading} onClick={() => void loadOffers()}>
           <MaterialIcon name="refresh" size={18} />
@@ -50,7 +48,7 @@ export default function OffersPage() {
       {loading ? <Spinner label="Loading offers" /> : null}
 
       {!loading && !offers.length ? (
-        <EmptyState title="No offers available" message="Active offers will appear here when the store publishes them." />
+        <EmptyState title="No offers available" message="" />
       ) : null}
 
       {offers.length ? (
@@ -73,12 +71,13 @@ function OfferCard({ offer }) {
         <MaterialIcon name="local_offer" size={24} />
       </span>
       <div className="offer-card__copy">
-        <p className="eyebrow">{offer.offer_type || "Offer"}</p>
         <h2>{offer.name}</h2>
-        <p>{offer.description || offer.benefit?.description || offer.condition?.description || "Discount applies when your basket qualifies."}</p>
+        {offer.description || offer.benefit?.description || offer.condition?.description ? (
+          <p>{offer.description || offer.benefit?.description || offer.condition?.description}</p>
+        ) : null}
       </div>
       <div className="offer-card__meta">
-        {offer.end_datetime ? <span>Ends {formatDate(offer.end_datetime)}</span> : <span>Open offer</span>}
+        {offer.end_datetime ? <span>Ends {formatDate(offer.end_datetime)}</span> : null}
         {range ? <span>{range.name}</span> : null}
       </div>
       <div className="offer-card__actions">

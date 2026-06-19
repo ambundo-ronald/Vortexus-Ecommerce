@@ -54,7 +54,6 @@ export default function QuoteRequestForm({ product, user, loading = false, onSub
         <span><MaterialIcon name="request_quote" size={20} /></span>
         <div>
           <h2>Request a quote</h2>
-          <p>Share your contact details and project need.</p>
         </div>
       </div>
 

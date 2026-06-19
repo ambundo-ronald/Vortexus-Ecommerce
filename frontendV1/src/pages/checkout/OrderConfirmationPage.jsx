@@ -60,7 +60,7 @@ export default function OrderConfirmationPage() {
       ];
   const emailMessage = order?.guest_email
     ? `Your order summary is being sent to ${order.guest_email}. Keep that email for tracking and support.`
-    : "Your order summary is stored in your account and sent to your inbox. Delivery status emails will follow when the order moves forward.";
+    : "Sent to your inbox.";
 
   useEffect(() => {
     if (!order) return;
@@ -83,7 +83,6 @@ export default function OrderConfirmationPage() {
           </span>
           <h1>No recent order</h1>
           <Alert>{error}</Alert>
-          <p>Once an order is placed, its confirmation will appear here.</p>
           <Link className="primary-button" to="/catalog">
             <MaterialIcon name="storefront" size={19} />
             Continue shopping
@@ -98,18 +97,29 @@ export default function OrderConfirmationPage() {
       <CheckoutStepper current="done" />
 
       <div className="checkout-card confirmation-card printable-order-summary">
+        <header className="print-order-header">
+          <div>
+            <strong>Vortexus</strong>
+            <span>Industrial Marketplace</span>
+          </div>
+          <div>
+            <span>Order</span>
+            <strong>#{order.number || order.order_number}</strong>
+          </div>
+        </header>
+
         <span className="confirmation-icon">
           <MaterialIcon name="check_circle" size={34} />
         </span>
         <h1>Order placed</h1>
-        <p>Order #{order.number || order.order_number} is now in progress.</p>
+        <p>Order #{order.number || order.order_number}</p>
 
         <EmailTouchpointCard
           actions={emailActions}
           eyebrow="Order email"
           icon="mark_email_read"
           message={emailMessage}
-          title="Confirmation email is on the way"
+          title="Confirmation email sent"
           tone="success"
         />
 

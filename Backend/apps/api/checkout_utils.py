@@ -11,6 +11,7 @@ from apps.common.currency import convert_amount, default_currency, resolve_displ
 from apps.common.products import serialize_product_card
 from apps.inventory.services import available_quantity_for_line, reserved_quantity_for_line
 from apps.common.taxes import calculate_checkout_taxes
+from apps.accounts.delivery_locations import get_session_location, location_for_shipping_address
 
 ZERO = Decimal('0.00')
 OfferApplicator = get_class('offer.applicator', 'Applicator')
@@ -352,7 +353,7 @@ def available_shipping_countries() -> list[dict]:
     return [serialize_country(country) for country in queryset]
 
 
-def serialize_shipping_address(address) -> dict | None:
+def serialize_shipping_address(address, location: dict | None = None) -> dict | None:
     if not address:
         return None
 
@@ -380,6 +381,7 @@ def serialize_shipping_address(address) -> dict | None:
         'notes': address.notes or '',
         'country_code': country_code,
         'country_name': country_name,
+        'location': location or location_for_shipping_address(address),
     }
 
 
@@ -546,7 +548,7 @@ def build_checkout_payload(request) -> dict:
         'basket': serialize_basket(basket, display_currency=display_currency),
         'shipping': {
             'countries': available_shipping_countries(),
-            'address': serialize_shipping_address(shipping_address),
+            'address': serialize_shipping_address(shipping_address, location=get_session_location(request)),
             'shipping_required': basket.is_shipping_required(),
             'display_currency': output_currency,
             'metrics': {
