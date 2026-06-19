@@ -1,0 +1,9 @@
+Hi {{ display_name }},
+
+We received the supplier application for {{ supplier.company_name }}.
+
+Current status: {{ supplier.status }}
+
+Our team will review the application and update you when there is a decision.
+
+{{ shop_name }}

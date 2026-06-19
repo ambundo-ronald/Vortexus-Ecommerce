@@ -1,7 +1,21 @@
 import { formatCurrency, storefrontCurrency } from "./currency";
 
 export function productId(product = {}) {
-  return product.id || product.product_id || product.productId || product.product?.id || product.product?.product_id || "";
+  const nestedProduct = product.product;
+
+  if (nestedProduct && typeof nestedProduct === "object") {
+    return (
+      nestedProduct.id ||
+      nestedProduct.product_id ||
+      nestedProduct.productId ||
+      product.product_id ||
+      product.productId ||
+      product.id ||
+      ""
+    );
+  }
+
+  return product.product_id || product.productId || product.id || "";
 }
 
 export function productTitle(product = {}, fallback = "Product") {

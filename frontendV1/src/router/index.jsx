@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 
 import PageWrapper from "../components/layout/PageWrapper.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
+import SupplierRoute from "./SupplierRoute.jsx";
 import AccountDashboardPage from "../pages/account/AccountDashboardPage.jsx";
 import AccountDeletePage from "../pages/account/AccountDeletePage.jsx";
 import AddressesPage from "../pages/account/AddressesPage.jsx";
@@ -43,6 +44,11 @@ import RangeDetailPage from "../pages/public/RangeDetailPage.jsx";
 import QuoteRequestPage from "../pages/public/QuoteRequestPage.jsx";
 import SearchPage from "../pages/public/SearchPage.jsx";
 import SharedWishlistPage from "../pages/public/SharedWishlistPage.jsx";
+import SupplierDashboardPage from "../pages/supplier/SupplierDashboardPage.jsx";
+import SupplierApplyPage from "../pages/supplier/SupplierApplyPage.jsx";
+import SupplierOrderDetailPage from "../pages/supplier/SupplierOrderDetailPage.jsx";
+import SupplierOrdersPage from "../pages/supplier/SupplierOrdersPage.jsx";
+import SupplierProductsPage from "../pages/supplier/SupplierProductsPage.jsx";
 
 export default function AppRouter() {
   return (
@@ -88,6 +94,11 @@ export default function AppRouter() {
       <Route path="/account/recently-viewed" element={<PageWrapper><RecentlyViewedPage /></PageWrapper>} />
       <Route path="/account/wishlist" element={<PageWrapper><ProtectedRoute><WishlistPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/reviews" element={<PageWrapper><ProtectedRoute><ReviewsPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/supplier/apply" element={<PageWrapper><ProtectedRoute><SupplierApplyPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/supplier" element={<PageWrapper><SupplierRoute><SupplierDashboardPage /></SupplierRoute></PageWrapper>} />
+      <Route path="/supplier/products" element={<PageWrapper><SupplierRoute requireApproved><SupplierProductsPage /></SupplierRoute></PageWrapper>} />
+      <Route path="/supplier/orders" element={<PageWrapper><SupplierRoute requireApproved><SupplierOrdersPage /></SupplierRoute></PageWrapper>} />
+      <Route path="/supplier/orders/:orderNumber" element={<PageWrapper><SupplierRoute requireApproved><SupplierOrderDetailPage /></SupplierRoute></PageWrapper>} />
       <Route path="*" element={<PageWrapper><NotFoundPage /></PageWrapper>} />
     </Routes>
   );

@@ -256,6 +256,12 @@ def basket_currency(basket) -> str:
     return getattr(basket, 'currency', None) or default_currency()
 
 
+def ensure_basket_default_currency(basket):
+    # Oscar exposes basket.currency as a derived, read-only property. Empty
+    # baskets naturally serialize with the configured fallback currency.
+    return
+
+
 def basket_subtotal(basket) -> Decimal:
     total = getattr(basket, 'total_incl_tax', None)
     if total is None:

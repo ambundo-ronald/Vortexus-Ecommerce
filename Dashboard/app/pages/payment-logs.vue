@@ -18,6 +18,7 @@ const filters = reactive({
   search: '',
   method: '',
   status: '',
+  reconciliation: '',
 })
 
 const methodOptions = [
@@ -38,6 +39,17 @@ const statusOptions = [
   { label: 'Authorized', value: 'authorized' },
   { label: 'Failed', value: 'failed' },
   { label: 'Cancelled', value: 'cancelled' },
+]
+
+const reconciliationOptions = [
+  { label: 'All reconciliation', value: '' },
+  { label: 'Needs attention', value: 'needs_attention' },
+  { label: 'Paid, no order', value: 'paid_no_order' },
+  { label: 'Order mismatch', value: 'order_mismatch' },
+  { label: 'Failed, linked order', value: 'failed_linked_order' },
+  { label: 'Pending too long', value: 'pending_too_long' },
+  { label: 'Matched', value: 'matched' },
+  { label: 'Pending', value: 'pending' },
 ]
 
 const pageSizeOptions = [
@@ -68,14 +80,32 @@ function statusColor(status: string) {
   return 'warning'
 }
 
+function reconciliationColor(severity?: string) {
+  if (severity === 'critical' || severity === 'error')
+    return 'error'
+  if (severity === 'warning')
+    return 'warning'
+  if (severity === 'ok')
+    return 'success'
+  return 'neutral'
+}
+
 function countForStatus(status: string) {
   return summary.value?.by_status?.find((item: any) => item.status === status)?.count || 0
+}
+
+function reconciliationCount(status: string) {
+  return summary.value?.reconciliation?.counts?.[status] || 0
 }
 
 function payloadPreview(payload: Record<string, any> | null | undefined) {
   if (!payload || Object.keys(payload).length === 0)
     return 'No provider payload'
   return JSON.stringify(payload, null, 2)
+}
+
+function eventLabel(kind: string) {
+  return formatLabel(kind)
 }
 
 async function loadLogs() {
@@ -86,6 +116,7 @@ async function loadLogs() {
     search: filters.search.trim(),
     method: filters.method,
     status: filters.status,
+    reconciliation: filters.reconciliation,
   })
 
   if (result.success) {
@@ -116,6 +147,7 @@ function resetFilters() {
   filters.search = ''
   filters.method = ''
   filters.status = ''
+  filters.reconciliation = ''
   page.value = 1
   loadLogs()
 }
@@ -146,18 +178,20 @@ onMounted(loadLogs)
       </div>
     </div>
 
-    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <CardsKpiCard2 name="Total payments" :value="summary.total || 0" :budget="summary.total || 1" color="#3d7cff" icon="i-lucide-credit-card" :loading="isLoading" />
       <CardsKpiCard2 name="Paid" :value="countForStatus('paid')" :budget="summary.total || 1" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Authorized" :value="countForStatus('authorized')" :budget="summary.total || 1" color="#0f766e" icon="i-lucide-shield-check" :loading="isLoading" />
       <CardsKpiCard2 name="Pending" :value="countForStatus('pending')" :budget="summary.total || 1" color="#b45309" icon="i-lucide-clock" :loading="isLoading" />
       <CardsKpiCard2 name="Failed" :value="countForStatus('failed')" :budget="summary.total || 1" color="#dc2626" icon="i-lucide-circle-x" :loading="isLoading" />
+      <CardsKpiCard2 name="Needs attention" :value="summary.reconciliation?.needs_attention || 0" :budget="summary.total || 1" color="#ea580c" icon="i-lucide-triangle-alert" :loading="isLoading" />
     </div>
 
     <div class="mb-6 rounded-lg border border-slate-200 bg-white p-4">
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
         <UFormField label="Method"><USelect v-model="filters.method" :items="methodOptions" /></UFormField>
         <UFormField label="Status"><USelect v-model="filters.status" :items="statusOptions" /></UFormField>
+        <UFormField label="Reconciliation"><USelect v-model="filters.reconciliation" :items="reconciliationOptions" /></UFormField>
         <UFormField label="Search"><UInput v-model="filters.search" placeholder="PAY-..., order number, email" @keyup.enter="applyFilters" /></UFormField>
       </div>
       <div class="mt-4 flex justify-end gap-2">
@@ -201,7 +235,10 @@ onMounted(loadLogs)
             <UBadge :color="statusColor(log.status)" variant="soft">{{ formatLabel(log.status) }}</UBadge>
             <div class="min-w-0">
               <p class="truncate font-semibold text-slate-950">{{ log.reference }}</p>
-              <p class="truncate text-xs text-slate-500">{{ formatLabel(log.method) }} · {{ log.order_number || 'No order yet' }}</p>
+              <p class="truncate text-xs text-slate-500">{{ formatLabel(log.method) }} - {{ log.order_number || 'No order yet' }}</p>
+              <UBadge class="mt-1" :color="reconciliationColor(log.reconciliation?.severity)" variant="soft">
+                {{ log.reconciliation?.label || 'Unchecked' }}
+              </UBadge>
             </div>
           </div>
         </div>
@@ -247,6 +284,40 @@ onMounted(loadLogs)
               <div><span class="text-slate-500">Order</span><p class="font-semibold text-slate-950">{{ selectedLog?.order_number || 'No order yet' }}</p></div>
               <div><span class="text-slate-500">External reference</span><p class="break-all font-semibold text-slate-950">{{ selectedLog?.external_reference || 'None' }}</p></div>
               <div><span class="text-slate-500">Paid at</span><p class="font-semibold text-slate-950">{{ formatDate(selectedLog?.paid_at) }}</p></div>
+              <div class="col-span-2">
+                <span class="text-slate-500">Reconciliation</span>
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                  <UBadge :color="reconciliationColor(selectedLog?.reconciliation?.severity)" variant="soft">
+                    {{ selectedLog?.reconciliation?.label || 'Unchecked' }}
+                  </UBadge>
+                  <span class="text-xs text-slate-500">{{ reconciliationCount(selectedLog?.reconciliation?.status || '') }} with this status</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="selectedLog?.reconciliation?.issues?.length" class="rounded-lg border border-orange-200 bg-orange-50 p-3">
+              <h3 class="text-sm font-bold text-orange-950">Reconciliation issues</h3>
+              <ul class="mt-2 space-y-1 text-sm text-orange-900">
+                <li v-for="issue in selectedLog.reconciliation.issues" :key="issue">{{ issue }}</li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="mb-2 text-sm font-bold text-slate-950">Recent events</h3>
+              <div v-if="selectedLog?.events?.length" class="space-y-2">
+                <div v-for="event in selectedLog.events" :key="event.id" class="rounded-lg border border-slate-200 bg-white p-3">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-950">{{ eventLabel(event.kind) }}</p>
+                      <p v-if="event.message" class="mt-1 text-xs text-slate-500">{{ event.message }}</p>
+                    </div>
+                    <span class="shrink-0 text-xs text-slate-500">{{ formatDate(event.created_at) }}</span>
+                  </div>
+                  <p class="mt-2 text-xs text-slate-500">
+                    {{ event.status_before || 'none' }} -> {{ event.status_after || 'none' }}
+                    <span v-if="event.external_reference"> - {{ event.external_reference }}</span>
+                  </p>
+                </div>
+              </div>
+              <p v-else class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">No events recorded for this payment yet.</p>
             </div>
             <div>
               <h3 class="mb-2 text-sm font-bold text-slate-950">Provider payload</h3>

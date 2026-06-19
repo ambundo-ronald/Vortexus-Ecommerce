@@ -98,9 +98,30 @@ export interface AdminPaymentLogItem {
   order_number: string
   metadata: Record<string, any>
   provider_payload: Record<string, any>
+  reconciliation: AdminPaymentReconciliation
+  events: AdminPaymentEventItem[]
   created_at: string
   updated_at: string
   paid_at?: string | null
+}
+
+export interface AdminPaymentReconciliation {
+  status: string
+  label: string
+  severity: string
+  issues: string[]
+  needs_attention: boolean
+}
+
+export interface AdminPaymentEventItem {
+  id: number
+  kind: string
+  status_before: string
+  status_after: string
+  external_reference: string
+  message: string
+  payload: Record<string, any>
+  created_at: string
 }
 
 export interface AdminPaymentLogParams {
@@ -110,6 +131,7 @@ export interface AdminPaymentLogParams {
   method?: string
   status?: string
   provider?: string
+  reconciliation?: string
 }
 
 function readApiError(err: any) {
@@ -169,6 +191,7 @@ export function usePaymentConfig() {
           method: params.method || '',
           status: params.status || '',
           provider: params.provider || '',
+          reconciliation: params.reconciliation || '',
         },
       })
       return { success: true, data: result }

@@ -1,4 +1,5 @@
 from django.apps import apps
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -36,6 +37,7 @@ from apps.payments.services import (
     available_payment_methods,
     confirm_payment_session,
     initialize_payment_session,
+    log_payment_event,
     serialize_payment_session,
 )
 
@@ -266,6 +268,15 @@ class PesapalInitializationAPIView(APIView):
             payment_session.status = payment_session.STATUS_FAILED
             payment_session.metadata = {**payment_session.metadata, 'gateway_error': str(exc)}
             payment_session.save(update_fields=['status', 'metadata', 'updated_at'])
+            log_payment_event(
+                payment_session,
+                kind='gateway_error',
+                status_before=payment_session.STATUS_PENDING,
+                status_after=payment_session.status,
+                external_reference=payment_session.external_reference,
+                message=str(exc),
+                payload={'phase': 'pesapal_submit_order_request'},
+            )
             return Response(
                 {
                     'error': {
@@ -290,7 +301,10 @@ class PesapalStatusAPIView(APIView):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='pesapal')
         try:
             status_payload = query_transaction_status(payment_session)
-            payment_session = handle_transaction_status(payment_session, status_payload)
+            with transaction.atomic():
+                PaymentSession = apps.get_model('payments', 'PaymentSession')
+                locked_payment = PaymentSession.objects.select_for_update().get(pk=payment_session.pk)
+                payment_session = handle_transaction_status(locked_payment, status_payload)
         except (PesapalConfigurationError, PesapalGatewayError):
             pass
         return Response({'payment': serialize_payment_session(payment_session)})
@@ -323,13 +337,57 @@ class PesapalNotificationAPIView(APIView):
                 },
                 status=status.HTTP_404_NOT_FOUND,
             )
+        merchant_reference = serializer.validated_data.get('merchant_reference', '')
+        if merchant_reference and merchant_reference != payment_session.reference:
+            log_payment_event(
+                payment_session,
+                kind='gateway_error',
+                status_before=payment_session.status,
+                status_after=payment_session.status,
+                external_reference=serializer.validated_data['order_tracking_id'],
+                message='Pesapal IPN merchant reference did not match payment session.',
+                payload={'notification': serializer.validated_data},
+            )
+            return Response(
+                {
+                    'orderNotificationType': 'IPNCHANGE',
+                    'orderTrackingId': serializer.validated_data['order_tracking_id'],
+                    'orderMerchantReference': merchant_reference,
+                    'status': 400,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        log_payment_event(
+            payment_session,
+            kind='notification_received',
+            status_before=payment_session.status,
+            status_after=payment_session.status,
+            external_reference=serializer.validated_data['order_tracking_id'],
+            payload={
+                'notification': serializer.validated_data,
+                'query_params': dict(request.query_params.items()),
+                'body': request.data if isinstance(request.data, dict) else {},
+            },
+        )
 
         try:
             status_payload = query_transaction_status(payment_session)
-            payment_session = handle_transaction_status(payment_session, status_payload)
+            with transaction.atomic():
+                payment_session = PaymentSession.objects.select_for_update().get(pk=payment_session.pk)
+                payment_session = handle_transaction_status(payment_session, status_payload)
         except (PesapalConfigurationError, PesapalGatewayError) as exc:
             payment_session.metadata = {**payment_session.metadata, 'ipn_verification_error': str(exc)}
             payment_session.save(update_fields=['metadata', 'updated_at'])
+            log_payment_event(
+                payment_session,
+                kind='gateway_error',
+                status_before=payment_session.status,
+                status_after=payment_session.status,
+                external_reference=serializer.validated_data['order_tracking_id'],
+                message=str(exc),
+                payload={'notification': serializer.validated_data},
+            )
             return Response({'orderNotificationType': 'IPNCHANGE', 'orderTrackingId': serializer.validated_data['order_tracking_id'], 'status': 500})
 
         return Response(
