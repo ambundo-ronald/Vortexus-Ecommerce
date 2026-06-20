@@ -241,7 +241,7 @@ class OrderPlacementAPIView(APIView):
         payment_session = None
         if payment_reference:
             payment_session = get_object_or_404(
-                PaymentSession.objects.select_for_update().select_related('order', 'user'),
+                PaymentSession.objects.select_for_update(),
                 reference=payment_reference,
             )
             if request.user.is_authenticated and payment_session.user_id and payment_session.user_id != request.user.id:
