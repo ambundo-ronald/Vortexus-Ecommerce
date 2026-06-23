@@ -134,6 +134,13 @@ export interface AdminPaymentLogParams {
   reconciliation?: string
 }
 
+export interface AdminPaymentRefundPayload {
+  amount?: number | string
+  reason?: string
+  refund_reference?: string
+  submit_gateway_refund?: boolean
+}
+
 function readApiError(err: any) {
   return err?.data?.error?.detail || err?.data?.detail || err?.message || 'Unknown error'
 }
@@ -205,11 +212,31 @@ export function usePaymentConfig() {
     }
   }
 
+  async function requestPaymentRefund(reference: string, payload: AdminPaymentRefundPayload) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, refund_reference: string }>(`/admin/payments/${reference}/refund/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
     getPaymentConfig,
     updatePaymentConfig,
     getPaymentLogs,
+    requestPaymentRefund,
   }
 }

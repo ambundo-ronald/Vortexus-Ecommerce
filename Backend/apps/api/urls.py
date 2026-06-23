@@ -176,7 +176,7 @@ from .payment_views import (
     PesapalNotificationAPIView,
     PesapalStatusAPIView,
 )
-from .payment_config_views import AdminPaymentConfigurationAPIView, AdminPaymentSessionLogCollectionAPIView
+from .payment_config_views import AdminPaymentConfigurationAPIView, AdminPaymentRefundAPIView, AdminPaymentSessionLogCollectionAPIView
 from .review_views import AccountReviewCollectionAPIView, AccountReviewDetailAPIView, ProductReviewCollectionAPIView
 from .supplier_views import (
     SupplierAdminCollectionAPIView,
@@ -327,6 +327,7 @@ urlpatterns = [
     path('admin/email/templates/<slug:code>/', AdminEmailTemplateDetailAPIView.as_view(), name='admin-email-template-detail'),
     path('admin/payments/config/', AdminPaymentConfigurationAPIView.as_view(), name='admin-payment-config'),
     path('admin/payments/logs/', AdminPaymentSessionLogCollectionAPIView.as_view(), name='admin-payment-logs'),
+    path('admin/payments/<str:reference>/refund/', AdminPaymentRefundAPIView.as_view(), name='admin-payment-refund'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/statistics/', AdminOrderStatisticsAPIView.as_view(), name='admin-order-statistics'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),

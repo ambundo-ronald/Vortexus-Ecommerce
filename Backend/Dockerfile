@@ -10,9 +10,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential curl libjpeg62-turbo-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+ARG INSTALL_ML_DEPS=false
+
+COPY requirements.txt requirements-ml.txt ./
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r requirements.txt \
+    && if [ "$INSTALL_ML_DEPS" = "true" ]; then pip install -r requirements-ml.txt; fi
 
 COPY . .
 

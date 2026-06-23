@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -8,7 +9,7 @@ from rest_framework.test import APIRequestFactory
 from apps.api.payment_serializers import PesapalNotificationSerializer
 
 from .models import PaymentEvent, PaymentSession
-from .pesapal import PesapalGatewayError, handle_transaction_status
+from .pesapal import PesapalGatewayError, handle_transaction_status, request_refund
 from .services import payment_reconciliation
 
 
@@ -97,6 +98,34 @@ class PesapalStatusHandlingTests(TestCase):
                     'currency': 'KES',
                 },
             )
+
+    @patch('apps.payments.pesapal._request_access_token', return_value='TOKEN')
+    @patch('apps.payments.pesapal._post_json', return_value={'status': '200', 'message': 'Refund request successfully'})
+    def test_refund_request_uses_confirmation_code(self, post_json, request_access_token):
+        payment = self._payment(
+            status=PaymentSession.STATUS_PAID,
+            metadata={'pesapal_confirmation_code': 'CONFIRM-1'},
+        )
+
+        response = request_refund(payment, amount=Decimal('100.00'), username='Admin User', remarks='Returned item')
+
+        self.assertEqual(response['status'], '200')
+        post_json.assert_called_once_with(
+            '/Transactions/RefundRequest',
+            {
+                'confirmation_code': 'CONFIRM-1',
+                'amount': '100.00',
+                'username': 'Admin User',
+                'remarks': 'Returned item',
+            },
+            token='TOKEN',
+        )
+
+    def test_refund_request_requires_confirmation_code(self):
+        payment = self._payment(status=PaymentSession.STATUS_PAID)
+
+        with self.assertRaises(PesapalGatewayError):
+            request_refund(payment, amount=Decimal('100.00'), username='Admin User', remarks='Returned item')
 
 
 class PaymentReconciliationTests(TestCase):

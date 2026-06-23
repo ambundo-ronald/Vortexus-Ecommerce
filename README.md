@@ -4,6 +4,9 @@ Industrial ecommerce MVP split into:
 - `frontendV1/` - primary storefront UI
 - `Frontend/` - older standalone storefront UI
 - `Backend/` - Django Oscar APIs, admin, catalog, search, recommendations
+- `frappe_apps/vortexus_ecommerce_integration/` - optional ERPNext app for ecommerce source tracking, customer/order/invoice/payment sync, and inventory helpers
+
+Launch checklist: [LAUNCH_PAYMENT_ERP_CHECKLIST.md](LAUNCH_PAYMENT_ERP_CHECKLIST.md)
 
 ## Quick Start (Local)
 
@@ -130,6 +133,8 @@ docker compose --env-file .env.production run --rm backend python manage.py rein
 docker compose --env-file .env.production run --rm backend python manage.py backfill_image_embeddings --sync
 ```
 
+The default backend image skips heavy ML packages so production builds stay small and predictable. Install `Backend/requirements-ml.txt` only on workers or one-off jobs that need CLIP/photo embedding generation.
+
 ### 4) Start the whole stack
 
 ```bash
@@ -158,6 +163,47 @@ https://api.vortexus.example.com/api/v1/health/ready/
 - OpenSearch commonly needs `vm.max_map_count=262144` on Linux hosts.
 - OpenSearch and CLIP/PyTorch are memory-hungry. A 4 GB RAM VPS is the practical minimum; 8 GB is safer.
 - Keep `.env.production` out of git. It is intentionally ignored.
+
+### Launch-critical payments and ERPNext
+
+Before opening checkout to customers, confirm these are set with real production values:
+
+- `PESAPAL_CONSUMER_KEY`, `PESAPAL_CONSUMER_SECRET`, `PESAPAL_ENVIRONMENT`, `PESAPAL_IPN_URL`, and `PESAPAL_CANCELLATION_URL`.
+- `MPESA_*` values only if M-Pesa is enabled in the dashboard.
+- `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and payment callback URLs must use the public storefront/API domains.
+- Admin payment configuration should show only the methods you want customers to use.
+
+When an order is placed, the backend now queues an ERPNext Sales Order export after the checkout transaction commits. Active ERPNext connections export orders unless their metadata contains `"export_orders": false`.
+
+Recommended ERPNext connection metadata for launch:
+
+```json
+{
+  "export_orders": true,
+  "export_order_accounting": true,
+  "sync_cancellations": true,
+  "sync_customers": true,
+  "use_vortexus_bridge_app": true,
+  "default_customer": "Vortexus Online Customer",
+  "customer_group": "Ecommerce",
+  "territory": "Kenya",
+  "pesapal_bank_account": "Pesapal Clearing - VI",
+  "delivery_days": 7
+}
+```
+
+Set `"use_vortexus_bridge_app": true` only after installing `frappe_apps/vortexus_ecommerce_integration` into ERPNext. Without that flag, the backend uses the direct ERPNext resource API for order export.
+
+For reliable fulfillment export, make sure the ERPNext customer exists and imported products have ERPNext item mappings. If a product has no ERPNext mapping, the exporter falls back to the order line partner SKU or UPC; if none exists, the export fails loudly in integration logs instead of silently dropping the order.
+
+With the bridge app enabled, paid orders queue Sales Invoice and Payment Entry creation after the payment and order are linked. Admin cancellations queue ERPNext Sales Order/Sales Invoice cancellation. Staff can also queue ERPNext credit-note creation for a paid payment:
+
+```text
+POST /api/v1/admin/payments/<payment_reference>/refund/
+```
+
+This creates the ERPNext accounting-side credit note through the bridge app. Actual Pesapal money movement still needs to be handled according to Pesapal refund operations and reconciled against the ERPNext credit note.
+For Pesapal payments, the admin refund endpoint submits Pesapal's API 3.0 refund request first using the stored confirmation code, then queues the ERPNext credit note after Pesapal accepts the request. Pesapal's successful refund request response means the refund has been received for processing; finance should still reconcile final settlement.
 
 ## Cloudflare Tunnel Preview
 

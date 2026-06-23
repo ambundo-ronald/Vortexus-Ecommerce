@@ -36,6 +36,16 @@ const connectionForm = ref({
   default_currency: '',
   partner_name: '',
   product_class: 'Industrial Product',
+  use_vortexus_bridge_app: false,
+  sync_customers: true,
+  export_orders: true,
+  export_order_accounting: true,
+  sync_cancellations: true,
+  sync_refunds: true,
+  customer_group: 'Ecommerce',
+  territory: 'Kenya',
+  pesapal_bank_account: '',
+  delivery_days: 7,
 })
 
 const previewResourceOptions = [
@@ -164,6 +174,16 @@ function resetConnectionForm() {
     default_currency: '',
     partner_name: '',
     product_class: 'Industrial Product',
+    use_vortexus_bridge_app: false,
+    sync_customers: true,
+    export_orders: true,
+    export_order_accounting: true,
+    sync_cancellations: true,
+    sync_refunds: true,
+    customer_group: 'Ecommerce',
+    territory: 'Kenya',
+    pesapal_bank_account: '',
+    delivery_days: 7,
   }
 }
 
@@ -191,6 +211,16 @@ function openEditConnection(connection: IntegrationConnection) {
     default_currency: metadata.default_currency || '',
     partner_name: metadata.partner_name || '',
     product_class: metadata.product_class || 'Industrial Product',
+    use_vortexus_bridge_app: Boolean(metadata.use_vortexus_bridge_app),
+    sync_customers: metadata.sync_customers !== false,
+    export_orders: metadata.export_orders !== false,
+    export_order_accounting: metadata.export_order_accounting !== false,
+    sync_cancellations: metadata.sync_cancellations !== false,
+    sync_refunds: metadata.sync_refunds !== false,
+    customer_group: metadata.customer_group || 'Ecommerce',
+    territory: metadata.territory || 'Kenya',
+    pesapal_bank_account: metadata.pesapal_bank_account || '',
+    delivery_days: Number(metadata.delivery_days || 7),
   }
   isEditorOpen.value = true
 }
@@ -205,9 +235,21 @@ function buildConnectionPayload(): IntegrationConnectionPayload {
     default_currency: connectionForm.value.default_currency.trim(),
     partner_name: connectionForm.value.partner_name.trim(),
     product_class: connectionForm.value.product_class.trim(),
+    use_vortexus_bridge_app: connectionForm.value.use_vortexus_bridge_app,
+    sync_customers: connectionForm.value.sync_customers,
+    export_orders: connectionForm.value.export_orders,
+    export_order_accounting: connectionForm.value.export_order_accounting,
+    sync_cancellations: connectionForm.value.sync_cancellations,
+    sync_refunds: connectionForm.value.sync_refunds,
+    customer_group: connectionForm.value.customer_group.trim(),
+    territory: connectionForm.value.territory.trim(),
+    pesapal_bank_account: connectionForm.value.pesapal_bank_account.trim(),
+    delivery_days: Number(connectionForm.value.delivery_days || 7),
   }
 
   Object.keys(metadata).forEach((key) => {
+    if (typeof metadata[key] === 'boolean' || typeof metadata[key] === 'number')
+      return
     if (Array.isArray(metadata[key]) ? metadata[key].length === 0 : !metadata[key])
       delete metadata[key]
   })
@@ -433,9 +475,30 @@ onMounted(loadConnections)
         <UFormField label="Product class">
           <UInput v-model="connectionForm.product_class" placeholder="Industrial Product" />
         </UFormField>
+        <UFormField label="Customer group">
+          <UInput v-model="connectionForm.customer_group" placeholder="Ecommerce" />
+        </UFormField>
+        <UFormField label="Territory">
+          <UInput v-model="connectionForm.territory" placeholder="Kenya" />
+        </UFormField>
+        <UFormField label="Pesapal clearing account">
+          <UInput v-model="connectionForm.pesapal_bank_account" placeholder="Pesapal Clearing - VI" />
+        </UFormField>
+        <UFormField label="Delivery days">
+          <UInput v-model.number="connectionForm.delivery_days" type="number" min="1" />
+        </UFormField>
         <div class="flex items-end">
           <UCheckbox v-model="connectionForm.is_active" label="Enable scheduled sync" />
         </div>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 xl:grid-cols-3">
+        <UCheckbox v-model="connectionForm.use_vortexus_bridge_app" label="Use Vortexus ERPNext app" />
+        <UCheckbox v-model="connectionForm.sync_customers" label="Sync customers" />
+        <UCheckbox v-model="connectionForm.export_orders" label="Export sales orders" />
+        <UCheckbox v-model="connectionForm.export_order_accounting" label="Export invoices and payments" />
+        <UCheckbox v-model="connectionForm.sync_cancellations" label="Sync cancellations" />
+        <UCheckbox v-model="connectionForm.sync_refunds" label="Sync refund credit notes" />
       </div>
 
       <div class="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
