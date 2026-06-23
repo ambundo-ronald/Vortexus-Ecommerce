@@ -2,7 +2,7 @@ import EmptyState from "../ui/EmptyState.jsx";
 
 export default function ProductSpecifications({ specifications = [] }) {
   if (!specifications.length) {
-    return <EmptyState title="No technical specs yet" message="Specifications will appear here when available." />;
+    return <EmptyState title="No technical specs yet" message="" />;
   }
 
   return (

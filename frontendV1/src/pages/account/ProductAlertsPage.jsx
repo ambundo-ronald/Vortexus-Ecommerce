@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
+import EmailTouchpointCard from "../../components/account/EmailTouchpointCard.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
@@ -10,7 +11,7 @@ import { useUiStore } from "../../store/ui.store";
 import { formatDate } from "../../utils/formatDate";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { productImageUrl } from "../../utils/productImages";
-import { productInitials, productPrice } from "../../utils/productDisplay";
+import { productId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
 
 export default function ProductAlertsPage() {
   const notify = useUiStore((state) => state.notify);
@@ -63,6 +64,18 @@ export default function ProductAlertsPage() {
         </div>
       </div>
 
+      <EmailTouchpointCard
+        actions={[
+          { to: "/account/messages", label: "Email history", icon: "inbox" },
+          { to: "/account/preferences", label: "Email settings", icon: "tune" }
+        ]}
+        eyebrow="Stock email alerts"
+        icon="notifications_active"
+        message="When a product you follow becomes available again, the store sends an email to the address shown on each alert."
+        title="Availability emails are tracked here"
+        tone="info"
+      />
+
       <Alert>{error}</Alert>
       {loading ? <Spinner label="Loading product alerts" /> : null}
 
@@ -83,28 +96,39 @@ export default function ProductAlertsPage() {
 
 function ProductAlertCard({ alert, saving, onRemove }) {
   const product = alert.product || {};
+  const resolvedProductId = productId(product) || alert.product_id;
   const imageUrl = productImageUrl(product);
   const price = productPrice(product);
-  const title = product.title || `Product #${alert.product_id}`;
+  const title = productTitle(product, `Product #${alert.product_id}`);
+  const status = alert.status || "Pending";
+  const statusKey = String(status).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const dateLabel = alert.date_cancelled
+    ? `Cancelled ${formatDate(alert.date_cancelled)}`
+    : alert.date_confirmed
+      ? `Confirmed ${formatDate(alert.date_confirmed)}`
+      : `Created ${formatDate(alert.date_created)}`;
 
   return (
     <article className="product-alert-card">
-      <Link className="product-alert-card__media" to={`/products/${alert.product_id}`}>
+      <Link className="product-alert-card__media" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
         {imageUrl ? <img src={imageUrl} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
       </Link>
       <div className="product-alert-card__body">
         <strong>{title}</strong>
         <span>{price.label || "Price on request"}</span>
-        <small>
-          {alert.status || "Pending"} · Created {formatDate(alert.date_created)}
-        </small>
+        <small>{dateLabel}</small>
+        <em className={`product-alert-card__status product-alert-card__status--${statusKey}`}>{status}</em>
       </div>
       <div className="product-alert-card__actions">
-        <Link className="secondary-button" to={`/products/${alert.product_id}`}>
+        <Link className="secondary-button" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
+          <MaterialIcon name="open_in_new" size={17} />
           View
         </Link>
-        <span className="product-alert-card__email">{alert.email}</span>
-        {alert.status !== "Cancelled" ? (
+        <span className="product-alert-card__email">
+          <MaterialIcon name="alternate_email" size={16} />
+          {alert.email}
+        </span>
+        {statusKey !== "cancelled" && statusKey !== "canceled" ? (
           <button className="danger-link" type="button" disabled={saving} onClick={() => void onRemove(alert)}>
             Cancel
           </button>

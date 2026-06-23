@@ -1,0 +1,86 @@
+name: Dashboard CI
+
+on:
+  push:
+    branches: ["main", "manyisa"]
+  pull_request:
+    branches: ["main", "manyisa"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DISABLE_NUXT_HUB: "true"
+  NITRO_PRESET: node-server
+  NUXT_PUBLIC_API_BASE: /api/v1
+  NUXT_SSR: "false"
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  nuxt:
+    name: Nuxt lint, smoke, and build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Dashboard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: Dashboard/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint dashboard advisory
+        continue-on-error: true
+        run: pnpm lint
+
+      - name: Run dashboard smoke tests
+        run: pnpm test:smoke
+
+      - name: Build dashboard
+        run: pnpm build
+
+      - name: Dependency audit report
+        continue-on-error: true
+        run: pnpm audit --audit-level critical
+
+  docker:
+    name: Dashboard Docker build
+    runs-on: ubuntu-latest
+    needs: nuxt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: Dashboard
+          file: Dashboard/Dockerfile
+          push: false
+          tags: vortexus-dashboard:ci
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard

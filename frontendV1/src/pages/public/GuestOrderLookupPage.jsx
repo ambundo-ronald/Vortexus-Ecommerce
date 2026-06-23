@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
+import EmailTouchpointCard from "../../components/account/EmailTouchpointCard.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import { normalizeApiError } from "../../utils/errorHandler";
@@ -51,6 +52,15 @@ export default function GuestOrderLookupPage() {
         </div>
 
         <Alert>{error}</Alert>
+
+        <EmailTouchpointCard
+          className="guest-order-email-card"
+          eyebrow="Email lookup"
+          icon="alternate_email"
+          message="Use the same email address from checkout. Guest tracking links are private and expire after 30 days."
+          title="Your order email unlocks tracking"
+          tone="security"
+        />
 
         <label>
           <span>Order number</span>

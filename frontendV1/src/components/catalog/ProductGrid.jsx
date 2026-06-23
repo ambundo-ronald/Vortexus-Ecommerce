@@ -5,11 +5,18 @@ import ProductCard from "./ProductCard.jsx";
 import ProductSkeletonGrid from "./ProductSkeletonGrid.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useWishlistStore } from "../../store/wishlist.store";
+import { productId, productTitle } from "../../utils/productDisplay";
 
-export default function ProductGrid({ products = [], emptyTitle = "No products found", loading = false, skeletonCount = 8 }) {
+export default function ProductGrid({
+  products = [],
+  emptyTitle = "No products found",
+  emptyMessage = "",
+  loading = false,
+  skeletonCount = 8
+}) {
   const { user } = useAuth();
   const loadStatus = useWishlistStore((state) => state.loadStatus);
-  const productIds = products.map((product) => product.id).filter(Boolean).join(",");
+  const productIds = products.map((product) => productId(product)).filter(Boolean).join(",");
 
   useEffect(() => {
     if (user && productIds) void loadStatus(productIds.split(","));
@@ -20,13 +27,13 @@ export default function ProductGrid({ products = [], emptyTitle = "No products f
   }
 
   if (!products.length) {
-    return <EmptyState title={emptyTitle} message="Try another category, search term, or filter." />;
+    return <EmptyState title={emptyTitle} message={emptyMessage} />;
   }
 
   return (
     <div className="product-grid">
       {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+        <ProductCard key={productId(product) || productTitle(product)} product={product} />
       ))}
     </div>
   );

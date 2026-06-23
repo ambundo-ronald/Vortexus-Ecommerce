@@ -2,11 +2,19 @@
 const route = useRoute()
 const auth = useAuth()
 const searchQuery = ref('')
+const isMounted = ref(false)
 
 const isAuthPage = computed(() => route.path === '/login')
 const displayName = computed(() => {
+  if (!isMounted.value)
+    return 'Account'
+
   const name = auth.user.value?.full_name || [auth.user.value?.first_name, auth.user.value?.last_name].filter(Boolean).join(' ')
   return name || auth.user.value?.email || 'Admin'
+})
+
+onMounted(() => {
+  isMounted.value = true
 })
 
 async function handleLogout() {

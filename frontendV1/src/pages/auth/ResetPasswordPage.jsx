@@ -15,7 +15,7 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const uid = searchParams.get("uid") || "";
-  const token = searchParams.get("token") || "";
+  const token = searchParams.get("token") || searchParams.get("amp;token") || "";
   const hasResetCredentials = Boolean(uid && token);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
@@ -68,7 +68,7 @@ export default function ResetPasswordPage() {
           <span><MaterialIcon name="password" size={24} /></span>
           <div>
             <h1>Set new password</h1>
-            <p>Choose a new password for your account.</p>
+            <p>Choose a new password for your account. Reset links expire in 30 minutes.</p>
           </div>
         </div>
 

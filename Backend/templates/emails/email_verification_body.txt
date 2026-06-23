@@ -4,6 +4,8 @@ Please verify your email address for {{ shop_name }}:
 
 {{ verification_url }}
 
+This verification link expires in 30 minutes.
+
 This helps protect your account and keeps order, quote, and security notifications going to the right inbox.
 
 If you did not create or update this account, please ignore this email or contact our support team.

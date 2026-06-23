@@ -13,66 +13,114 @@ import { useProductReviews } from "../../hooks/useReviews";
 export default function ReviewList({ productId }) {
   const location = useLocation();
   const { user } = useAuth();
-  const { reviews, summary, yourReview, loading, saving, error, createReview, voteReview } = useProductReviews(productId);
-  const average = summary?.average_score || summary?.product_rating || 0;
+  const {
+    reviews,
+    summary,
+    yourReview,
+    reviewEligibility,
+    loading,
+    saving,
+    error,
+    createReview,
+    voteReview
+  } = useProductReviews(productId);
   const [visibleCount, setVisibleCount] = useState(2);
   const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
-  const hiddenCount = Math.max(reviews.length - visibleReviews.length, 0);
-  const nextCount = Math.min(2, hiddenCount);
+  const reviewCount = Number(summary?.review_count || reviews.length || 0);
+  const verifiedCount = Number(summary?.verified_rating_count || 0);
+  const average = verifiedCount > 0 ? Number(summary?.average_score || 0) : 0;
+  const distribution = useMemo(() => {
+    const rows = summary?.rating_distribution || [];
+    const byScore = new Map(rows.map((row) => [Number(row.score), Number(row.count || 0)]));
+    return [5, 4, 3, 2, 1].map((score) => ({
+      score,
+      count: byScore.get(score) || 0,
+      percentage: verifiedCount ? ((byScore.get(score) || 0) / verifiedCount) * 100 : 0
+    }));
+  }, [summary?.rating_distribution, verifiedCount]);
+  const hasMoreReviews = visibleReviews.length < reviews.length;
 
   return (
     <section className="content-section reviews-section">
-      <div className="section-heading">
-        <h2>Reviews</h2>
-        <span className="review-summary-pill">
-          <StarRating value={average} size={16} />
-          {summary?.review_count || 0}
-        </span>
+      <div className="customer-feedback__heading">
+        <h2>Customer Feedback</h2>
+        {reviews.length > 2 ? (
+          <button
+            className="customer-feedback__see-all"
+            type="button"
+            onClick={() => setVisibleCount(hasMoreReviews ? reviews.length : 2)}
+          >
+            {hasMoreReviews ? "See All" : "Show Less"}
+            <MaterialIcon name={hasMoreReviews ? "chevron_right" : "expand_less"} size={20} />
+          </button>
+        ) : null}
       </div>
 
       <Alert>{error}</Alert>
       {loading ? <Spinner label="Loading reviews" /> : null}
 
-      <div className="review-list-panel">
-        {!loading && !reviews.length ? (
-          <div className="empty-state">
-            <strong>No reviews yet</strong>
-            <p>Be the first to review this product.</p>
+      <div className="customer-feedback__layout">
+        <aside className="rating-overview" aria-label="Verified rating summary">
+          <h3>Verified Ratings ({verifiedCount})</h3>
+          <div className="rating-overview__score">
+            <strong>{Number(average || 0).toFixed(1)}<span>/5</span></strong>
+            <StarRating value={average} size={24} />
+            <p>{verifiedCount} verified rating{verifiedCount === 1 ? "" : "s"}</p>
           </div>
-        ) : null}
+          <div className="rating-overview__distribution">
+            {distribution.map((row) => (
+              <div className="rating-distribution-row" key={row.score}>
+                <span>{row.score}</span>
+                <MaterialIcon name="star" size={18} filled />
+                <span className="rating-distribution-row__count">({row.count})</span>
+                <span className="rating-distribution-row__track" aria-hidden="true">
+                  <span style={{ width: `${row.percentage}%` }} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
 
-        {reviews.length ? (
-          <>
+        <div className="review-list-panel">
+          <h3>Product Reviews ({reviewCount})</h3>
+          {!loading && !reviews.length ? (
+            <div className="empty-state customer-feedback__empty">
+              <strong>No product reviews yet</strong>
+              <p>Verified buyers can be the first to review this product.</p>
+            </div>
+          ) : null}
+          {reviews.length ? (
             <div className="review-grid">
               {visibleReviews.map((review) => (
-                <ReviewCard key={review.id} review={review} saving={saving} onVote={(reviewId, delta) => voteReview(reviewId, delta)} />
+                <ReviewCard
+                  key={review.id}
+                  review={review}
+                  saving={saving}
+                  onVote={(reviewId, delta) => voteReview(reviewId, delta)}
+                />
               ))}
             </div>
-            {hiddenCount ? (
-              <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount((count) => count + 2)}>
-                <MaterialIcon name="expand_more" size={18} />
-                Show {nextCount} more review{nextCount === 1 ? "" : "s"}
-                <span>{hiddenCount} left</span>
-              </button>
-            ) : reviews.length > 2 ? (
-              <button className="secondary-button review-more-button" type="button" onClick={() => setVisibleCount(2)}>
-                <MaterialIcon name="expand_less" size={18} />
-                Show first 2
-              </button>
-            ) : null}
-          </>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <div className="review-action-panel">
         {user && yourReview ? (
           <Alert tone="warning">Your review is saved as {yourReview.status_label}. You can manage it from your account.</Alert>
-        ) : user ? (
+        ) : user && reviewEligibility?.eligible ? (
           <ReviewForm saving={saving} onSubmit={createReview} />
+        ) : user ? (
+          <div className="review-eligibility-message">
+            <MaterialIcon name="verified_user" size={24} />
+            <div>
+              <strong>Reviews are for verified buyers</strong>
+              <p>{reviewEligibility?.reason || "Purchase this product using this account before leaving a review."}</p>
+            </div>
+          </div>
         ) : (
           <Link className="secondary-button review-login-action" to="/login" state={{ from: location }}>
             <MaterialIcon name="login" size={18} />
-            Sign in to review
+            Sign in with your purchasing account to review
           </Link>
         )}
       </div>

@@ -3,17 +3,33 @@ import { useEffect, useMemo, useState } from "react";
 import { productImageList } from "../../utils/productImages";
 import { productInitials } from "../../utils/productDisplay";
 
+const MOBILE_CAROUSEL_DELAY = 3200;
+
 export default function ProductImageGallery({ product }) {
   const images = useMemo(() => {
     return productImageList(product);
   }, [product]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
-  const activeImage = images[activeIndex];
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     setActiveIndex(0);
   }, [product?.id]);
+
+  useEffect(() => {
+    if (images.length <= 1) return undefined;
+    if (isPaused) return undefined;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const mediaQuery = window.matchMedia("(max-width: 759px)");
+    if (!mediaQuery.matches) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((currentIndex) => (currentIndex + 1) % images.length);
+    }, MOBILE_CAROUSEL_DELAY);
+
+    return () => window.clearInterval(intervalId);
+  }, [images.length, isPaused]);
 
   function moveZoom(event) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -24,9 +40,25 @@ export default function ProductImageGallery({ product }) {
 
   return (
     <div className="product-gallery-shell">
-      <div className="product-gallery" onMouseMove={moveZoom} onMouseLeave={() => setZoomOrigin("50% 50%")}>
-        {activeImage ? (
-          <img src={activeImage} alt={product?.title || "Product"} style={{ transformOrigin: zoomOrigin }} />
+      <div
+        className="product-gallery"
+        onFocus={() => setIsPaused(true)}
+        onBlur={() => setIsPaused(false)}
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseMove={moveZoom}
+        onMouseLeave={() => {
+          setZoomOrigin("50% 50%");
+          setIsPaused(false);
+        }}
+      >
+        {images.length ? (
+          <div className="product-gallery-track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+            {images.map((image, index) => (
+              <div className="product-gallery-slide" key={`${image}-${index}`}>
+                <img src={image} alt={index === activeIndex ? product?.title || "Product" : ""} style={{ transformOrigin: zoomOrigin }} />
+              </div>
+            ))}
+          </div>
         ) : (
           <span className="product-gallery__placeholder">{productInitials(product?.title)}</span>
         )}

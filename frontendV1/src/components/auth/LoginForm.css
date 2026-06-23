@@ -1,0 +1,69 @@
+.auth-two-factor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.auth-two-factor__icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary-700);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.auth-two-factor strong,
+.auth-two-factor span {
+  display: block;
+}
+
+.auth-two-factor strong {
+  color: var(--color-text);
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
+.auth-two-factor span {
+  margin-top: 3px;
+  color: var(--color-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.auth-code-field input {
+  min-height: 58px;
+  text-align: center;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+
+.auth-code-field__note {
+  color: var(--color-text-muted) !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .auth-two-factor {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-two-factor__icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .auth-code-field input {
+    font-size: 1.25rem;
+  }
+}

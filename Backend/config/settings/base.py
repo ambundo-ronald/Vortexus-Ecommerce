@@ -140,9 +140,11 @@ REST_FRAMEWORK = {
         'account_login': '20/hour',
         'account_login_identity': '8/hour',
         'account_login_2fa': '10/hour',
+        'account_reactivation_request': '5/hour',
         'account_email_verify': '20/hour',
         'account_email_verify_resend': '5/hour',
         'account_password': '10/hour',
+        'account_password_reset': '5/hour',
         'quote_request': '8/hour',
         'public_search': '120/hour',
         'image_search': '20/hour',
@@ -159,6 +161,7 @@ OSCAR_DEFAULT_CURRENCY = env('OSCAR_DEFAULT_CURRENCY', default='KES')
 OSCAR_DELETE_IMAGE_FILES = env.bool('OSCAR_DELETE_IMAGE_FILES', default=False)
 OSCAR_HOMEPAGE = '/'
 THUMBNAIL_FORMAT = 'PNG'
+PASSWORD_RESET_TIMEOUT = env.int('PASSWORD_RESET_TIMEOUT_SECONDS', default=30 * 60)
 
 REDIS_URL = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
 CACHES = {
@@ -400,7 +403,9 @@ DISPLAY_CURRENCY_RATES = json.loads(
 
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
 NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
-STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://localhost:5173')
+STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://127.0.0.1:5174').rstrip('/')
+BACKEND_PUBLIC_BASE_URL = env('BACKEND_PUBLIC_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
+EMAIL_VERIFICATION_TIMEOUT_SECONDS = env.int('EMAIL_VERIFICATION_TIMEOUT_SECONDS', default=30 * 60)
 SALES_NOTIFICATION_RECIPIENTS = [
     recipient.strip()
     for recipient in env('SALES_NOTIFICATION_RECIPIENTS', default='sales@vortexus.local').split(',')
@@ -422,15 +427,27 @@ MPESA_CONSUMER_KEY = env('MPESA_CONSUMER_KEY', default='')
 MPESA_CONSUMER_SECRET = env('MPESA_CONSUMER_SECRET', default='')
 MPESA_SHORTCODE = env('MPESA_SHORTCODE', default='')
 MPESA_PASSKEY = env('MPESA_PASSKEY', default='')
-MPESA_CALLBACK_URL = env('MPESA_CALLBACK_URL', default='')
+MPESA_CALLBACK_URL = env(
+    'MPESA_CALLBACK_URL',
+    default=f'{BACKEND_PUBLIC_BASE_URL}/api/v1/payments/mpesa/callback/',
+)
 MPESA_TRANSACTION_TYPE = env('MPESA_TRANSACTION_TYPE', default='CustomerPayBillOnline')
 MPESA_TIMEOUT_SECONDS = env.int('MPESA_TIMEOUT_SECONDS', default=30)
 PESAPAL_BASE_URL = env('PESAPAL_BASE_URL', default='https://cybqa.pesapal.com/pesapalv3/api')
 PESAPAL_CONSUMER_KEY = env('PESAPAL_CONSUMER_KEY', default='')
 PESAPAL_CONSUMER_SECRET = env('PESAPAL_CONSUMER_SECRET', default='')
-PESAPAL_CALLBACK_URL = env('PESAPAL_CALLBACK_URL', default='')
-PESAPAL_CANCELLATION_URL = env('PESAPAL_CANCELLATION_URL', default='')
-PESAPAL_IPN_URL = env('PESAPAL_IPN_URL', default='')
+PESAPAL_CALLBACK_URL = env(
+    'PESAPAL_CALLBACK_URL',
+    default=f'{STOREFRONT_BASE_URL}/checkout/review',
+)
+PESAPAL_CANCELLATION_URL = env(
+    'PESAPAL_CANCELLATION_URL',
+    default=f'{STOREFRONT_BASE_URL}/checkout/payment',
+)
+PESAPAL_IPN_URL = env(
+    'PESAPAL_IPN_URL',
+    default=f'{BACKEND_PUBLIC_BASE_URL}/api/v1/payments/pesapal/ipn/',
+)
 PESAPAL_IPN_ID = env('PESAPAL_IPN_ID', default='')
 PESAPAL_IPN_NOTIFICATION_TYPE = env('PESAPAL_IPN_NOTIFICATION_TYPE', default='POST')
 PESAPAL_BRANCH = env('PESAPAL_BRANCH', default='')

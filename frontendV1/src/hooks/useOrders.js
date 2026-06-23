@@ -36,9 +36,22 @@ export function useOrders({ auto = true, page = 1, pageSize = 20 } = {}) {
     setLoading(true);
     setError("");
     try {
-      const payload = await ordersApi.detail(orderNumber);
-      setOrder(payload?.order || null);
-      return payload?.order || null;
+      const [detailResult, statusResult] = await Promise.allSettled([
+        ordersApi.detail(orderNumber),
+        ordersApi.status(orderNumber)
+      ]);
+      if (detailResult.status === "rejected") throw detailResult.reason;
+      const detailOrder = detailResult.value?.order || null;
+      const statusOrder = statusResult.status === "fulfilled" ? statusResult.value?.order : null;
+      const mergedOrder = detailOrder
+        ? {
+            ...detailOrder,
+            status_timeline: statusOrder?.timeline || [],
+            status_snapshot: statusOrder || null
+          }
+        : null;
+      setOrder(mergedOrder);
+      return mergedOrder;
     } catch (error) {
       setError(messageFromError(error));
       throw error;

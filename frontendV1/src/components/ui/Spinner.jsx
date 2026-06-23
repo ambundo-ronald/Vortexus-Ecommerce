@@ -1,8 +1,5 @@
-export default function Spinner({ label = "Loading" }) {
-  return (
-    <div className="loading-state" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  );
+import LoadingExperience from "./LoadingExperience.jsx";
+
+export default function Spinner(props) {
+  return <LoadingExperience {...props} />;
 }

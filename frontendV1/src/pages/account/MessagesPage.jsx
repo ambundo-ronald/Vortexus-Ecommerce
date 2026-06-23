@@ -6,6 +6,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
+import { emailEventMeta, emailStatusLabel } from "../../utils/emailEvents";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { formatDate } from "../../utils/formatDate";
 import "./messages.css";
@@ -82,28 +83,27 @@ export default function MessagesPage() {
 
       {filteredMessages.length ? (
         <div className="message-list">
-          {filteredMessages.map((message) => (
-            <Link className="message-row" to={`/account/messages/${message.id}`} key={message.id}>
-              <span className="message-row__icon">
-                <MaterialIcon name={message.status === "sent" ? "mark_email_read" : "mail"} size={21} />
-              </span>
-              <span className="message-row__body">
-                <strong>{message.subject || readableEvent(message.event_type)}</strong>
-                <small>{message.recipient || "Your account"}</small>
-              </span>
-              <span className="message-row__meta">
-                <em>{message.status || readableEvent(message.event_type)}</em>
-                <small>{formatDate(message.sent_at || message.created_at, { time: true })}</small>
-              </span>
-              <MaterialIcon name="chevron_right" size={20} />
-            </Link>
-          ))}
+          {filteredMessages.map((message) => {
+            const meta = emailEventMeta(message.event_type);
+            return (
+              <Link className={`message-row message-row--${meta.tone}`} to={`/account/messages/${message.id}`} key={message.id}>
+                <span className="message-row__icon">
+                  <MaterialIcon name={meta.icon} size={21} filled={message.status === "sent"} />
+                </span>
+                <span className="message-row__body">
+                  <strong>{message.subject || meta.label}</strong>
+                  <small>{meta.label} · {message.recipient || "Your account"}</small>
+                </span>
+                <span className="message-row__meta">
+                  <em>{emailStatusLabel(message.status)}</em>
+                  <small>{formatDate(message.sent_at || message.created_at, { time: true })}</small>
+                </span>
+                <MaterialIcon name="chevron_right" size={20} />
+              </Link>
+            );
+          })}
         </div>
       ) : null}
     </section>
   );
-}
-
-function readableEvent(value = "") {
-  return String(value || "Message").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

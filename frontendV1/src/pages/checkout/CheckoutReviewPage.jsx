@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
+import PaymentProgressPanel from "../../components/payment/PaymentProgressPanel.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
-import { paymentsApi } from "../../api/payments.api";
+import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
+import {
+  isPaymentComplete,
+  isPaymentFailed,
+  paymentRequiresPrepayment,
+  paymentStatusView,
+  readPendingCheckout,
+  readablePaymentMethod,
+  storePendingCheckout
+} from "../../utils/payment";
+import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
-
-function readPendingCheckout() {
-  try {
-    return JSON.parse(sessionStorage.getItem("vortexus:pendingCheckout") || "null");
-  } catch {
-    return null;
-  }
-}
 
 function previewShipping(preview) {
   const shipping = preview?.shipping || {};
@@ -38,10 +41,14 @@ function previewShipping(preview) {
 export default function CheckoutReviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const notify = useUiStore((state) => state.notify);
-  const pending = location.state?.reviewPayload || readPendingCheckout();
+  const [pending] = useState(() => location.state?.reviewPayload || readPendingCheckout(searchParams));
   const { loading, saving, error, previewCheckout, placeOrder } = useCheckout({ auto: false });
+  const paymentState = usePayment({ auto: false });
   const [preview, setPreview] = useState(null);
+  const [verifiedPayment, setVerifiedPayment] = useState(pending?.payment || null);
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,10 +63,38 @@ export default function CheckoutReviewPage() {
     };
   }, [previewCheckout]);
 
+  useEffect(() => {
+    if (pending?.payment?.method !== "pesapal" || !pending?.payment_reference || isPaymentComplete(pending.payment)) return;
+
+    let active = true;
+    paymentState.waitForPayment(pending.payment, {
+      maxPolls: 15,
+      delayMs: 3000,
+      onUpdate: (nextPayment) => {
+        if (!active || !nextPayment) return;
+        setVerifiedPayment(nextPayment);
+        storePendingCheckout({ ...pending, payment: nextPayment });
+      }
+    })
+      .then((nextPayment) => {
+        if (!active) return;
+        setVerifiedPayment(nextPayment);
+        storePendingCheckout({ ...pending, payment: nextPayment });
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [pending, paymentState.waitForPayment]);
+
   const shipping = useMemo(() => previewShipping(preview), [preview]);
   const address = preview?.shipping?.address;
-  const payment = pending?.payment;
-  const methodName = pending?.method?.name || readablePayment(payment?.method);
+  const payment = verifiedPayment || pending?.payment;
+  const methodName = pending?.method?.name || readablePaymentMethod(payment?.method);
+  const paymentView = paymentStatusView(payment);
+  const requiresPrepayment = paymentRequiresPrepayment(pending?.method || payment?.method);
+  const paymentReady = !requiresPrepayment || isPaymentComplete(payment);
 
   async function handlePlaceOrder() {
     if (!preview?.ready) {
@@ -72,24 +107,33 @@ export default function CheckoutReviewPage() {
       navigate("/checkout/shipping");
       return;
     }
-    try {
-      let paymentReference = pending.payment_reference;
-      if (pending?.payment?.method === "pesapal") {
-        const statusPayload = await paymentsApi.pesapalStatus(pending.payment_reference);
-        const verifiedPayment = statusPayload?.payment;
-        if (!["authorized", "paid"].includes(verifiedPayment?.status)) {
-          notify({
-            tone: "warning",
-            title: "Payment not verified",
-            message: "Pesapal has not confirmed this payment yet.",
-            icon: "hourglass_top"
-          });
-          return;
-        }
-        paymentReference = verifiedPayment.reference;
+    let paymentForOrder = payment;
+    if (requiresPrepayment) {
+      setCheckingStatus(true);
+      try {
+        paymentForOrder = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
+        setVerifiedPayment(paymentForOrder);
+        storePendingCheckout({ ...pending, payment: paymentForOrder });
+      } catch {
+        return;
+      } finally {
+        setCheckingStatus(false);
       }
+
+      if (!isPaymentComplete(paymentForOrder)) {
+        const latestView = paymentStatusView(paymentForOrder);
+        notify({
+          tone: isPaymentFailed(paymentForOrder) ? "warning" : "info",
+          title: latestView.title,
+          message: latestView.message,
+          icon: latestView.icon
+        });
+        return;
+      }
+    }
+    try {
       const orderPayload = await placeOrder({
-        payment_reference: paymentReference,
+        payment_reference: paymentForOrder?.reference || pending.payment_reference,
         guest_email: pending.guest_email
       });
       sessionStorage.removeItem("vortexus:pendingCheckout");
@@ -99,6 +143,26 @@ export default function CheckoutReviewPage() {
       navigate(`/checkout/confirmation${orderNumber ? `?order_number=${encodeURIComponent(orderNumber)}` : ""}`, { replace: true, state: { orderPayload } });
     } catch {
       // Hook state already exposes the normalized message.
+    }
+  }
+
+  async function handleStatusCheck() {
+    if (!pending?.payment_reference) return;
+    setCheckingStatus(true);
+    try {
+      const nextPayment = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
+      setVerifiedPayment(nextPayment);
+      storePendingCheckout({ ...pending, payment: nextPayment });
+      notify({
+        tone: isPaymentComplete(nextPayment) ? "success" : isPaymentFailed(nextPayment) ? "warning" : "info",
+        title: paymentStatusView(nextPayment).title,
+        message: paymentStatusView(nextPayment).message,
+        icon: paymentStatusView(nextPayment).icon
+      });
+    } catch {
+      // Hook state already exposes the normalized message.
+    } finally {
+      setCheckingStatus(false);
     }
   }
 
@@ -118,18 +182,28 @@ export default function CheckoutReviewPage() {
       </div>
 
       <Alert>{error}</Alert>
+      <Alert>{paymentState.error}</Alert>
       {preview && !preview.ready ? (
         <Alert tone="warning">Some checkout details are missing. Go back and complete delivery before placing the order.</Alert>
       ) : null}
 
       <div className="checkout-layout">
         <div className="checkout-stack">
+          {requiresPrepayment && !paymentReady ? (
+            <PaymentProgressPanel
+              payment={payment}
+              checking={paymentState.processing || checkingStatus}
+              onCheckStatus={() => void handleStatusCheck()}
+              onContinue={() => {}}
+              onChangeMethod={() => navigate("/checkout/payment")}
+            />
+          ) : null}
+
           <section className="checkout-card review-card">
             <div className="checkout-card__title">
               <span><MaterialIcon name="fact_check" size={20} /></span>
               <div>
                 <h2>Confirm details</h2>
-                <p>Check delivery, payment, and items before placing the order.</p>
               </div>
             </div>
 
@@ -137,12 +211,11 @@ export default function CheckoutReviewPage() {
               <div>
                 <span>Payment</span>
                 <strong>{methodName}</strong>
-                <small>{payment?.status || "Ready"}</small>
+                <small>{paymentView.label}</small>
               </div>
               <div>
                 <span>Delivery method</span>
                 <strong>{preview?.shipping?.selected_method?.name || "Selected"}</strong>
-                <small>{preview?.shipping?.selected_method?.description || "Saved delivery option"}</small>
               </div>
               <div>
                 <span>Delivery address</span>
@@ -157,7 +230,6 @@ export default function CheckoutReviewPage() {
               <span><MaterialIcon name="inventory_2" size={20} /></span>
               <div>
                 <h2>Items</h2>
-                <p>{preview?.basket?.item_count || 0} item{preview?.basket?.item_count === 1 ? "" : "s"} in this order.</p>
               </div>
             </div>
 
@@ -165,16 +237,21 @@ export default function CheckoutReviewPage() {
               {(preview?.basket?.lines || []).map((line) => (
                 <div className="review-line" key={line.id}>
                   <span>{line.quantity}x</span>
-                  <strong>{line.product?.title || "Product"}</strong>
+                  <strong>{productTitle({ ...line, product: line.product || {} })}</strong>
                   <em>{formatCurrency(line.line_total, line.currency || preview?.basket?.currency)}</em>
                 </div>
               ))}
             </div>
           </section>
 
-          <button className="primary-button checkout-submit" type="button" disabled={saving || !preview?.ready} onClick={() => void handlePlaceOrder()}>
+          <button
+            className="primary-button checkout-submit"
+            type="button"
+            disabled={saving || checkingStatus || !preview?.ready || !paymentReady}
+            onClick={() => void handlePlaceOrder()}
+          >
             <MaterialIcon name="task_alt" size={19} />
-            {saving ? "Placing order..." : "Place order"}
+            {saving ? "Placing order..." : checkingStatus ? "Verifying payment..." : paymentReady ? "Place order" : "Waiting for payment"}
           </button>
         </div>
 
@@ -182,8 +259,4 @@ export default function CheckoutReviewPage() {
       </div>
     </section>
   );
-}
-
-function readablePayment(method = "") {
-  return method.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Payment";
 }

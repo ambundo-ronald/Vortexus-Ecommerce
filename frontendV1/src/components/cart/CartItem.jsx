@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { formatCurrency } from "../../utils/currency";
-import { productInitials } from "../../utils/productDisplay";
+import { productId, productInitials, productSku, productTitle, stockTone } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 
 export default function CartItem({ line }) {
@@ -12,7 +12,10 @@ export default function CartItem({ line }) {
   const saveLineForLater = useCartStore((state) => state.saveLineForLater);
   const loading = useCartStore((state) => state.loading);
   const product = line.product || {};
-  const image = productImageUrl(product);
+  const title = productTitle({ ...line, product });
+  const sku = productSku({ ...line, product }, "Product line");
+  const image = productImageUrl({ ...line, ...product, product });
+  const resolvedProductId = productId({ ...line, product });
   const options = line.options || [];
   const quantity = Math.max(1, Number(line.quantity || 1));
   const unitPrice =
@@ -23,22 +26,8 @@ export default function CartItem({ line }) {
     line.price ??
     product.price ??
     (Number(line.line_total || 0) / quantity || 0);
-  const stockCount =
-    product.stock ??
-    product.stock_count ??
-    product.num_in_stock ??
-    product.availability?.num_available ??
-    product.availability?.num_in_stock ??
-    product.availability?.stock ??
-    line.availability?.num_available;
-  const hasStockCount = stockCount !== null && stockCount !== undefined && stockCount !== "";
-  const isAvailable =
-    product.is_available !== false &&
-    product.availability?.is_available !== false &&
-    line.availability?.is_available !== false &&
-    (!hasStockCount || Number(stockCount) > 0);
-  const stockText = isAvailable ? (hasStockCount ? `In stock ${stockCount}` : "In stock") : "Sold out";
-  const productPath = product.id ? `/products/${product.id}` : "/catalog";
+  const stock = stockTone({ ...line, product });
+  const productPath = resolvedProductId ? `/products/${resolvedProductId}` : "/catalog";
 
   async function handleQuantityChange(quantity) {
     try {
@@ -68,15 +57,15 @@ export default function CartItem({ line }) {
     <article className="cart-item">
       <div className="cart-item__product">
         <Link className="cart-item__media" to={productPath}>
-          {image ? <img src={image} alt={product.title || "Product"} /> : <span>{productInitials(product.title)}</span>}
+          {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
         </Link>
         <div className="cart-item__body">
           <h3>
-            <Link to={productPath}>{product.title || "Product"}</Link>
+            <Link to={productPath}>{title}</Link>
           </h3>
           <p className="cart-item__sku">
             <MaterialIcon name="tag" size={15} />
-            {product.sku || line.line_reference || "Product line"}
+            {sku}
           </p>
           {options.length ? (
             <ul className="cart-item__options">
@@ -88,9 +77,9 @@ export default function CartItem({ line }) {
               ))}
             </ul>
           ) : null}
-          <span className={`cart-item__stock ${isAvailable ? "is-in-stock" : "is-sold-out"}`}>
-            <MaterialIcon name={isAvailable ? "check_circle" : "block"} size={15} />
-            {stockText}
+          <span className={`cart-item__stock ${stock.isAvailable ? "is-in-stock" : "is-sold-out"}`}>
+            <MaterialIcon name={stock.isAvailable ? "check_circle" : "block"} size={15} />
+            {stock.label}
           </span>
         </div>
       </div>

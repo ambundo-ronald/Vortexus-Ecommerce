@@ -9,7 +9,6 @@ export default function ShippingMethodSelector({ methods = [], selectedCode = ""
           <span><MaterialIcon name="local_shipping" size={20} /></span>
           <div>
             <h2>Delivery method</h2>
-            <p>Save your address to see available options.</p>
           </div>
         </div>
       </section>
@@ -22,7 +21,6 @@ export default function ShippingMethodSelector({ methods = [], selectedCode = ""
         <span><MaterialIcon name="local_shipping" size={20} /></span>
         <div>
           <h2>Delivery method</h2>
-          <p>Choose the option that works for you.</p>
         </div>
       </div>
 

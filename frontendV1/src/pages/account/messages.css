@@ -88,6 +88,21 @@
   width: 46px;
 }
 
+.message-row--success .message-row__icon {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.message-row--warning .message-row__icon {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.message-row--security .message-row__icon {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-700);
+}
+
 .message-row__body,
 .message-row__meta {
   display: grid;

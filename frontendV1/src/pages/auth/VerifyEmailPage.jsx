@@ -8,12 +8,14 @@ import { useAuth } from "../../hooks/useAuth";
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
-  const { verifyEmail, loading, error } = useAuth({ auto: false });
+  const { user, verifyEmail, resendEmailVerification, loading, error } = useAuth({ auto: false });
   const [status, setStatus] = useState("pending");
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendError, setResendError] = useState("");
 
   useEffect(() => {
     const uid = searchParams.get("uid") || "";
-    const token = searchParams.get("token") || "";
+    const token = searchParams.get("token") || searchParams.get("amp;token") || "";
 
     if (!uid || !token) {
       setStatus("invalid");
@@ -48,11 +50,45 @@ export default function VerifyEmailPage() {
 
         {status === "pending" || loading ? <Spinner label="Verifying email" /> : null}
         {status === "invalid" ? <Alert>Verification link is missing required details.</Alert> : null}
-        {status === "failed" ? <Alert>{error || "Verification link is invalid or expired."}</Alert> : null}
-        {status === "verified" ? <Alert tone="success">Your email address has been verified.</Alert> : null}
+        {status === "failed" ? <Alert>{error || "Verification link is invalid, expired, or already used. Links expire in 30 minutes."}</Alert> : null}
+        {status === "verified" ? (
+          <Alert tone="success">
+            Your email address has been verified. {user ? "Your account is now updated." : "You can now sign in."}
+          </Alert>
+        ) : null}
 
-        <Link className="primary-button" to="/account">
-          Go to account
+        {user && status !== "verified" ? (
+          <div className="auth-inline-panel">
+            <div>
+              <strong>Need a new link?</strong>
+              <span>Send another verification email to your current account address.</span>
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setResendMessage("");
+                setResendError("");
+                try {
+                  const response = await resendEmailVerification();
+                  setResendMessage(response?.detail || "Verification email sent.");
+                } catch (requestError) {
+                  setResendError(requestError?.normalized?.message || "Could not send verification email.");
+                }
+              }}
+            >
+              <MaterialIcon name="send" size={17} />
+              Resend email
+            </button>
+          </div>
+        ) : null}
+
+        <Alert tone="success">{resendMessage}</Alert>
+        <Alert tone="warning">{resendError}</Alert>
+
+        <Link className="primary-button" to={user ? "/account" : "/login"}>
+          {user ? "Go to account" : "Sign in"}
         </Link>
       </div>
     </section>

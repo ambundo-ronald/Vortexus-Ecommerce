@@ -3,12 +3,11 @@ from typing import Any
 from django.apps import apps
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Avg, Count, Min, Q
+from django.db.models import Avg, Count, F, Min, Q
 from opensearchpy.exceptions import OpenSearchException
 
 from apps.common.clients import get_opensearch_client
 from apps.common.catalog import filter_queryset_by_brand, filter_queryset_by_category_slug
-from apps.common.currency import convert_product_payload, default_currency
 from apps.common.products import serialize_product_card
 
 
@@ -147,38 +146,31 @@ class ProductSearchService:
         results = []
         ids = [hit.get('_source', {}).get('id') for hit in response['hits']['hits'] if hit.get('_source', {}).get('id')]
         review_stats = self._review_stats_for_products(ids)
-        stock_counts = self._stock_counts_for_products(ids)
+        Product = apps.get_model('catalogue', 'Product')
+        products = {
+            product.id: product
+            for product in (
+                Product.objects.filter(id__in=ids, is_public=True)
+                .exclude(structure='parent')
+                .prefetch_related('stockrecords', 'images', 'categories', 'attribute_values__attribute')
+            )
+        }
 
         for hit in response['hits']['hits']:
             source = hit.get('_source', {})
             product_id = source.get('id')
+            product = products.get(product_id)
+            if not product:
+                continue
             stats = review_stats.get(product_id, {})
-            stock_count = stock_counts.get(product_id, source.get('stock_count', source.get('num_in_stock', 0)) or 0)
-            results.append(
-                convert_product_payload(
-                    {
-                        'id': product_id,
-                        'title': source.get('title'),
-                        'sku': source.get('sku'),
-                        'price': source.get('price'),
-                        'base_price': source.get('price'),
-                        'previous_price': source.get('previous_price'),
-                        'base_previous_price': source.get('previous_price'),
-                        'currency': source.get('currency', default_currency()),
-                        'base_currency': source.get('currency', default_currency()),
-                        'previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
-                        'base_previous_currency': source.get('previous_currency', source.get('currency', default_currency())),
-                        'thumbnail': source.get('thumbnail', ''),
-                        'in_stock': stock_count > 0,
-                        'stock_count': stock_count,
-                        'num_in_stock': stock_count,
-                        'rating': stats.get('rating', source.get('rating')),
-                        'review_count': stats.get('review_count', source.get('review_count', 0)),
-                        'score': hit.get('_score'),
-                    },
-                    display_currency,
-                )
+            payload = serialize_product_card(
+                product=product,
+                score=hit.get('_score'),
+                display_currency=display_currency,
             )
+            payload['rating'] = stats.get('rating', payload.get('rating'))
+            payload['review_count'] = stats.get('review_count', payload.get('review_count', 0))
+            results.append(payload)
 
         return {
             'results': results,
@@ -237,7 +229,7 @@ class ProductSearchService:
 
         in_stock = filters.get('in_stock')
         if in_stock is True:
-            queryset = queryset.filter(stockrecords__num_in_stock__gt=0)
+            queryset = queryset.filter(stockrecords__num_in_stock__gt=F('stockrecords__num_allocated'))
 
         min_price = filters.get('min_price')
         if min_price is not None:
@@ -309,15 +301,6 @@ class ProductSearchService:
             }
             for row in rows
         }
-
-    def _stock_counts_for_products(self, product_ids: list[int]) -> dict[int, int]:
-        if not product_ids:
-            return {}
-        StockRecord = apps.get_model('partner', 'StockRecord')
-        counts: dict[int, int] = {}
-        for row in StockRecord.objects.filter(product_id__in=product_ids).order_by('product_id', 'id').values('product_id', 'num_in_stock'):
-            counts.setdefault(row['product_id'], int(row['num_in_stock'] or 0))
-        return counts
 
     def _filters_payload(self, query: str, filters: dict[str, Any], sort_by: str) -> dict[str, Any]:
         return {

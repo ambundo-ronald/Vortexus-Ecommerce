@@ -35,6 +35,9 @@ export default function Navbar() {
   const searchValue = searchParams.get("q") || "";
   const showCatalogTools = !location.pathname.startsWith("/account") && !location.pathname.startsWith("/admin") && !location.pathname.startsWith("/supplier");
   const showCategoryNavigation = location.pathname.startsWith("/catalog");
+  const supplierMenuItem = user?.supplier?.is_supplier
+    ? { to: "/supplier", label: "Supplier portal", icon: "storefront" }
+    : { to: "/supplier/apply", label: "Sell with us", icon: "add_business" };
 
   useEffect(() => {
     setAccountMenuOpen(false);
@@ -93,6 +96,15 @@ export default function Navbar() {
                         <span>{item.label}</span>
                       </NavLink>
                     ))}
+                    <NavLink
+                      className="account-menu__item"
+                      to={supplierMenuItem.to}
+                      role="menuitem"
+                      onClick={() => setAccountMenuOpen(false)}
+                    >
+                      <MaterialIcon name={supplierMenuItem.icon} size={23} />
+                      <span>{supplierMenuItem.label}</span>
+                    </NavLink>
                     <button className="account-menu__logout" type="button" disabled={loading} onClick={() => void logout()}>
                       Logout
                     </button>
@@ -124,7 +136,6 @@ export default function Navbar() {
           </div>
         ) : null}
       </header>
-      {showCategoryNavigation ? <CategoryNav categories={categories} activeCategory={activeCategory} variant="mobile" /> : null}
     </>
   );
 }

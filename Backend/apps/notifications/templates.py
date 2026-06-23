@@ -24,8 +24,25 @@ CUSTOM_COMMUNICATION_TEMPLATES = [
             'Hello {{ display_name }},\n\n'
             'Please verify your email address for {{ shop_name }}:\n\n'
             '{{ verification_url }}\n\n'
+            'This verification link expires in 30 minutes.\n\n'
             'This helps protect your account and keeps order, quote, and security notifications going to the right inbox.\n\n'
             'If you did not create or update this account, please ignore this email or contact our support team.\n\n'
+            '{{ shop_name }}\n'
+        ),
+    },
+    {
+        'code': 'account_reactivation_request',
+        'name': 'Account Reactivation Request',
+        'category': 'Account Support',
+        'email_subject_template': '{{ shop_name }} account reactivation request',
+        'email_body_template': (
+            'Hello team,\n\n'
+            'A customer requested reactivation for a deactivated {{ shop_name }} account.\n\n'
+            'Customer email: {{ user.email }}\n'
+            'Customer name: {{ display_name }}\n'
+            'User ID: {{ user.id }}\n'
+            'Request identifier: {{ requested_by }}\n\n'
+            'Review the customer account in the admin dashboard before reactivating it.\n\n'
             '{{ shop_name }}\n'
         ),
     },
@@ -39,6 +56,7 @@ CUSTOM_COMMUNICATION_TEMPLATES = [
             'We received a request to reset your {{ shop_name }} password.\n\n'
             'Set a new password here:\n\n'
             '{{ reset_url }}\n\n'
+            'This password reset link expires in 30 minutes.\n\n'
             'If you did not request this, you can ignore this email. Your password will stay unchanged.\n\n'
             '{{ shop_name }}\n'
         ),

@@ -7,6 +7,7 @@ import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useUiStore } from "../../store/ui.store";
+import { mediaUrl } from "../../utils/media";
 
 const initialForm = {
   id: null,
@@ -27,8 +28,11 @@ export default function SupplierProductsPage() {
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [imageFiles, setImageFiles] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [removingImageId, setRemovingImageId] = useState(null);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
 
@@ -68,7 +72,7 @@ export default function SupplierProductsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function editProduct(product) {
+  function populateForm(product) {
     setForm({
       id: product.id,
       upc: product.upc || product.sku || "",
@@ -81,13 +85,68 @@ export default function SupplierProductsPage() {
       num_in_stock: String(product.offer?.num_in_stock ?? 0),
       brand: product.brand || ""
     });
+    setExistingImages(Array.isArray(product.images) ? product.images : []);
     setFormError("");
+  }
+
+  async function editProduct(product) {
+    populateForm(product);
+    try {
+      const payload = await supplierApi.product(product.id);
+      if (payload?.product) populateForm(payload.product);
+    } catch (err) {
+      setFormError(err.normalized?.message || err.message || "Could not load the complete product record.");
+    }
   }
 
   function resetForm() {
     setForm(initialForm);
     setImageFiles([]);
+    setExistingImages([]);
     setFormError("");
+  }
+
+  async function deleteProduct(product) {
+    const confirmed = window.confirm(`Remove ${product.title} from your supplier catalogue?`);
+    if (!confirmed) return;
+    setDeletingId(product.id);
+    try {
+      const response = await supplierApi.removeProduct(product.id);
+      if (form.id === product.id) resetForm();
+      await reloadProducts();
+      notify({
+        title: "Product removed",
+        message: response?.detail || "The supplier offer was removed.",
+        icon: "delete"
+      });
+    } catch (err) {
+      notify({
+        tone: "danger",
+        title: "Could not remove product",
+        message: err.normalized?.message || err.message || "Please try again.",
+        icon: "error"
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function removeExistingImage(image) {
+    if (!form.id || !image?.id) return;
+    const confirmed = window.confirm("Remove this product image?");
+    if (!confirmed) return;
+    setRemovingImageId(image.id);
+    setFormError("");
+    try {
+      await supplierApi.removeProductImage(form.id, image.id);
+      setExistingImages((current) => current.filter((item) => item.id !== image.id));
+      await reloadProducts();
+      notify({ title: "Image removed", message: "The product image was deleted.", icon: "image_not_supported" });
+    } catch (err) {
+      setFormError(err.normalized?.message || err.message || "Could not remove the product image.");
+    } finally {
+      setRemovingImageId(null);
+    }
   }
 
   async function submitProduct(event) {
@@ -171,7 +230,12 @@ export default function SupplierProductsPage() {
               Refresh
             </button>
           </div>
-          <SupplierProductTable products={products} onEdit={editProduct} />
+          <SupplierProductTable
+            products={products}
+            onEdit={(product) => void editProduct(product)}
+            onDelete={(product) => void deleteProduct(product)}
+            deletingId={deletingId}
+          />
         </div>
 
         <form className="surface-panel supplier-product-form" onSubmit={submitProduct}>
@@ -223,6 +287,24 @@ export default function SupplierProductsPage() {
           </label>
           <label>
             <span>Product photos</span>
+            {existingImages.length ? (
+              <div className="supplier-existing-images">
+                {existingImages.map((image) => (
+                  <div className="supplier-existing-image" key={image.id || image.src}>
+                    <img src={mediaUrl(image.src)} alt={image.alt || form.title} />
+                    <button
+                      className="danger-link"
+                      type="button"
+                      disabled={removingImageId === image.id}
+                      onClick={() => void removeExistingImage(image)}
+                      aria-label={`Remove ${image.alt || "product image"}`}
+                    >
+                      <MaterialIcon name={removingImageId === image.id ? "hourglass_top" : "delete"} size={17} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <input
               type="file"
               accept="image/*"

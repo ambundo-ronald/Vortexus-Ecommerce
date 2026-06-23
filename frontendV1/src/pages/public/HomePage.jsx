@@ -2,35 +2,26 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import HeroImageCarousel from "../../components/home/HeroImageCarousel.jsx";
-import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks } from "../../components/home/MarketingBlocks.jsx";
+import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks, TopCategoryStrip } from "../../components/home/MarketingBlocks.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
-import { useCategories } from "../../hooks/useCategories";
 import { useMarketingBlocks } from "../../hooks/useMarketingBlocks";
 import { useProducts } from "../../hooks/useProducts";
 import { useRecommendations } from "../../hooks/useRecommendations";
 import { mediaUrl } from "../../utils/media";
 import { productImageUrl } from "../../utils/productImages";
-import { productInitials } from "../../utils/productDisplay";
+import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
 
-const fallbackCategories = [
-  { id: "pumps", name: "Pumps & Motors", slug: "pumps-motors", icon: "settings" },
-  { id: "tanks", name: "Tanks & Vessels", slug: "tanks-vessels", icon: "inventory_2" },
-  { id: "valves", name: "Valves & Fittings", slug: "valves-fittings", icon: "plumbing" },
-  { id: "sensors", name: "Controllers & Sensors", slug: "controllers-sensors", icon: "sensors" },
-  { id: "water-treatment", name: "Water Treatment", slug: "water-treatment", icon: "water_drop" },
-  { id: "pipes", name: "Pipes & Accessories", slug: "pipes-accessories", icon: "polyline" },
-  { id: "power", name: "Electrical & Power", slug: "electrical-power", icon: "bolt" },
-  { id: "tools", name: "Tools & Equipment", slug: "tools-equipment", icon: "construction" },
-  { id: "offers", name: "Deals & Offers", slug: "", icon: "local_offer", to: "/offers" }
-];
-
 export default function HomePage() {
-  const [categoriesCollapsed, setCategoriesCollapsed] = useState(false);
-  const { blocks: marketingBlocks, loading: marketingLoading } = useMarketingBlocks();
-  const { categories } = useCategories();
+  const {
+    blocks: marketingBlocks,
+    blocksByPlacement,
+    loading: marketingLoading,
+    error: marketingError
+  } = useMarketingBlocks();
   const {
     recommendations,
     loading: recommendationsLoading,
@@ -46,79 +37,53 @@ export default function HomePage() {
     page_size: 8
   });
 
-  const marketingByPlacement = marketingBlocks.reduce((groups, block) => {
-    const placement = block.placement || "featured";
-    return { ...groups, [placement]: [...(groups[placement] || []), block] };
-  }, {});
-  const categoryItems = categories.length ? categories : fallbackCategories;
+  const marketingByPlacement = groupMarketingBlocks(marketingBlocks, blocksByPlacement);
   const newestPreview = newestProducts.length ? newestProducts.slice(0, 6) : recommendations.slice(0, 6);
 
   return (
     <div className="home-page">
       <AnnouncementStrip blocks={marketingByPlacement.announcement} />
 
-      <section className={`home-showcase${categoriesCollapsed ? " home-showcase--categories-collapsed" : ""}`} aria-label="Store highlights">
-        <aside className={`home-category-panel${categoriesCollapsed ? " is-collapsed" : ""}`}>
-          <div className="home-category-panel__head">
-            <strong>Browse categories</strong>
-            <button
-              className="home-category-panel__toggle"
-              type="button"
-              aria-label={categoriesCollapsed ? "Open categories" : "Collapse categories"}
-              aria-expanded={!categoriesCollapsed}
-              onClick={() => setCategoriesCollapsed((current) => !current)}
-            >
-              <MaterialIcon name={categoriesCollapsed ? "category" : "menu"} size={20} />
-            </button>
-          </div>
-          <nav className="home-category-list" aria-label="Homepage categories">
-            {categoryItems.map((category, index) => (
-              <Link key={category.id || category.slug || category.name} to={category.to || categoryUrl(category)} title={category.name}>
-                <MaterialIcon name={category.icon || fallbackCategories[index % fallbackCategories.length].icon} size={19} />
-                <span>{category.name}</span>
-                <MaterialIcon name="chevron_right" size={18} />
-              </Link>
-            ))}
-          </nav>
-          <Link className="home-help-card" to="/quote">
-            <MaterialIcon name="support_agent" size={22} />
-            <span>Need help finding the right product?</span>
-            <strong>Contact our experts</strong>
-          </Link>
-        </aside>
-
+      <section className="home-showcase" aria-label="Store highlights">
         <div className="home-showcase__main">
-          <HeroImageCarousel blocks={marketingByPlacement.home_hero} loading={marketingLoading} />
+          <HeroImageCarousel
+            blocks={marketingByPlacement.home_hero}
+            loading={marketingLoading}
+            useFallback={Boolean(marketingError)}
+          />
           <section className="home-arrivals-strip" aria-label="New arrivals preview">
             <div>
-              <span>New arrivals</span>
-              <strong>These are the newest products in the store</strong>
+              <strong>New arrivals</strong>
               <Link to="/catalog?sort_by=newest">
-                Check what is new
+                View all
                 <MaterialIcon name="arrow_forward" size={17} />
               </Link>
             </div>
             <div className="home-arrivals-strip__items">
               {(newestLoading || recommendationsLoading) && !newestPreview.length
                 ? Array.from({ length: 6 }).map((_, index) => <span className="home-product-thumb skeleton-block" key={index} />)
-                : newestPreview.map((product) => <ProductThumb key={product.id} product={product} />)}
+                : newestPreview.map((product) => <ProductThumb key={productId(product) || productTitle(product)} product={product} />)}
             </div>
           </section>
         </div>
       </section>
 
+      <BrandStrip blocks={marketingByPlacement.brand_strip} />
+
+      <TopCategoryStrip blocks={marketingByPlacement.top_category} />
+
       <FeaturedMarketingBlocks blocks={marketingByPlacement.featured} />
 
       <section className="content-section home-product-section">
         <div className="section-heading">
-          <h2>New Arrivals</h2>
+          <h2>New arrivals</h2>
           <Link to="/catalog?sort_by=newest">View all</Link>
         </div>
         <Alert>{newestError || recommendationsError}</Alert>
         <ProductGrid products={newestProducts.slice(0, 5).length ? newestProducts.slice(0, 5) : recommendations.slice(0, 5)} loading={newestLoading || recommendationsLoading} skeletonCount={5} />
       </section>
 
-      <PromoBannerCarousel blocks={marketingByPlacement.promo_banner} />
+      <PromoBannerCarousel blocks={marketingByPlacement.promo_banner} loading={marketingLoading} />
 
       <section className="content-section home-product-section home-product-section--dense">
         <div className="section-heading">
@@ -131,33 +96,19 @@ export default function HomePage() {
 
       <section className="content-section home-product-section">
         <div className="section-heading">
-          <h2>Recommended now</h2>
+          <h2>Recommended</h2>
           <Link to="/catalog">View all</Link>
         </div>
         <Alert>{recommendationsError}</Alert>
         <ProductGrid products={recommendations} loading={recommendationsLoading} skeletonCount={8} />
       </section>
-
-      <BrandStrip blocks={marketingByPlacement.brand_strip} />
     </div>
   );
 }
 
-function PromoBannerCarousel({ blocks = [] }) {
+function PromoBannerCarousel({ blocks = [], loading = false }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const slides = blocks.length
-    ? blocks
-    : [
-        {
-          id: "fallback-promo",
-          eyebrow: "Flash sales",
-          headline: "Ending in 2hrs",
-          body: "Take a chance to buy within the time.",
-          cta_text: "Shop the sale",
-          cta_url: "/offers",
-          image_url: "/hero%20landing%20images/television%20and%20sound%20system%20.png"
-        }
-      ];
+  const slides = blocks;
 
   useEffect(() => {
     if (slides.length < 2) return undefined;
@@ -172,6 +123,12 @@ function PromoBannerCarousel({ blocks = [] }) {
   useEffect(() => {
     setActiveIndex(0);
   }, [blocks.length]);
+
+  if (loading && !slides.length) {
+    return <section className="home-deal-carousel skeleton-block" aria-label="Loading promotional banners" />;
+  }
+
+  if (!slides.length) return null;
 
   return (
     <section className="home-deal-section" aria-label="Promotional banners">
@@ -200,7 +157,7 @@ function PromoBannerCarousel({ blocks = [] }) {
 function PromoBannerSlide({ block, eager = false }) {
   const href = block.cta_url || "/offers";
   const external = /^https?:\/\//i.test(href);
-  const imageUrl = block.id === "fallback-promo" ? block.image_url : mediaUrl(block.image_url);
+  const imageUrl = mediaUrl(block.image_url);
   const content = (
     <>
       {imageUrl ? <img src={imageUrl} alt={block.image_alt || block.title || block.headline || "Promotion"} loading={eager ? "eager" : "lazy"} /> : null}
@@ -228,17 +185,14 @@ function PromoBannerSlide({ block, eager = false }) {
   );
 }
 
-function categoryUrl(category) {
-  if (!category?.slug) return "/catalog";
-  return `/catalog/category/${category.slug}`;
-}
-
 function ProductThumb({ product }) {
+  const id = productId(product);
+  const title = productTitle(product);
   const image = productImageUrl(product);
 
   return (
-    <Link className="home-product-thumb" to={`/products/${product.id}`} title={product.title}>
-      {image ? <img src={image} alt={product.title} loading="lazy" /> : <span>{productInitials(product.title)}</span>}
+    <Link className="home-product-thumb" to={id ? `/products/${id}` : "/catalog"} title={title}>
+      {image ? <img src={image} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
     </Link>
   );
 }

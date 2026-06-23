@@ -1,4 +1,6 @@
-export const API_PREFIX = import.meta.env.VITE_API_PREFIX || "/api/v1";
+import { normalizePath } from "../utils/urlConfig";
+
+export const API_PREFIX = normalizePath(import.meta.env.VITE_API_PREFIX, "/api/v1");
 
 export const ENDPOINTS = {
   docs: {
@@ -14,6 +16,7 @@ export const ENDPOINTS = {
     register: "/account/register/",
     login: "/account/login/",
     loginTwoFactor: "/account/login/2fa/",
+    reactivationRequest: "/account/reactivation/request/",
     logout: "/account/logout/",
     verifyEmail: "/account/email/verify/",
     resendEmailVerification: "/account/email/verification/resend/",

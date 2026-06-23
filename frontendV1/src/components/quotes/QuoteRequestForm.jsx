@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { productId, productTitle } from "../../utils/productDisplay";
 
 const emptyForm = {
   name: "",
@@ -23,12 +24,13 @@ export default function QuoteRequestForm({ product, user, loading = false, onSub
   }, [user]);
 
   useEffect(() => {
-    if (!product?.title) return;
+    const title = productTitle(product || {}, "");
+    if (!title) return;
     setForm((current) => {
       if (current.message) return current;
       return {
         ...current,
-        message: `Please send me a quote for ${product.title}.`
+        message: `Please send me a quote for ${title}.`
       };
     });
   }, [product]);
@@ -42,7 +44,7 @@ export default function QuoteRequestForm({ product, user, loading = false, onSub
     event.preventDefault();
     onSubmit?.({
       ...form,
-      product_id: product?.id
+      product_id: productId(product || {})
     });
   }
 
@@ -52,7 +54,6 @@ export default function QuoteRequestForm({ product, user, loading = false, onSub
         <span><MaterialIcon name="request_quote" size={20} /></span>
         <div>
           <h2>Request a quote</h2>
-          <p>Share your contact details and project need.</p>
         </div>
       </div>
 

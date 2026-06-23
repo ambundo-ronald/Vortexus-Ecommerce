@@ -7,6 +7,7 @@ import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useUiStore } from "../../store/ui.store";
+import { emailEventMeta, emailStatusLabel } from "../../utils/emailEvents";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { formatDate } from "../../utils/formatDate";
 import "./notifications.css";
@@ -129,38 +130,37 @@ export default function NotificationsPage() {
 
       {notifications.length ? (
         <div className="notification-list">
-          {notifications.map((notification) => (
-            <article className={`notification-card${isRead(notification) ? "" : " unread"}`} key={notification.id}>
-              <Link className="notification-card__main" to={`/account/notifications/${notification.id}`}>
-                <span className="notification-card__icon">
-                  <MaterialIcon name={isRead(notification) ? "mail" : "mark_email_unread"} size={21} />
-                </span>
-                <span className="notification-card__copy">
-                  <strong>{notification.subject || readableEvent(notification.event_type)}</strong>
-                  <small>{formatDate(notification.sent_at || notification.created_at, { time: true })}</small>
-                  <em>{notification.status || readableEvent(notification.event_type)}</em>
-                </span>
-              </Link>
-              <div className="notification-card__actions">
-                {!isRead(notification) ? (
-                  <button type="button" disabled={saving} onClick={() => void markRead(notification)}>
-                    Read
-                  </button>
-                ) : null}
-                {!isArchived(notification) ? (
-                  <button type="button" disabled={saving} onClick={() => void archive(notification)}>
-                    Archive
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
+          {notifications.map((notification) => {
+            const meta = emailEventMeta(notification.event_type);
+            return (
+              <article className={`notification-card notification-card--${meta.tone}${isRead(notification) ? "" : " unread"}`} key={notification.id}>
+                <Link className="notification-card__main" to={`/account/notifications/${notification.id}`}>
+                  <span className="notification-card__icon">
+                    <MaterialIcon name={meta.icon} size={21} filled={!isRead(notification)} />
+                  </span>
+                  <span className="notification-card__copy">
+                    <strong>{notification.subject || meta.label}</strong>
+                    <small>{meta.label} · {formatDate(notification.sent_at || notification.created_at, { time: true })}</small>
+                    <em>{emailStatusLabel(notification.status)}</em>
+                  </span>
+                </Link>
+                <div className="notification-card__actions">
+                  {!isRead(notification) ? (
+                    <button type="button" disabled={saving} onClick={() => void markRead(notification)}>
+                      Read
+                    </button>
+                  ) : null}
+                  {!isArchived(notification) ? (
+                    <button type="button" disabled={saving} onClick={() => void archive(notification)}>
+                      Archive
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>
   );
-}
-
-function readableEvent(value = "") {
-  return String(value || "Notification").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

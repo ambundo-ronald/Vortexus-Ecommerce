@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
-import AddressCard from "../../components/account/AddressCard.jsx";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
 import ShippingAddressForm from "../../components/checkout/ShippingAddressForm.jsx";
@@ -19,7 +18,6 @@ export default function ShippingPage() {
   const {
     basket,
     shipping,
-    billing,
     addresses,
     loading,
     saving,
@@ -31,47 +29,46 @@ export default function ShippingPage() {
     useBillingAddress,
     selectMethod
   } = useCheckout();
-  const [sameAsDelivery, setSameAsDelivery] = useState(true);
+  const [deliveryMode, setDeliveryMode] = useState("saved");
   const lines = basket?.lines || [];
 
   useEffect(() => {
     if (user) void loadAddresses().catch(() => {});
   }, [loadAddresses, user]);
 
+  const hasSavedAddresses = Boolean(user && addresses.length);
+  const previousAddress = hasSavedAddresses
+    ? addresses.find((address) => address.is_default_for_shipping) || addresses[0]
+    : hasAddressContent(shipping?.address) ? shipping.address : null;
+  const showPreviousChoice = Boolean(previousAddress && deliveryMode !== "new");
+  const showDeliveryForm = !previousAddress || deliveryMode === "new";
+
   async function handleAddressSubmit(address) {
     try {
       await saveAddress(address);
-      if (sameAsDelivery) await saveBillingAddress({ ...address, phone_number: address.phone_number || "" });
-    } catch {
-      // Hook state already exposes the normalized message.
-    }
-  }
-
-  async function handleBillingSubmit(address) {
-    try {
-      await saveBillingAddress(address);
-      setSameAsDelivery(false);
+      await saveBillingAddress({ ...address, phone_number: address.phone_number || "" });
     } catch {
       // Hook state already exposes the normalized message.
     }
   }
 
   async function handleUseShippingAddress(address) {
+    if (!address?.id) {
+      setDeliveryMode("saved");
+      return;
+    }
+
     try {
       await useShippingAddress(address.id);
-      if (sameAsDelivery) await useBillingAddress(address.id);
+      await useBillingAddress(address.id);
+      setDeliveryMode("saved");
     } catch {
       // Hook state already exposes the normalized message.
     }
   }
 
-  async function handleUseBillingAddress(address) {
-    try {
-      await useBillingAddress(address.id);
-      setSameAsDelivery(false);
-    } catch {
-      // Hook state already exposes the normalized message.
-    }
+  function handleCreateNewDetails() {
+    setDeliveryMode("new");
   }
 
   async function handleMethodSelect(methodCode) {
@@ -103,60 +100,40 @@ export default function ShippingPage() {
 
       <div className="checkout-layout">
         <div className="checkout-stack">
-          {user && addresses.length ? (
-            <section className="checkout-card saved-address-picker">
+          {showPreviousChoice ? (
+            <section className="checkout-card delivery-choice-card">
               <div className="checkout-card__title">
                 <span><MaterialIcon name="contacts" size={20} /></span>
                 <div>
-                  <h2>Saved addresses</h2>
-                  <p>Use a saved address for delivery or billing.</p>
+                  <h2>Delivery details</h2>
                 </div>
               </div>
-              <div className="address-grid address-grid--compact">
-                {addresses.map((address) => (
-                  <AddressCard
-                    key={address.id}
-                    address={address}
-                    loading={saving}
-                    onUse={handleUseShippingAddress}
-                    onDefaultBilling={handleUseBillingAddress}
-                  />
-                ))}
+              <div className="previous-address-summary">
+                <div>
+                  <strong>{addressTitle(previousAddress)}</strong>
+                  <span>{addressLines(previousAddress)}</span>
+                  {previousAddress.phone_number ? <small>{previousAddress.phone_number}</small> : null}
+                </div>
+                {shipping?.address && deliveryMode !== "new" ? <em>Selected</em> : null}
+              </div>
+              <div className="delivery-choice-actions">
+                <button className="primary-button" type="button" disabled={saving} onClick={() => handleUseShippingAddress(previousAddress)}>
+                  <MaterialIcon name="task_alt" size={18} />
+                  Use previous details
+                </button>
+                <button className="secondary-button" type="button" disabled={saving} onClick={handleCreateNewDetails}>
+                  <MaterialIcon name="add_location_alt" size={18} />
+                  Create new details
+                </button>
               </div>
             </section>
           ) : null}
-          <ShippingAddressForm
-            address={shipping?.address}
-            countries={shipping?.countries || []}
-            saving={saving}
-            onSubmit={handleAddressSubmit}
-          />
-          <section className="checkout-card billing-toggle-card">
-            <label className="auth-check">
-              <input
-                type="checkbox"
-                checked={sameAsDelivery}
-                onChange={(event) => setSameAsDelivery(event.target.checked)}
-              />
-              <span>Use delivery address for billing</span>
-            </label>
-            {billing?.address ? (
-              <p className="checkout-note">
-                Billing address: {[billing.address.line1, billing.address.line4, billing.address.country_code].filter(Boolean).join(", ")}
-              </p>
-            ) : null}
-          </section>
-          {!sameAsDelivery ? (
+          {showDeliveryForm ? (
             <ShippingAddressForm
-              address={billing?.address}
+              address={deliveryMode === "new" ? null : shipping?.address}
               countries={shipping?.countries || []}
               saving={saving}
-              title="Billing details"
-              description="Use this for invoices and payment records."
-              icon="receipt_long"
-              submitLabel="Save billing details"
-              requirePhone={false}
-              onSubmit={handleBillingSubmit}
+              onSubmit={handleAddressSubmit}
             />
           ) : null}
           <ShippingMethodSelector
@@ -176,4 +153,20 @@ export default function ShippingPage() {
       {!lines.length ? <Alert>Your cart is empty.</Alert> : null}
     </section>
   );
+}
+
+function addressTitle(address) {
+  return address.title || [address.first_name, address.last_name].filter(Boolean).join(" ") || "Previous delivery address";
+}
+
+function addressLines(address) {
+  return [address.line1, address.line2, address.line3, address.line4, address.state, address.postcode, address.country_code]
+    .filter(Boolean)
+    .join(", ") || "Saved delivery details";
+}
+
+function hasAddressContent(address) {
+  if (!address) return false;
+  return ["first_name", "last_name", "line1", "line2", "line3", "line4", "state", "postcode", "country_code", "phone_number"]
+    .some((key) => Boolean(address[key]));
 }

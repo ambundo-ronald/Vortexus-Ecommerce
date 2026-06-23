@@ -3,19 +3,35 @@ import { useNavigate } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { searchApi } from "../../api/search.api";
+import { useCategories } from "../../hooks/useCategories";
 import { trackStorefrontEvent } from "../../utils/analytics";
 
 export default function SearchBar({ initialValue = "", filters = {}, compact = false }) {
   const [query, setQuery] = useState(initialValue);
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const formRef = useRef(null);
   const fileRef = useRef(null);
   const navigate = useNavigate();
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
 
   useEffect(() => {
     setQuery(initialValue);
   }, [initialValue]);
+
+  useEffect(() => {
+    function closeMenusOnOutsideClick(event) {
+      if (!formRef.current?.contains(event.target)) {
+        setCategoriesOpen(false);
+        setSuggestionsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeMenusOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeMenusOnOutsideClick);
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -62,6 +78,16 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
     navigate(`/search?q=${encodeURIComponent(title)}`);
   }
 
+  function openCategory(category) {
+    setCategoriesOpen(false);
+    setSuggestionsOpen(false);
+    if (!category?.slug) {
+      navigate("/catalog");
+      return;
+    }
+    navigate(`/catalog/category/${category.slug}`);
+  }
+
   async function handleImageChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -84,7 +110,7 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
   }
 
   return (
-    <form className={compact ? "search-form search-form--compact" : "search-form"} onSubmit={submitSearch} autoComplete="off">
+    <form ref={formRef} className={compact ? "search-form search-form--compact" : "search-form"} onSubmit={submitSearch} autoComplete="off">
       <button className="search-form__camera" type="button" disabled={uploading} onClick={() => fileRef.current?.click()} aria-label="Image search">
         <MaterialIcon name={uploading ? "hourglass_top" : "photo_camera"} size={24} />
       </button>
@@ -98,9 +124,40 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
         placeholder="Search pumps, tanks, controllers..."
         aria-label="Search products"
       />
+      <button
+        className="search-form__category-toggle"
+        type="button"
+        aria-label="Browse categories"
+        aria-expanded={categoriesOpen}
+        onClick={() => {
+          setSuggestionsOpen(false);
+          setCategoriesOpen((current) => !current);
+        }}
+      >
+        <MaterialIcon name="category" size={20} />
+        <span>Categories</span>
+        <MaterialIcon name="keyboard_arrow_down" size={18} />
+      </button>
       <button type="submit" aria-label="Search">
         <MaterialIcon name="search" size={28} />
       </button>
+      {categoriesOpen ? (
+        <div className="search-form__category-menu" role="menu" aria-label="Product categories">
+          <button type="button" onClick={() => openCategory(null)} role="menuitem">
+            <MaterialIcon name="apps" size={18} />
+            <span>All categories</span>
+          </button>
+          {categories.map((category) => (
+            <button type="button" key={category.id || category.slug || category.name} onClick={() => openCategory(category)} role="menuitem">
+              <MaterialIcon name="chevron_right" size={18} />
+              <span>{category.name}</span>
+            </button>
+          ))}
+          {!categories.length ? (
+            <span className="search-form__category-empty">{categoriesLoading ? "Loading categories..." : categoriesError || "No categories found."}</span>
+          ) : null}
+        </div>
+      ) : null}
       {suggestionsOpen && suggestions.length ? (
         <div className="search-suggestions" role="listbox">
           {suggestions.map((item) => (

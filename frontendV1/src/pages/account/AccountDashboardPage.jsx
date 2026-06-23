@@ -1,24 +1,30 @@
 import { Link } from "react-router-dom";
 
-import Alert from "../../components/ui/Alert.jsx";
+import EmailVerificationNotice, { isEmailVerified } from "../../components/account/EmailVerificationNotice.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import { useAuth } from "../../hooks/useAuth";
 
 export default function AccountDashboardPage() {
-  const { user, logout, loading, resendEmailVerification } = useAuth();
+  const { user, logout, loading } = useAuth();
   const name = user?.full_name || user?.first_name || user?.email || "Account";
-  const emailVerified = Boolean(user?.email_verification?.is_verified);
+  const emailVerified = isEmailVerified(user);
+  const supplierAction = user?.supplier?.is_supplier
+    ? {
+        to: "/supplier",
+        icon: "storefront",
+        title: "Supplier portal",
+        description: "Manage products and fulfill orders",
+      }
+    : {
+        to: "/supplier/apply",
+        icon: "add_business",
+        title: "Sell with us",
+        description: "Apply for a supplier account",
+      };
 
   return (
     <section className="account-page">
-      {!emailVerified ? (
-        <Alert tone="warning">
-          Please verify your email address to keep account security notifications active.
-          <button className="inline-action-button" type="button" disabled={loading} onClick={() => void resendEmailVerification()}>
-            Resend verification
-          </button>
-        </Alert>
-      ) : null}
+      <EmailVerificationNotice user={user} />
 
       <div className="account-hero surface-panel">
         <span className="account-avatar">{initials(name)}</span>
@@ -27,6 +33,10 @@ export default function AccountDashboardPage() {
           <h1>{name}</h1>
           <p>{user?.email}</p>
         </div>
+        <span className={`account-email-pill${emailVerified ? " is-verified" : ""}`}>
+          <MaterialIcon name={emailVerified ? "verified" : "error"} size={16} />
+          {emailVerified ? "Verified email" : "Email pending"}
+        </span>
       </div>
 
       <div className="account-action-grid">
@@ -84,6 +94,11 @@ export default function AccountDashboardPage() {
           <MaterialIcon name="notifications_active" size={24} />
           <strong>Stock alerts</strong>
           <span>Availability notifications</span>
+        </Link>
+        <Link className="account-action-card" to={supplierAction.to}>
+          <MaterialIcon name={supplierAction.icon} size={24} />
+          <strong>{supplierAction.title}</strong>
+          <span>{supplierAction.description}</span>
         </Link>
       </div>
 

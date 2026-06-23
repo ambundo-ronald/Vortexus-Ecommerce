@@ -21,12 +21,21 @@ import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
 import { trackStorefrontEvent } from "../../utils/analytics";
-import { productPrice, stockTone } from "../../utils/productDisplay";
+import {
+  productBrand,
+  productCategory,
+  productId as resolveProductId,
+  productPrice,
+  productRating,
+  productSku,
+  productTitle,
+  stockTone
+} from "../../utils/productDisplay";
 import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
-  const { productId } = useParams();
-  const { product, related, loading, error } = useProductDetail(productId);
+  const { productId: routeProductId } = useParams();
+  const { product, related, loading, error } = useProductDetail(routeProductId);
   const addItem = useCartStore((state) => state.addItem);
   const cartLoading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -43,19 +52,22 @@ export default function ProductDetailPage() {
     [productOptions, selectedOptions]
   );
   const category = useMemo(() => product?.categories?.[0] || null, [product]);
-  const categoryLabel = category?.name || "Uncategorized";
+  const categoryLabel = productCategory(product || {}, "Uncategorized");
   const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
   const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
   const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
+  const resolvedProductId = resolveProductId(product || {}) || routeProductId;
+  const resolvedTitle = productTitle(product || {});
+  const resolvedSku = productSku(product || {}, "Pending");
   const shareUrl = useMemo(() => {
-    const path = `/products/${productId}`;
+    const path = `/products/${resolvedProductId || routeProductId}`;
     if (typeof window === "undefined") return path;
     return new URL(path, window.location.origin).toString();
-  }, [productId]);
+  }, [resolvedProductId, routeProductId]);
 
   useEffect(() => {
-    if (user && product?.id) void loadStatus([product.id]);
-  }, [loadStatus, product?.id, user]);
+    if (user && resolvedProductId) void loadStatus([resolvedProductId]);
+  }, [loadStatus, resolvedProductId, user]);
 
   useEffect(() => {
     setQuantity(1);
@@ -64,13 +76,13 @@ export default function ProductDetailPage() {
   }, [product?.id]);
 
   useEffect(() => {
-    if (!product?.id) return;
+    if (!resolvedProductId || !product) return;
     trackStorefrontEvent("product_view", {
-      product_id: product.id,
-      product_title: product.title,
-      path: `/products/${product.id}`
+      product_id: resolvedProductId,
+      product_title: resolvedTitle,
+      path: `/products/${resolvedProductId}`
     });
-  }, [product?.id, product?.title]);
+  }, [product, resolvedProductId, resolvedTitle]);
 
   if (loading) return <Spinner label="Loading product" />;
   if (error) return <Alert>{error}</Alert>;
@@ -79,10 +91,8 @@ export default function ProductDetailPage() {
   const price = productPrice(product);
   const stock = stockTone(product);
   const canAddToCart = stock.isAvailable && !price.isQuote;
-  const reviewCount = Number(product.review_count || product.reviews_count || 0);
-  const rating = Number(product.rating || product.average_review_score || 0);
-  const brandLabel = product.brand || product.brand_name || product.manufacturer || "Not specified";
-  const skuLabel = product.sku || product.upc || product.code || "Pending";
+  const { rating, reviewCount } = productRating(product);
+  const brandLabel = productBrand(product, "Not specified");
   const maxQuantity = stock.count > 0 ? stock.count : 99;
   const boundedQuantity = Math.max(1, Math.min(quantity, maxQuantity || 1));
 
@@ -91,7 +101,7 @@ export default function ProductDetailPage() {
       notify({
         tone: "warning",
         title: "Sold out",
-        message: `${product.title} is out of stock right now.`
+        message: `${resolvedTitle} is out of stock right now.`
       });
       return;
     }
@@ -116,7 +126,7 @@ export default function ProductDetailPage() {
           value: selectedOptions[option.id || option.code] || ""
         }))
         .filter((option) => option.value !== "");
-      await addItem(product.id, boundedQuantity, options);
+      await addItem(resolvedProductId, boundedQuantity, options);
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -124,8 +134,8 @@ export default function ProductDetailPage() {
 
   async function handleNativeShare() {
     const payload = {
-      title: product.title,
-      text: `View ${product.title} on Vortexus`,
+      title: resolvedTitle,
+      text: `View ${resolvedTitle} on Vortexus`,
       url: shareUrl
     };
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -159,7 +169,7 @@ export default function ProductDetailPage() {
   async function handleCreateProductAlert(payload) {
     setAlertSaving(true);
     try {
-      await storefrontExtrasApi.productAlerts.create(product.id, payload);
+      await storefrontExtrasApi.productAlerts.create(resolvedProductId, payload);
       notify({
         title: "Alert created",
         message: "We will notify you when this product is back in stock.",
@@ -186,19 +196,18 @@ export default function ProductDetailPage() {
         <MaterialIcon name="chevron_right" size={16} />
         <Link to={categoryHref}>{categoryLabel}</Link>
         <MaterialIcon name="chevron_right" size={16} />
-        <span>{product.title}</span>
+        <span>{resolvedTitle}</span>
       </nav>
 
       <section className="product-detail">
         <div className="product-detail__media-panel">
           <ProductImageGallery product={product} />
-          <ProductTrustBar />
         </div>
 
         <div className="product-detail__body">
           <div className="product-detail__topline">
             <div>
-              <h1>{product.title}</h1>
+              <h1>{resolvedTitle}</h1>
               <div className="product-detail__rating">
                 <StarRating value={rating || 0} size={17} />
                 <span>{rating ? rating.toFixed(1) : "0.0"}</span>
@@ -211,7 +220,7 @@ export default function ProductDetailPage() {
             <dl className="product-detail__identity">
               <div>
                 <dt>SKU</dt>
-                <dd>{skuLabel}</dd>
+                <dd>{resolvedSku}</dd>
               </div>
               <div>
                 <dt>Brand</dt>
@@ -242,7 +251,6 @@ export default function ProductDetailPage() {
           </dl>
 
           <section className="product-overview" aria-label="Quick overview">
-            <h2>Quick overview</h2>
             <p>{overviewText}</p>
           </section>
 
@@ -272,8 +280,8 @@ export default function ProductDetailPage() {
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
             </button>
-            <WishlistButton productId={product.id} productTitle={product.title} variant="detail" />
-            <Link className="secondary-button" to={`/quote?product=${product.id}`}>
+            <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
+            <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
               <MaterialIcon name="request_quote" size={19} />
               Request quote
             </Link>
@@ -297,17 +305,7 @@ export default function ProductDetailPage() {
         onNativeShare={() => void handleNativeShare()}
       />
 
-      <section className="product-info-grid">
-        <article className="product-info-card">
-          <h2>Why choose this product?</h2>
-          <ul className="product-benefit-list">
-            <li><MaterialIcon name="check_circle" size={18} filled /> High performance and reliable operation</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Built with durable project-ready materials</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Easy to install, maintain, and reorder</li>
-            <li><MaterialIcon name="check_circle" size={18} filled /> Suitable for industrial and commercial use</li>
-          </ul>
-        </article>
-
+      <section className="product-info-grid product-info-grid--single">
         <article className="product-info-card">
           <h2>Technical specifications</h2>
           <ProductSpecifications specifications={detailSpecs} />
@@ -315,29 +313,10 @@ export default function ProductDetailPage() {
       </section>
 
       <div id="reviews">
-        <ReviewList productId={product.id} />
+        <ReviewList productId={resolvedProductId} />
       </div>
 
       <RelatedProducts products={related} />
-    </div>
-  );
-}
-
-function ProductTrustBar() {
-  const items = [
-    { icon: "verified_user", title: "Premium quality" },
-    { icon: "workspace_premium", title: "Warranty ready" },
-    { icon: "inventory_2", title: "Secure packaging" }
-  ];
-
-  return (
-    <div className="product-trust-bar" aria-label="Product trust signals">
-      {items.map((item) => (
-        <span key={item.title}>
-          <MaterialIcon name={item.icon} size={19} />
-          {item.title}
-        </span>
-      ))}
     </div>
   );
 }
@@ -381,8 +360,8 @@ function buildProductSpecs(product) {
   }
 
   addSpec("SKU", product.sku || product.upc || product.code, "sku");
-  addSpec("Brand", product.brand || product.brand_name || product.manufacturer, "brand");
-  addSpec("Category", product.categories?.[0]?.name, "category");
+  addSpec("Brand", productBrand(product), "brand");
+  addSpec("Category", productCategory(product), "category");
   addSpec("Tags", Array.isArray(product.tags) ? product.tags.join(", ") : product.tags, "tags");
   addSpec("Weight", product.weight || product.weight_grams, "weight");
   addSpec("Dimensions", product.dimensions, "dimensions");
@@ -391,8 +370,9 @@ function buildProductSpecs(product) {
 }
 
 function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare }) {
+  const title = productTitle(product);
   const encodedUrl = encodeURIComponent(shareUrl);
-  const encodedText = encodeURIComponent(`View ${product.title} on Vortexus`);
+  const encodedText = encodeURIComponent(`View ${title} on Vortexus`);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=12&data=${encodedUrl}`;
   const links = [
     {
@@ -429,13 +409,12 @@ function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare })
         </span>
         <div>
           <h2>Scan to share</h2>
-          <p>Open this product quickly on another phone.</p>
         </div>
       </div>
 
       <div className="product-share-panel__body">
-        <a className="product-share-qr" href={shareUrl} aria-label={`Open share link for ${product.title}`}>
-          <img src={qrUrl} alt={`QR code for ${product.title}`} loading="lazy" />
+        <a className="product-share-qr" href={shareUrl} aria-label={`Open share link for ${title}`}>
+          <img src={qrUrl} alt={`QR code for ${title}`} loading="lazy" />
         </a>
         <div className="product-share-actions">
           <button className="secondary-button product-share-native" type="button" onClick={onNativeShare}>

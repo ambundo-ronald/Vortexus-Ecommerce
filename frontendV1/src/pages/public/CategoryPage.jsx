@@ -59,21 +59,32 @@ export default function CategoryPage() {
       </Link>
 
       <div className="category-page__head surface-panel">
-        <span>Category</span>
-        <h1>{category?.name || titleFromSlug(categorySlug)}</h1>
-        <p>{pagination?.total || 0} product{pagination?.total === 1 ? "" : "s"}</p>
+        <div>
+          <h1>{category?.name || titleFromSlug(categorySlug)}</h1>
+          <p>{pagination?.total || 0} product{pagination?.total === 1 ? "" : "s"}</p>
+        </div>
+        {products.length ? (
+          <ProductSortBar
+            total={pagination?.total || 0}
+            page={pagination?.page || params.page}
+            numPages={pagination?.num_pages || 1}
+            sortBy={params.sort_by}
+            onSortChange={(sort_by) => setCategoryParams({ sort_by })}
+            compact
+            hideSummary
+          />
+        ) : null}
       </div>
 
       <Alert>{categoriesError || error}</Alert>
 
-      <ProductSortBar
-        total={pagination?.total || 0}
-        page={pagination?.page || params.page}
-        numPages={pagination?.num_pages || 1}
-        sortBy={params.sort_by}
-        onSortChange={(sort_by) => setCategoryParams({ sort_by })}
+      <ProductGrid
+        products={products}
+        loading={loading}
+        skeletonCount={12}
+        emptyTitle="No products in this category"
+        emptyMessage="Choose another category or use search."
       />
-      <ProductGrid products={products} loading={loading} skeletonCount={12} />
       <Pagination
         page={pagination?.page || params.page}
         numPages={pagination?.num_pages || 1}

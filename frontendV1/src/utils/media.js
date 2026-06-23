@@ -1,7 +1,7 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+import { buildMediaUrl } from "./urlConfig";
+
+const API_ORIGIN = import.meta.env.VITE_API_BASE_URL || "";
 
 export function mediaUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${API_BASE_URL}${path}`;
+  return buildMediaUrl(path, API_ORIGIN);
 }

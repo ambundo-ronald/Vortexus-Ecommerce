@@ -8,15 +8,25 @@ const sortOptions = [
   { value: "title_asc", label: "Name A-Z" }
 ];
 
-export default function ProductSortBar({ total = 0, page = 1, numPages = 1, sortBy = "relevance", onSortChange, compact = false }) {
+export default function ProductSortBar({
+  total = 0,
+  page = 1,
+  numPages = 1,
+  sortBy = "relevance",
+  onSortChange,
+  compact = false,
+  hideSummary = false
+}) {
   const pageLabel = numPages > 1 ? `Page ${page} of ${numPages}` : "Catalog";
 
   return (
     <div className={compact ? "sort-bar sort-bar--compact" : "sort-bar"}>
-      <div>
-        <strong>{total} products</strong>
-        <span>{pageLabel}</span>
-      </div>
+      {!hideSummary ? (
+        <div>
+          <strong>{total} products</strong>
+          <span>{pageLabel}</span>
+        </div>
+      ) : null}
       <label className="sort-select">
         <MaterialIcon name="swap_vert" size={18} />
         <select value={sortBy} onChange={(event) => onSortChange(event.target.value)} aria-label="Sort products">

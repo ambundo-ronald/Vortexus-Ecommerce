@@ -46,9 +46,9 @@ function HeroSlideLink({ block, children }) {
   );
 }
 
-export default function HeroImageCarousel({ blocks = [], loading = false }) {
+export default function HeroImageCarousel({ blocks = [], loading = false, useFallback = false }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const slides = blocks.length ? blocks : fallbackSlides;
+  const slides = blocks.length ? blocks : useFallback ? fallbackSlides : [];
 
   useEffect(() => {
     if (slides.length < 2) return undefined;
@@ -67,6 +67,8 @@ export default function HeroImageCarousel({ blocks = [], loading = false }) {
   if (loading && !blocks.length) {
     return <section className="hero-image-carousel skeleton-block" aria-label="Loading featured offers" />;
   }
+
+  if (!slides.length) return null;
 
   return (
     <section className="hero-image-carousel" aria-label="Featured offers">

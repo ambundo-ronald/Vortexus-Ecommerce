@@ -29,6 +29,9 @@ const shippingForm = reactive({
   country_code: "KE",
   phone_number: "",
   notes: "",
+  latitude: "",
+  longitude: "",
+  location_label: "",
 });
 const noteForm = reactive({
   note_type: "Admin",
@@ -79,6 +82,9 @@ const googleMapsUrl = computed(() => {
   const shippingAddress = order.value?.shippingAddress;
   if (!shippingAddress)
     return "";
+  const location = shippingAddress.location;
+  if (location?.latitude && location?.longitude)
+    return `https://www.google.com/maps?q=${encodeURIComponent(`${location.latitude},${location.longitude}`)}&output=embed`;
   const address = encodeURIComponent([
     shippingAddress.street,
     shippingAddress.city,
@@ -86,6 +92,21 @@ const googleMapsUrl = computed(() => {
     shippingAddress.zipCode,
   ].filter(Boolean).join(", "));
   return `https://www.google.com/maps?q=${address}&output=embed`;
+});
+
+const googleMapsLink = computed(() => {
+  const shippingAddress = order.value?.shippingAddress;
+  if (!shippingAddress)
+    return "";
+  const location = shippingAddress.location;
+  if (location?.latitude && location?.longitude)
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([
+    shippingAddress.street,
+    shippingAddress.city,
+    shippingAddress.state,
+    shippingAddress.zipCode,
+  ].filter(Boolean).join(", "))}`;
 });
 
 const formatDate = (dateString: string) =>
@@ -123,6 +144,9 @@ function fillShippingForm(address: any = {}) {
   shippingForm.country_code = address?.countryCode || address?.country_code || "KE";
   shippingForm.phone_number = address?.phoneNumber || address?.phone_number || "";
   shippingForm.notes = address?.notes || "";
+  shippingForm.latitude = address?.location?.latitude != null ? String(address.location.latitude) : "";
+  shippingForm.longitude = address?.location?.longitude != null ? String(address.location.longitude) : "";
+  shippingForm.location_label = address?.location?.label || "";
 }
 
 async function loadOrder() {
@@ -210,6 +234,9 @@ async function submitShippingAddress() {
     country_code: shippingForm.country_code.trim().toUpperCase(),
     phone_number: shippingForm.phone_number.trim(),
     notes: shippingForm.notes.trim(),
+    latitude: shippingForm.latitude.trim() || null,
+    longitude: shippingForm.longitude.trim() || null,
+    location_label: shippingForm.location_label.trim(),
   });
 
   if (result.success) {
@@ -406,6 +433,10 @@ onMounted(async () => {
                         <div v-if="order.shippingAddress.notes" class="mt-2 text-sm text-slate-600">
                           Delivery notes: {{ order.shippingAddress.notes }}
                         </div>
+                        <div v-if="order.shippingAddress.location" class="mt-2 text-sm text-slate-600">
+                          Pin: {{ order.shippingAddress.location.latitude }}, {{ order.shippingAddress.location.longitude }}
+                          <span v-if="order.shippingAddress.location.label">· {{ order.shippingAddress.location.label }}</span>
+                        </div>
                       </template>
                       <template v-else>No shipping address provided</template>
                     </div>
@@ -428,6 +459,9 @@ onMounted(async () => {
                       <UFormField label="Country code"><UInput v-model="shippingForm.country_code" maxlength="2" /></UFormField>
                       <UFormField label="Phone"><UInput v-model="shippingForm.phone_number" /></UFormField>
                       <UFormField label="Delivery notes" class="md:col-span-2"><UTextarea v-model="shippingForm.notes" :rows="3" /></UFormField>
+                      <UFormField label="Latitude"><UInput v-model="shippingForm.latitude" placeholder="-1.292066" /></UFormField>
+                      <UFormField label="Longitude"><UInput v-model="shippingForm.longitude" placeholder="36.821946" /></UFormField>
+                      <UFormField label="Location label" class="md:col-span-2"><UInput v-model="shippingForm.location_label" placeholder="Main gate, site entrance, shop front" /></UFormField>
                     </div>
                     <div class="mt-4 flex justify-end">
                       <UButton color="primary" variant="solid" :loading="isSavingAddress" @click="submitShippingAddress">
@@ -445,6 +479,12 @@ onMounted(async () => {
                     loading="lazy"
                     referrerpolicy="no-referrer-when-downgrade"
                   />
+                  <div v-if="googleMapsLink" class="flex justify-end">
+                    <UButton :to="googleMapsLink" target="_blank" color="neutral" variant="outline" size="sm">
+                      <UIcon name="i-lucide-map" />
+                      Open in Google Maps
+                    </UButton>
+                  </div>
                 </div>
               </div>
 

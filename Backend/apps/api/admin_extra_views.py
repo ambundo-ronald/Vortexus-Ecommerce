@@ -15,6 +15,7 @@ from rest_framework.views import APIView
 
 from .checkout_utils import serialize_shipping_address
 from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer, _order_note_payload
+from apps.accounts.delivery_locations import clean_location_payload, upsert_shipping_address_location
 
 
 def _decimal(value) -> float:
@@ -984,6 +985,14 @@ class AdminOrderShippingAddressAPIView(APIView):
                     return Response({'error': {'detail': 'Unsupported shipping country.', 'errors': {'country_code': ['Unsupported shipping country.']}}}, status=status.HTTP_400_BAD_REQUEST)
                 address.country = country
         address.save()
+        location = clean_location_payload({
+            'latitude': request.data.get('latitude'),
+            'longitude': request.data.get('longitude'),
+            'label': request.data.get('location_label', ''),
+            'source': 'admin',
+        })
+        if location:
+            upsert_shipping_address_location(address, location)
         order.shipping_address = address
         order.save(update_fields=['shipping_address'])
         return Response({'shipping_address': serialize_shipping_address(address)})

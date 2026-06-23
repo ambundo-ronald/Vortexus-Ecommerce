@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
+import EmailTouchpointCard from "../../components/account/EmailTouchpointCard.jsx";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
@@ -8,6 +9,11 @@ import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import {
+  paymentStatusView,
+  readablePaymentMethod
+} from "../../utils/payment";
+import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
 
 function readStoredOrder() {
@@ -43,8 +49,18 @@ export default function OrderConfirmationPage() {
 
   const order = payload?.order;
   const payment = payload?.payment;
+  const paymentView = paymentStatusView(payment);
   const address = order?.shipping_address;
   const lines = order?.lines || [];
+  const emailActions = order?.guest_email
+    ? []
+    : [
+        { to: "/account/messages", label: "Email history", icon: "inbox" },
+        { to: "/account/preferences", label: "Email settings", icon: "tune" }
+      ];
+  const emailMessage = order?.guest_email
+    ? `Your order summary is being sent to ${order.guest_email}. Keep that email for tracking and support.`
+    : "Sent to your inbox.";
 
   useEffect(() => {
     if (!order) return;
@@ -67,7 +83,6 @@ export default function OrderConfirmationPage() {
           </span>
           <h1>No recent order</h1>
           <Alert>{error}</Alert>
-          <p>Once an order is placed, its confirmation will appear here.</p>
           <Link className="primary-button" to="/catalog">
             <MaterialIcon name="storefront" size={19} />
             Continue shopping
@@ -82,11 +97,31 @@ export default function OrderConfirmationPage() {
       <CheckoutStepper current="done" />
 
       <div className="checkout-card confirmation-card printable-order-summary">
+        <header className="print-order-header">
+          <div>
+            <strong>Vortexus</strong>
+            <span>Industrial Marketplace</span>
+          </div>
+          <div>
+            <span>Order</span>
+            <strong>#{order.number || order.order_number}</strong>
+          </div>
+        </header>
+
         <span className="confirmation-icon">
           <MaterialIcon name="check_circle" size={34} />
         </span>
         <h1>Order placed</h1>
-        <p>Order #{order.number || order.order_number} is now in progress.</p>
+        <p>Order #{order.number || order.order_number}</p>
+
+        <EmailTouchpointCard
+          actions={emailActions}
+          eyebrow="Order email"
+          icon="mark_email_read"
+          message={emailMessage}
+          title="Confirmation email sent"
+          tone="success"
+        />
 
         <div className="confirmation-grid">
           <div>
@@ -95,17 +130,28 @@ export default function OrderConfirmationPage() {
           </div>
           <div>
             <span>Payment</span>
-            <strong>{payment?.status || "received"}</strong>
+            <strong>{paymentView.label}</strong>
           </div>
           <div>
             <span>Method</span>
-            <strong>{readablePayment(payment?.method)}</strong>
+            <strong>{readablePaymentMethod(payment?.method)}</strong>
           </div>
           <div>
             <span>Delivery</span>
             <strong>{address?.line4 || order.shipping_method || "Saved"}</strong>
           </div>
         </div>
+
+        {payment ? (
+          <div className={`confirmation-payment confirmation-payment--${paymentView.tone}`}>
+            <MaterialIcon name={paymentView.icon} size={20} />
+            <div>
+              <strong>{paymentView.title}</strong>
+              <span>{paymentView.message}</span>
+              {payment.reference ? <small>Reference: {payment.reference}</small> : null}
+            </div>
+          </div>
+        ) : null}
 
         {address ? (
           <div className="confirmation-address">
@@ -121,12 +167,12 @@ export default function OrderConfirmationPage() {
               <div className="confirmation-line" key={line.id}>
                 <span>{line.quantity}x</span>
                 <strong>
-                  {line.title || "Product"}
+                  {productTitle({ ...line, product: line.product || {} })}
                   {line.options?.length ? (
                     <small>{line.options.map((option) => `${option.name || option.code}: ${option.value}`).join(" / ")}</small>
                   ) : null}
                 </strong>
-                <em>{formatCurrency(line.line_price_incl_tax, line.currency || order.currency || "KES")}</em>
+                <em>{formatCurrency(line.line_price_incl_tax ?? line.line_total ?? line.total_incl_tax, line.currency || order.currency || "KES")}</em>
               </div>
             ))}
           </div>
@@ -145,8 +191,4 @@ export default function OrderConfirmationPage() {
       </div>
     </section>
   );
-}
-
-function readablePayment(method = "") {
-  return method.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Payment";
 }

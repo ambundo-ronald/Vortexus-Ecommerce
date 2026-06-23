@@ -5,7 +5,7 @@ import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productInitials, productPrice, stockTone } from "../../utils/productDisplay";
+import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
 
 export default function ProductCard({ product }) {
   const addItem = useCartStore((state) => state.addItem);
@@ -13,12 +13,12 @@ export default function ProductCard({ product }) {
   const notify = useUiStore((state) => state.notify);
   const price = productPrice(product);
   const stock = stockTone(product);
-  const reviewCount = Number(product.review_count ?? product.reviews_count ?? product.num_reviews ?? 0);
-  const rating = Number(product.rating ?? product.average_rating ?? product.average_review_score ?? product.review_score ?? 0);
-  const hasRating = Number.isFinite(rating) && rating > 0;
+  const resolvedProductId = productId(product);
+  const title = productTitle(product);
+  const { rating, reviewCount, hasRating } = productRating(product);
   const ratingText = hasRating ? rating.toFixed(1) : "New";
   const image = productImageUrl(product);
-  const brandName = product.brand || product.brand_name || product.manufacturer || "";
+  const brandName = productBrand(product);
   const brandSlug = product.brand_slug || slugify(brandName);
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";
@@ -28,7 +28,7 @@ export default function ProductCard({ product }) {
       notify({
         tone: "warning",
         title: "Sold out",
-        message: `${product.title} is out of stock right now.`
+        message: `${title} is out of stock right now.`
       });
       return;
     }
@@ -41,7 +41,7 @@ export default function ProductCard({ product }) {
       return;
     }
     try {
-      await addItem(product.id);
+      await addItem(resolvedProductId);
     } catch {
       // Global notification state already shows the failed action.
     }
@@ -49,14 +49,14 @@ export default function ProductCard({ product }) {
 
   return (
     <article className="product-card">
-      <WishlistButton productId={product.id} productTitle={product.title} />
-      <Link to={`/products/${product.id}`} className="product-card__media">
+      <WishlistButton productId={resolvedProductId} productTitle={title} />
+      <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media">
         {discountBadge ? <span className="product-card__sale-badge">{discountBadge}</span> : null}
-        {image ? <img src={image} alt={product.title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(product.title)}</span>}
+        {image ? <img src={image} alt={title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(title)}</span>}
       </Link>
       <div className="product-card__body">
         <h3>
-          <Link to={`/products/${product.id}`}>{product.title}</Link>
+          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>{title}</Link>
         </h3>
         {brandName ? <Link className="product-card__brand" to={`/catalog/brand/${encodeURIComponent(brandSlug)}`}>{brandName}</Link> : null}
         <span className="product-card__price">
@@ -76,9 +76,9 @@ export default function ProductCard({ product }) {
           <button
             className={`add-cart-button add-cart-button--icon${canAdd ? "" : " add-cart-button--muted"}`}
             type="button"
-            disabled={loading}
+            disabled={loading || !resolvedProductId}
             onClick={() => void handleAddToCart()}
-            aria-label={canAdd ? `Add ${product.title} to cart` : `${product.title} is sold out`}
+            aria-label={canAdd ? `Add ${title} to cart` : `${title} is sold out`}
           >
             <MaterialIcon name="add_shopping_cart" size={18} />
           </button>

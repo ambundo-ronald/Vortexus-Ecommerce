@@ -1,0 +1,12 @@
+Hello team,
+
+A customer requested reactivation for a deactivated {{ shop_name }} account.
+
+Customer email: {{ user.email }}
+Customer name: {{ display_name }}
+User ID: {{ user.id }}
+Request identifier: {{ requested_by }}
+
+Review the customer account in the admin dashboard before reactivating it.
+
+{{ shop_name }}

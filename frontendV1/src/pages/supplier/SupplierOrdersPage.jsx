@@ -53,18 +53,18 @@ export default function SupplierOrdersPage() {
           <span>Actions</span>
         </div>
         {orders.length ? orders.map((order) => (
-          <div className="supplier-table__row" key={order.id || order.order_number}>
+          <div className="supplier-table__row" key={order.group_id || order.number}>
             <div>
-              <strong>{order.order_number || order.number}</strong>
-              <span>{formatDate(order.date_placed || order.created_at)}</span>
+              <strong>{order.number}</strong>
+              <span>{formatDate(order.date_placed)}</span>
             </div>
             <div><span className="supplier-status supplier-status--pending_review">{formatStatus(order.status)}</span></div>
             <div>
-              <strong>{Number(order.item_count || 0).toLocaleString()}</strong>
-              <span>{money(order.total_incl_tax, order.currency)}</span>
+              <strong>{Number(order.supplier_item_count || 0).toLocaleString()}</strong>
+              <span>{money(order.supplier_total_incl_tax, order.currency)}</span>
             </div>
             <div className="supplier-table__actions">
-              <Link className="secondary-button" to={`/supplier/orders/${order.order_number || order.number}`}>
+              <Link className="secondary-button" to={`/supplier/orders/${order.number}`}>
                 <MaterialIcon name="open_in_new" size={18} />
                 View
               </Link>

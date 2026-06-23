@@ -1,5 +1,104 @@
 import { formatCurrency, storefrontCurrency } from "./currency";
 
+export function productId(product = {}) {
+  const nestedProduct = product.product;
+
+  if (nestedProduct && typeof nestedProduct === "object") {
+    return (
+      nestedProduct.id ||
+      nestedProduct.product_id ||
+      nestedProduct.productId ||
+      product.product_id ||
+      product.productId ||
+      product.id ||
+      ""
+    );
+  }
+
+  return product.product_id || product.productId || product.id || "";
+}
+
+export function productTitle(product = {}, fallback = "Product") {
+  return (
+    product.title ||
+    product.name ||
+    product.product_title ||
+    product.productTitle ||
+    product.line_title ||
+    product.product?.title ||
+    product.product?.name ||
+    fallback
+  );
+}
+
+export function productSku(product = {}, fallback = "") {
+  return (
+    product.sku ||
+    product.upc ||
+    product.code ||
+    product.partner_sku ||
+    product.line_reference ||
+    product.product?.sku ||
+    product.product?.upc ||
+    product.product?.code ||
+    fallback
+  );
+}
+
+export function productBrand(product = {}, fallback = "") {
+  return (
+    product.brand ||
+    product.brand_name ||
+    product.manufacturer ||
+    product.product?.brand ||
+    product.product?.brand_name ||
+    product.product?.manufacturer ||
+    fallback
+  );
+}
+
+export function productCategory(product = {}, fallback = "") {
+  const category =
+    product.category ||
+    product.categories?.[0] ||
+    product.product?.category ||
+    product.product?.categories?.[0];
+
+  if (typeof category === "string") return category || fallback;
+  return category?.name || category?.title || fallback;
+}
+
+export function productRating(product = {}) {
+  const rating = Number(
+    firstValue(
+      product.rating,
+      product.average_rating,
+      product.average_review_score,
+      product.review_score,
+      product.product?.rating,
+      product.product?.average_rating,
+      product.product?.average_review_score,
+      product.product?.review_score
+    ) ?? 0
+  );
+  const reviewCount = Number(
+    firstValue(
+      product.review_count,
+      product.reviews_count,
+      product.num_reviews,
+      product.product?.review_count,
+      product.product?.reviews_count,
+      product.product?.num_reviews
+    ) ?? 0
+  );
+
+  return {
+    rating: Number.isFinite(rating) ? rating : 0,
+    reviewCount: Number.isFinite(reviewCount) ? reviewCount : 0,
+    hasRating: Number.isFinite(rating) && rating > 0
+  };
+}
+
 export function productInitials(title = "") {
   const words = String(title)
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")
@@ -17,10 +116,11 @@ export function productInitials(title = "") {
 }
 
 export function productPrice(product) {
+  const source = product || {};
   const desiredCurrency = storefrontCurrency();
-  const selected = selectRegionalPrice(product, desiredCurrency);
+  const selected = selectRegionalPrice(source, desiredCurrency);
   const numericValue = Number(selected.value);
-  const previous = selectPreviousRegionalPrice(product, selected.currency);
+  const previous = selectPreviousRegionalPrice(source, selected.currency);
   const previousValue = Number(previous.value);
   const hasPreviousPrice = Number.isFinite(previousValue) && previousValue > numericValue;
   const discountPercent = hasPreviousPrice ? Math.round(((previousValue - numericValue) / previousValue) * 100) : 0;
@@ -50,8 +150,18 @@ function selectRegionalPrice(product = {}, desiredCurrency = "KES") {
   const priceOptions = [
     { value: product.base_price, currency: product.base_currency },
     { value: product.price, currency: product.currency },
+    { value: product.display_price, currency: product.display_currency || product.currency },
+    { value: product.unit_price, currency: product.currency },
+    { value: product.line_total, currency: product.currency },
+    { value: product.line_price_incl_tax, currency: product.currency },
+    { value: product.line_price_excl_tax, currency: product.currency },
+    { value: product.total_incl_tax, currency: product.currency },
     { value: product.price_excl_tax, currency: product.currency },
-    { value: product.price_incl_tax, currency: product.currency }
+    { value: product.price_incl_tax, currency: product.currency },
+    { value: product.product?.base_price, currency: product.product?.base_currency },
+    { value: product.product?.price, currency: product.product?.currency },
+    { value: product.product?.price_excl_tax, currency: product.product?.currency },
+    { value: product.product?.price_incl_tax, currency: product.product?.currency }
   ].filter((option) => option.value !== null && option.value !== undefined && option.value !== "");
 
   const exact = priceOptions.find((option) => sameCurrency(option.currency, desiredCurrency));
@@ -84,7 +194,12 @@ function selectPreviousRegionalPrice(product = {}, selectedCurrency = "KES") {
     { value: product.was_price, currency: product.currency },
     { value: product.original_price, currency: product.currency },
     { value: product.price_before_discount, currency: product.currency },
-    { value: product.retail_price, currency: product.currency }
+    { value: product.retail_price, currency: product.currency },
+    { value: product.product?.base_previous_price, currency: product.product?.base_previous_currency || product.product?.base_currency },
+    { value: product.product?.previous_price, currency: product.product?.previous_currency || product.product?.currency },
+    { value: product.product?.old_price, currency: product.product?.currency },
+    { value: product.product?.was_price, currency: product.product?.currency },
+    { value: product.product?.original_price, currency: product.product?.currency }
   ].filter((option) => option.value !== null && option.value !== undefined && option.value !== "");
 
   const exact = previousOptions.find((option) => !option.currency || sameCurrency(option.currency, selectedCurrency));
@@ -99,8 +214,33 @@ function selectPreviousRegionalPrice(product = {}, selectedCurrency = "KES") {
 }
 
 export function stockTone(product) {
-  const stockCount = Number(product?.stock_count ?? product?.num_in_stock ?? product?.stock ?? 0);
-  if (stockCount > 0 || product?.in_stock) {
+  const rawStockCount = firstValue(
+    product?.stock_count,
+    product?.num_in_stock,
+    product?.stock,
+    product?.available_quantity,
+    product?.availability?.num_available,
+    product?.availability?.num_in_stock,
+    product?.availability?.stock,
+    product?.product?.stock_count,
+    product?.product?.num_in_stock,
+    product?.product?.stock,
+    product?.product?.availability?.num_available,
+    product?.product?.availability?.num_in_stock,
+    product?.product?.availability?.stock
+  );
+  const stockCount = Number(rawStockCount ?? 0);
+  const hasExplicitStockCount = rawStockCount !== null && rawStockCount !== undefined && rawStockCount !== "";
+  const explicitlyUnavailable =
+    product?.is_available === false ||
+    product?.availability?.is_available === false ||
+    product?.availability?.is_available_to_buy === false ||
+    product?.product?.is_available === false ||
+    product?.product?.availability?.is_available === false ||
+    product?.product?.availability?.is_available_to_buy === false;
+  const explicitlyInStock = product?.in_stock === true || product?.product?.in_stock === true;
+
+  if (!explicitlyUnavailable && ((hasExplicitStockCount && stockCount > 0) || (!hasExplicitStockCount && explicitlyInStock))) {
     return {
       tone: "success",
       label: stockCount > 0 ? `In stock: ${stockCount}` : "In stock",
@@ -114,4 +254,8 @@ export function stockTone(product) {
     count: 0,
     isAvailable: false
   };
+}
+
+function firstValue(...values) {
+  return values.find((value) => value !== null && value !== undefined && value !== "");
 }

@@ -712,28 +712,20 @@
 }
 
 .cart-empty-state {
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-3);
   align-items: center;
   justify-items: center;
-  min-height: 280px;
+  min-height: 420px;
   padding: var(--space-6) var(--space-4);
-  background:
-    radial-gradient(circle at 50% 0, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 34%),
-    var(--color-surface);
+  background: transparent;
   text-align: center;
-  box-shadow: var(--card-shadow);
 }
 
-.cart-empty-state__icon {
-  width: 74px;
-  height: 74px;
-  border-radius: var(--radius-pill);
-  display: grid;
-  place-items: center;
-  background: var(--color-primary-soft);
-  color: var(--color-primary-700);
-  box-shadow: 0 12px 34px color-mix(in srgb, var(--color-primary) 16%, transparent);
+.cart-empty-state__image {
+  width: min(100%, 320px);
+  aspect-ratio: 526 / 474;
+  object-fit: contain;
 }
 
 .cart-empty-state strong {

@@ -4,6 +4,7 @@ import { contentApi } from "../api/content.api";
 
 export function useMarketingBlocks(params = {}, { auto = true } = {}) {
   const [blocks, setBlocks] = useState([]);
+  const [blocksByPlacement, setBlocksByPlacement] = useState({});
   const [placements, setPlacements] = useState([]);
   const [loading, setLoading] = useState(Boolean(auto));
   const [error, setError] = useState(null);
@@ -14,6 +15,7 @@ export function useMarketingBlocks(params = {}, { auto = true } = {}) {
     try {
       const payload = await contentApi.marketingBlocks(nextParams);
       setBlocks(payload.results || []);
+      setBlocksByPlacement(payload.by_placement || {});
       setPlacements(payload.placements || []);
       return payload;
     } catch (err) {
@@ -30,5 +32,5 @@ export function useMarketingBlocks(params = {}, { auto = true } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto]);
 
-  return { blocks, placements, loading, error, fetchMarketingBlocks };
+  return { blocks, blocksByPlacement, placements, loading, error, fetchMarketingBlocks };
 }

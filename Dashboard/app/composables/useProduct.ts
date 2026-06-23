@@ -9,6 +9,13 @@ export interface ProductListParams {
   sortDir?: 'asc' | 'desc'
 }
 
+export interface ProductOptionParams {
+  excludeId?: number | string
+  maxPages?: number
+  pageSize?: number
+  search?: string
+}
+
 const DEFAULT_CURRENCY = 'KES'
 
 function normalizeImageId(id: unknown): number | undefined {
@@ -164,18 +171,24 @@ export function useProduct() {
     }
   }
 
-  async function getProductOptions(excludeId?: number | string) {
+  async function getProductOptions(params: ProductOptionParams | number | string = {}) {
     try {
+      const options = typeof params === 'object' && params !== null
+        ? params
+        : { excludeId: params }
+      const pageSize = options.pageSize || 60
+      const maxPages = options.maxPages || 2
       const results: any[] = []
       let page = 1
       let hasNext = true
 
-      while (hasNext) {
+      while (hasNext && page <= maxPages) {
         const response = await request<{ results: any[], pagination?: { has_next?: boolean } }>('/admin/products/', {
           method: 'GET',
           query: {
             page,
-            page_size: 60,
+            page_size: pageSize,
+            q: options.search || '',
             sort_by: 'title_asc',
           },
         })
@@ -184,7 +197,7 @@ export function useProduct() {
         page += 1
       }
 
-      const excluded = excludeId ? Number(excludeId) : null
+      const excluded = options.excludeId ? Number(options.excludeId) : null
       return {
         success: true,
         data: results

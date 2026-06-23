@@ -16,8 +16,12 @@ const initialForm = {
   receive_marketing_emails: false
 };
 
-export default function RegisterForm({ loading = false, error = "", onSubmit }) {
+export default function RegisterForm({ loading = false, error = "", onSubmit, onRequestReactivation }) {
   const [form, setForm] = useState(initialForm);
+  const [reactivationMessage, setReactivationMessage] = useState("");
+  const [reactivationError, setReactivationError] = useState("");
+
+  const accountInactive = /deactivated|reactivation|suspended/i.test(error);
 
   function updateField(event) {
     const { name, value, type, checked } = event.target;
@@ -32,17 +36,45 @@ export default function RegisterForm({ loading = false, error = "", onSubmit }) 
     });
   }
 
+  async function handleReactivationRequest() {
+    if (!form.email.trim()) return;
+    setReactivationMessage("");
+    setReactivationError("");
+    try {
+      const response = await onRequestReactivation?.({ identifier: form.email.trim() });
+      setReactivationMessage(response?.detail || "Support will review the account reactivation request.");
+    } catch (requestError) {
+      setReactivationError(requestError?.normalized?.message || "Could not request account reactivation.");
+    }
+  }
+
   return (
     <form className="auth-card" onSubmit={handleSubmit}>
       <div className="auth-card__head">
         <span><MaterialIcon name="person_add" size={24} /></span>
         <div>
           <h1>Create account</h1>
-          <p>Track orders and checkout faster next time.</p>
+          <p>Track orders and checkout faster next time. We will email a verification link that expires in 30 minutes.</p>
         </div>
       </div>
 
-      <Alert>{error}</Alert>
+      <Alert tone={accountInactive ? "warning" : "danger"}>{error}</Alert>
+
+      {accountInactive ? (
+        <div className="auth-inline-panel">
+          <div>
+            <strong>Email belongs to a deactivated account</strong>
+            <span>Request reactivation first. Support can restore the account or release the email for signup.</span>
+          </div>
+          <button className="secondary-button" type="button" disabled={loading || !form.email.trim()} onClick={handleReactivationRequest}>
+            <MaterialIcon name="support_agent" size={17} />
+            Request reactivation
+          </button>
+        </div>
+      ) : null}
+
+      <Alert tone="info">{reactivationMessage}</Alert>
+      <Alert tone="warning">{reactivationError}</Alert>
 
       <div className="form-grid two">
         <label>

@@ -14,6 +14,7 @@ from .checkout_utils import (
     shipping_charge_for_method,
     shipping_country_code,
 )
+from apps.accounts.delivery_locations import location_for_shipping_address
 
 ADMIN_ORDER_STATUS_CHOICES = [
     ('Pending', 'Pending'),
@@ -287,6 +288,7 @@ class OrderSummarySerializer(serializers.Serializer):
                 'country_code': shipping_country_code(shipping_address),
                 'phone_number': str(getattr(shipping_address, 'phone_number', '') or ''),
                 'notes': getattr(shipping_address, 'notes', '') or '',
+                'location': location_for_shipping_address(shipping_address),
             }
             if shipping_address
             else None,
@@ -420,6 +422,7 @@ class AdminOrderDetailSerializer(serializers.Serializer):
                 'city': getattr(shipping_address, 'line4', '') or '',
                 'state': getattr(shipping_address, 'state', '') or '',
                 'zipCode': getattr(shipping_address, 'postcode', '') or '',
+                'location': location_for_shipping_address(shipping_address),
             } if shipping_address else None,
             'subtotal': float((order.total_excl_tax or Decimal('0.00')) - (order.shipping_excl_tax or Decimal('0.00'))),
             'shipping': float(order.shipping_incl_tax or Decimal('0.00')),

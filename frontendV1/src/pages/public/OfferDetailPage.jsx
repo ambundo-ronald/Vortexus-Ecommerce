@@ -45,7 +45,7 @@ export default function OfferDetailPage() {
       {loading ? <Spinner label="Loading offer" /> : null}
 
       {!loading && !offer && !error ? (
-        <EmptyState title="Offer not found" message="This offer is no longer available." />
+        <EmptyState title="Offer not found" message="" />
       ) : null}
 
       {!loading && offer ? (
@@ -55,17 +55,16 @@ export default function OfferDetailPage() {
               <MaterialIcon name="local_offer" size={30} />
             </span>
             <div>
-              <p className="eyebrow">{offer.offer_type || "Offer"}</p>
               <h1>{offer.name}</h1>
-              <p>{offer.description || "This offer applies automatically when your basket qualifies."}</p>
+              {offer.description ? <p>{offer.description}</p> : null}
             </div>
           </div>
 
           <div className="offer-detail-layout">
             <article className="offer-panel">
               <h2>How it works</h2>
-              <RuleBlock title="Requirement" rule={offer.condition} fallback="Add qualifying products to your cart." />
-              <RuleBlock title="Benefit" rule={offer.benefit} fallback="Discount is applied automatically at checkout." />
+              <RuleBlock title="Requirement" rule={offer.condition} fallback="" />
+              <RuleBlock title="Benefit" rule={offer.benefit} fallback="" />
             </article>
 
             <aside className="offer-panel offer-summary">
@@ -100,11 +99,12 @@ export default function OfferDetailPage() {
 }
 
 function RuleBlock({ title, rule, fallback }) {
+  const description = rule?.description || fallback;
   return (
     <section className="offer-rule">
       <span>{title}</span>
       <strong>{rule?.name || readable(rule?.type) || title}</strong>
-      <p>{rule?.description || fallback}</p>
+      {description ? <p>{description}</p> : null}
     </section>
   );
 }

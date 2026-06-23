@@ -43,9 +43,8 @@ export default function RangeDetailPage() {
 
       <div className="range-hero">
         <div>
-          <p className="eyebrow">Product range</p>
           <h1>{range?.name || "Range products"}</h1>
-          <p>{range?.description || "Products included in this range."}</p>
+          {range?.description ? <p>{range.description}</p> : null}
         </div>
         <Link className="secondary-button" to="/catalog">
           Browse all
@@ -56,7 +55,7 @@ export default function RangeDetailPage() {
       {loading ? <Spinner label="Loading range products" /> : null}
 
       {!loading && !products.length ? (
-        <EmptyState title="No products found" message="This range does not currently have public products." />
+        <EmptyState title="No products found" message="" />
       ) : null}
 
       {products.length ? <ProductGrid products={products} loading={loading} skeletonCount={8} /> : null}

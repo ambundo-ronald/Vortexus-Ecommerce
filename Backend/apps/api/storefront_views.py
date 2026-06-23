@@ -19,10 +19,17 @@ from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug
-from apps.common.currency import resolve_display_currency
+from apps.common.currency import (
+    currency_for_country,
+    is_supported_currency,
+    normalize_country_code,
+    normalize_currency_code,
+    resolve_display_currency,
+)
 from apps.common.products import serialize_product_card
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
+from apps.accounts.delivery_locations import location_for_user_address, store_session_location, upsert_user_address_location
 
 from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
 from .order_serializers import OrderSummarySerializer
@@ -78,6 +85,7 @@ def _user_address_payload(address) -> dict:
         'country_code': address.country_id or '',
         'phone_number': str(address.phone_number or ''),
         'notes': address.notes or '',
+        'location': location_for_user_address(address),
         'is_default_for_shipping': address.is_default_for_shipping,
         'is_default_for_billing': address.is_default_for_billing,
     }
@@ -441,6 +449,9 @@ class AddressSerializer(serializers.Serializer):
     country_code = serializers.CharField(max_length=2)
     phone_number = serializers.CharField(required=False, allow_blank=True, max_length=32)
     notes = serializers.CharField(required=False, allow_blank=True)
+    latitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-90'), max_value=Decimal('90'))
+    longitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-180'), max_value=Decimal('180'))
+    location_label = serializers.CharField(required=False, allow_blank=True, max_length=120)
     is_default_for_shipping = serializers.BooleanField(required=False, default=False)
     is_default_for_billing = serializers.BooleanField(required=False, default=False)
 
@@ -454,6 +465,9 @@ class AddressSerializer(serializers.Serializer):
     def save(self, *, user, instance=None):
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        latitude = data.pop('latitude', None)
+        longitude = data.pop('longitude', None)
+        location_label = data.pop('location_label', '')
         defaults = {
             **data,
             'country': country,
@@ -466,11 +480,18 @@ class AddressSerializer(serializers.Serializer):
             for field, value in defaults.items():
                 setattr(instance, field, value)
         instance.save()
+        upsert_user_address_location(
+            instance,
+            {'latitude': latitude, 'longitude': longitude, 'label': location_label, 'source': 'customer_pin'},
+        )
         return instance
 
     def to_session_fields(self) -> dict:
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        data.pop('latitude', None)
+        data.pop('longitude', None)
+        data.pop('location_label', None)
         return {
             **data,
             'country_id': country.pk,
@@ -479,9 +500,15 @@ class AddressSerializer(serializers.Serializer):
     def to_address_payload(self) -> dict:
         data = self.validated_data.copy()
         country = data.pop('country_code')
+        latitude = data.pop('latitude', None)
+        longitude = data.pop('longitude', None)
+        location_label = data.pop('location_label', '')
         return {
             **data,
             'country_code': country.iso_3166_1_a2,
+            'location': {'latitude': float(latitude), 'longitude': float(longitude), 'label': location_label, 'source': 'customer_pin'}
+            if latitude is not None and longitude is not None
+            else None,
         }
 
 
@@ -554,6 +581,7 @@ class CheckoutUseShippingAddressAPIView(APIView):
     def post(self, request):
         address = get_object_or_404(request.user.addresses.all(), id=request.data.get('address_id'))
         get_checkout_session(request).ship_to_user_address(address)
+        store_session_location(request, location_for_user_address(address))
         return Response(build_checkout_payload(request))
 
 
@@ -782,6 +810,7 @@ class AccountProductAlertDetailAPIView(APIView):
 
 class PasswordResetRequestAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'account_password_reset'
 
     def post(self, request):
         email = str(request.data.get('email', '')).strip()
@@ -789,12 +818,18 @@ class PasswordResetRequestAPIView(APIView):
         user = User.objects.filter(email__iexact=email).first()
         payload = {'detail': 'If that email exists, password reset instructions will be sent.'}
         if user:
+            if not user.is_active:
+                return Response({
+                    'detail': 'This account is deactivated. Request reactivation before resetting the password.',
+                    'account_inactive': True,
+                })
             queue_password_reset_email(user)
         return Response(payload)
 
 
 class PasswordResetConfirmAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'account_password_reset'
 
     def post(self, request):
         uid = request.data.get('uid', '')
@@ -810,8 +845,14 @@ class PasswordResetConfirmAPIView(APIView):
         if not user_id:
             raise serializers.ValidationError({'uid': 'Invalid reset link.'})
         user = get_object_or_404(get_user_model(), pk=user_id)
+        if not user.is_active:
+            raise serializers.ValidationError({
+                'token': 'This account is deactivated. Request reactivation before resetting the password.'
+            })
         if not default_token_generator.check_token(user, token):
-            raise serializers.ValidationError({'token': 'Invalid or expired reset token.'})
+            raise serializers.ValidationError({
+                'token': 'Invalid or expired reset token. Password reset links expire in 30 minutes.'
+            })
         password_validation.validate_password(password, user=user)
         user.set_password(password)
         user.save(update_fields=['password'])
@@ -828,7 +869,7 @@ class AccountDeleteAPIView(APIView):
             raise serializers.ValidationError({'password': 'Password is incorrect.'})
         request.user.is_active = False
         request.user.save(update_fields=['is_active'])
-        return Response({'detail': 'Account scheduled for deletion.'})
+        return Response({'detail': 'Account deactivated. Contact support if you need it reactivated.'})
 
 
 class RecentlyViewedAPIView(APIView):
@@ -1058,9 +1099,20 @@ class AccountPreferenceAPIView(APIView):
         update_fields = []
         for field in allowed_fields:
             if field in request.data:
-                if field == 'two_factor_email_enabled' and request.data[field] and profile.email_verified_at is None:
+                value = request.data[field]
+                if field == 'two_factor_email_enabled' and value and profile.email_verified_at is None:
                     raise serializers.ValidationError({'two_factor_email_enabled': 'Verify your email before enabling email 2FA.'})
-                setattr(profile, field, request.data[field])
+                if field == 'country_code':
+                    value = normalize_country_code(value)
+                    if value and currency_for_country(value) is None:
+                        raise serializers.ValidationError({'country_code': 'Unsupported country code.'})
+                elif field == 'preferred_currency':
+                    value = normalize_currency_code(value)
+                    if value and not is_supported_currency(value):
+                        raise serializers.ValidationError({'preferred_currency': 'Unsupported currency.'})
+                elif field in {'phone', 'company'} and isinstance(value, str):
+                    value = value.strip()
+                setattr(profile, field, value)
                 update_fields.append(field)
         if update_fields:
             update_fields.append('updated_at')
