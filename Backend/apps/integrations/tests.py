@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from .erpnext_sync import ERPNextSyncService
+from .erpnext_sync import ERPNextSyncService, _normalise_price_for_marketplace, _normalise_stockrecord_for_marketplace
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextClient
 
@@ -66,6 +66,24 @@ class ERPNextClientFileTests(TestCase):
         self.assertEqual(content, b'image-bytes')
         request = mock_urlopen.call_args.args[0]
         self.assertEqual(request.full_url, 'https://erp.example.com/files/Spun%20Filter%2020%20inch.JPG')
+
+    def test_erpnext_price_is_normalised_to_marketplace_currency(self):
+        amount, currency = _normalise_price_for_marketplace(
+            {'price_list_rate': '10.00', 'currency': 'USD'},
+            'KES',
+        )
+
+        self.assertEqual(currency, 'KES')
+        self.assertEqual(amount, Decimal('1292.50'))
+
+    def test_existing_stockrecord_is_normalised_to_marketplace_currency(self):
+        stockrecord = SimpleNamespace(price=Decimal('1.93'), price_currency='USD')
+
+        update_fields = _normalise_stockrecord_for_marketplace(stockrecord, 'KES')
+
+        self.assertEqual(update_fields, ['price', 'price_currency'])
+        self.assertEqual(stockrecord.price_currency, 'KES')
+        self.assertEqual(stockrecord.price, Decimal('249.45'))
 
 
 class ERPNextOrderExportTests(TestCase):

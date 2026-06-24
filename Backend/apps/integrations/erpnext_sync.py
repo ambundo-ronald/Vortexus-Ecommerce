@@ -16,6 +16,7 @@ from django.template.defaultfilters import slugify
 from django.utils import timezone
 
 from apps.auditlog.services import sanitize_metadata
+from apps.common.currency import convert_amount, normalize_currency_code
 from apps.common.media import normalize_uploaded_image
 
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
@@ -116,6 +117,31 @@ def _parse_decimal(value, default='0'):
         return Decimal(str(value if value not in (None, '') else default))
     except Exception:
         return Decimal(str(default))
+
+
+def _normalise_price_for_marketplace(price: dict | None, default_currency: str) -> tuple[Decimal, str]:
+    source_currency = normalize_currency_code((price or {}).get('currency')) or normalize_currency_code(default_currency)
+    target_currency = normalize_currency_code(default_currency)
+    source_amount = _parse_decimal((price or {}).get('price_list_rate'), default='0')
+    converted_amount, output_currency = convert_amount(source_amount, source_currency, target_currency)
+    if normalize_currency_code(output_currency) != target_currency:
+        return source_amount, source_currency
+    return _parse_decimal(converted_amount, default=str(source_amount)), target_currency
+
+
+def _normalise_stockrecord_for_marketplace(stockrecord, default_currency: str) -> list[str]:
+    target_currency = normalize_currency_code(default_currency)
+    source_currency = normalize_currency_code(stockrecord.price_currency)
+    if not target_currency or source_currency == target_currency:
+        return []
+
+    converted_amount, output_currency = convert_amount(stockrecord.price, source_currency, target_currency)
+    if normalize_currency_code(output_currency) != target_currency:
+        return []
+
+    stockrecord.price = _parse_decimal(converted_amount, default=str(stockrecord.price)).quantize(Decimal('0.01'))
+    stockrecord.price_currency = target_currency
+    return ['price', 'price_currency']
 
 
 def _decimal_to_float(value) -> float:
@@ -429,8 +455,9 @@ class ERPNextSyncService:
 
                     price = price_map.get(item_code)
                     stockrecord.partner_sku = _make_safe_identifier(item_code, partner_sku_max_length)
-                    stockrecord.price_currency = (price or {}).get('currency') or self.default_currency
-                    stockrecord.price = _parse_decimal((price or {}).get('price_list_rate'), default='0')
+                    normalised_price, normalised_currency = _normalise_price_for_marketplace(price, self.default_currency)
+                    stockrecord.price_currency = normalised_currency
+                    stockrecord.price = normalised_price
                     if include_stock and created_stock:
                         stockrecord.num_in_stock = 0
                     stockrecord.save()
@@ -541,9 +568,13 @@ class ERPNextSyncService:
                             price=Decimal('0'),
                             num_in_stock=qty,
                         )
-                    elif stockrecord.num_in_stock != qty:
-                        stockrecord.num_in_stock = qty
-                        stockrecord.save(update_fields=['num_in_stock'])
+                    else:
+                        update_fields = _normalise_stockrecord_for_marketplace(stockrecord, self.default_currency)
+                        if stockrecord.num_in_stock != qty:
+                            stockrecord.num_in_stock = qty
+                            update_fields.append('num_in_stock')
+                        if update_fields:
+                            stockrecord.save(update_fields=update_fields)
                     summary['stock_synced_items'] += 1
                     self._log_event(
                         job,
