@@ -111,8 +111,8 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
 
   return (
     <form ref={formRef} className={compact ? "search-form search-form--compact" : "search-form"} onSubmit={submitSearch} autoComplete="off">
-      <button className="search-form__camera" type="button" disabled={uploading} onClick={() => fileRef.current?.click()} aria-label="Image search">
-        <MaterialIcon name={uploading ? "hourglass_top" : "photo_camera"} size={24} />
+      <button className="search-form__camera" type="button" disabled={uploading} onClick={() => fileRef.current?.click()} aria-label={uploading ? "Searching image" : "Image search"}>
+        <MaterialIcon name={uploading ? "hourglass_top" : "photo_camera"} size={24} className={uploading ? "search-form__spinner" : ""} />
       </button>
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/*" onChange={handleImageChange} />
       <input
