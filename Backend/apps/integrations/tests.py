@@ -1,10 +1,12 @@
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
 from .erpnext_sync import ERPNextSyncService
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
+from .services import ERPNextClient
 
 
 class _FakeLines:
@@ -40,6 +42,30 @@ class _FakeERPNextClient:
         if method.endswith('upsert_customer'):
             return {'customer': 'CUST-ECOM-1', 'created': True}
         return {}
+
+
+class ERPNextClientFileTests(TestCase):
+    def _connection(self):
+        return IntegrationConnection.objects.create(
+            name='ERPNext',
+            connection_type=IntegrationConnection.TYPE_ERPNEXT,
+            base_url='https://erp.example.com',
+            api_key='key',
+            api_secret='secret',
+        )
+
+    @patch('apps.integrations.services.urlopen')
+    def test_fetch_file_bytes_quotes_spaces_in_file_path(self, mock_urlopen):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'image-bytes'
+        mock_urlopen.return_value = response
+
+        client = ERPNextClient(self._connection())
+        content = client.fetch_file_bytes('/files/Spun Filter 20 inch.JPG')
+
+        self.assertEqual(content, b'image-bytes')
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, 'https://erp.example.com/files/Spun%20Filter%2020%20inch.JPG')
 
 
 class ERPNextOrderExportTests(TestCase):

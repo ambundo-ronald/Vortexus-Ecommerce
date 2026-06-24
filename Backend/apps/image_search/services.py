@@ -186,6 +186,19 @@ class ImageSearchService:
         response = client.search(index=settings.SEARCH_INDEX_IMAGE_EMBEDDINGS, body=body)
         results = []
         hits = response['hits']['hits']
+        if not hits:
+            fallback = self._search_database_fallback(
+                top_k=top_k,
+                category=category,
+                brand=brand,
+                display_currency=display_currency,
+            )
+            fallback['meta'] = {
+                **fallback.get('meta', {}),
+                'fallback_reason': 'no-indexed-image-results',
+            }
+            return fallback
+
         product_ids = [
             hit.get('_source', {}).get('product_id')
             for hit in hits
@@ -225,6 +238,19 @@ class ImageSearchService:
                     display_currency=display_currency,
                 )
             )
+
+        if not results:
+            fallback = self._search_database_fallback(
+                top_k=top_k,
+                category=category,
+                brand=brand,
+                display_currency=display_currency,
+            )
+            fallback['meta'] = {
+                **fallback.get('meta', {}),
+                'fallback_reason': 'indexed-products-not-public',
+            }
+            return fallback
 
         return {
             'results': results,

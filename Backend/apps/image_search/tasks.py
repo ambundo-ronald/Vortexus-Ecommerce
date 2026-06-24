@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from celery import shared_task
+from django.core.files.storage import default_storage
 from django.apps import apps
 from django.conf import settings
 from opensearchpy import NotFoundError
@@ -125,6 +126,14 @@ def sync_product_image_index(self, product_id: int, regenerate_embedding: bool =
     if not file_field:
         _delete_embedding_doc(client=client, product_id=product_id)
         return {'product_id': product_id, 'status': 'skipped', 'reason': 'missing-image'}
+    if not default_storage.exists(file_field.name):
+        logger.warning(
+            'Skipping image embedding for product %s because image file is missing: %s',
+            product_id,
+            file_field.name,
+        )
+        _delete_embedding_doc(client=client, product_id=product_id)
+        return {'product_id': product_id, 'status': 'skipped', 'reason': 'missing-image-file'}
 
     embedding = None if regenerate_embedding else _existing_embedding(client, product_id)
     if embedding is None:

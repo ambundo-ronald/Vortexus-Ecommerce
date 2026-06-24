@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -84,6 +84,7 @@ class ERPNextClient:
             raise ERPNextIntegrationError('ERPNext file URL is empty.')
 
         url = cleaned if cleaned.startswith(('http://', 'https://')) else urljoin(f'{self.base_url}/', cleaned.lstrip('/'))
+        url = self._quote_file_url(url)
         request = Request(url=url, headers=self._headers(), method='GET')
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -102,6 +103,18 @@ class ERPNextClient:
             raise
         except Exception as exc:
             raise ERPNextIntegrationError(f'ERPNext file request failed: {exc}') from exc
+
+    def _quote_file_url(self, url: str) -> str:
+        parsed = urlsplit(url)
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                quote(parsed.path, safe='/%'),
+                quote(parsed.query, safe='=&%'),
+                parsed.fragment,
+            )
+        )
 
     def fetch_all(self, path: str, query: dict[str, Any] | None = None, page_length: int = 1000) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []
