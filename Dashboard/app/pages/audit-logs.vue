@@ -13,6 +13,7 @@ const numPages = ref(1)
 const hasNext = ref(false)
 const isLoading = ref(false)
 const detailOpen = ref(false)
+const ALL_STATUSES = '__all_statuses__'
 
 const filters = reactive({
   search: '',
@@ -21,13 +22,13 @@ const filters = reactive({
   targetType: '',
   targetId: '',
   path: '',
-  status: '',
+  status: ALL_STATUSES,
   dateFrom: '',
   dateTo: '',
 })
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Success', value: 'success' },
   { label: 'Failure', value: 'failure' },
 ]
@@ -70,7 +71,7 @@ function resetFilters() {
   filters.targetType = ''
   filters.targetId = ''
   filters.path = ''
-  filters.status = ''
+  filters.status = ALL_STATUSES
   filters.dateFrom = ''
   filters.dateTo = ''
   page.value = 1
@@ -88,7 +89,7 @@ async function loadAuditLogs() {
     targetType: filters.targetType.trim(),
     targetId: filters.targetId.trim(),
     path: filters.path.trim(),
-    status: filters.status,
+    status: filters.status === ALL_STATUSES ? '' : filters.status,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
   })

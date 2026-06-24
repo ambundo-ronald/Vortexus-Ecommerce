@@ -20,16 +20,19 @@ const refundForm = reactive({
   refundReference: '',
   submitGatewayRefund: true,
 })
+const ALL_METHODS = '__all_methods__'
+const ALL_STATUSES = '__all_statuses__'
+const ALL_RECONCILIATION = '__all_reconciliation__'
 
 const filters = reactive({
   search: '',
-  method: '',
-  status: '',
-  reconciliation: '',
+  method: ALL_METHODS,
+  status: ALL_STATUSES,
+  reconciliation: ALL_RECONCILIATION,
 })
 
 const methodOptions = [
-  { label: 'All methods', value: '' },
+  { label: 'All methods', value: ALL_METHODS },
   { label: 'Pesapal', value: 'pesapal' },
   { label: 'M-Pesa', value: 'mpesa' },
   { label: 'Airtel Money', value: 'airtel_money' },
@@ -40,7 +43,7 @@ const methodOptions = [
 ]
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Pending', value: 'pending' },
   { label: 'Paid', value: 'paid' },
   { label: 'Authorized', value: 'authorized' },
@@ -49,7 +52,7 @@ const statusOptions = [
 ]
 
 const reconciliationOptions = [
-  { label: 'All reconciliation', value: '' },
+  { label: 'All reconciliation', value: ALL_RECONCILIATION },
   { label: 'Needs attention', value: 'needs_attention' },
   { label: 'Paid, no order', value: 'paid_no_order' },
   { label: 'Order mismatch', value: 'order_mismatch' },
@@ -144,9 +147,9 @@ async function loadLogs() {
     page: page.value,
     pageSize: pageSize.value,
     search: filters.search.trim(),
-    method: filters.method,
-    status: filters.status,
-    reconciliation: filters.reconciliation,
+    method: filters.method === ALL_METHODS ? '' : filters.method,
+    status: filters.status === ALL_STATUSES ? '' : filters.status,
+    reconciliation: filters.reconciliation === ALL_RECONCILIATION ? '' : filters.reconciliation,
   })
 
   if (result.success) {
@@ -204,9 +207,9 @@ function applyFilters() {
 
 function resetFilters() {
   filters.search = ''
-  filters.method = ''
-  filters.status = ''
-  filters.reconciliation = ''
+  filters.method = ALL_METHODS
+  filters.status = ALL_STATUSES
+  filters.reconciliation = ALL_RECONCILIATION
   page.value = 1
   loadLogs()
 }

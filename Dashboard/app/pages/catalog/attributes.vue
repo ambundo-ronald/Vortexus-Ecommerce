@@ -50,7 +50,7 @@ const typeFilterOptions = computed(() => [
 ])
 
 const productTypeOptions = computed(() => [
-  { label: 'Select product type', value: '' },
+  { label: 'Select product type', value: '__select_product_type__', disabled: true },
   ...productTypes.value.map(productType => ({
     label: productType.name,
     value: String(productType.id),

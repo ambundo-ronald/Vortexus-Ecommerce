@@ -7,14 +7,15 @@ const { getSupplier, getSuppliers, updateSupplier } = useSuppliers()
 const suppliers = ref<SupplierItem[]>([])
 const selectedSupplier = ref<SupplierItem | null>(null)
 const searchQuery = ref('')
-const statusFilter = ref('')
+const ALL_STATUSES = '__all_statuses__'
+const statusFilter = ref(ALL_STATUSES)
 const isLoading = ref(false)
 const isSaving = ref(false)
 const editorOpen = ref(false)
 const saveError = ref('')
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Pending', value: 'pending' },
   { label: 'Approved', value: 'approved' },
   { label: 'Suspended', value: 'suspended' },
@@ -81,7 +82,7 @@ function fillForm(supplier: SupplierItem) {
 
 async function loadSuppliers() {
   isLoading.value = true
-  const result = await getSuppliers({ status: statusFilter.value })
+  const result = await getSuppliers({ status: statusFilter.value === ALL_STATUSES ? '' : statusFilter.value })
 
   if (result.success) {
     suppliers.value = result.data?.results ?? []

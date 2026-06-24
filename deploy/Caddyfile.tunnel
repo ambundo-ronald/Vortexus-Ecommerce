@@ -11,6 +11,25 @@ http://{$DASHBOARD_DOMAIN} {
 http://{$API_DOMAIN} {
     encode zstd gzip
 
+    @allowed_cors {
+        header_regexp Origin ^https://(store|admin)\.vortexusindustrial\.com$
+    }
+
+    header @allowed_cors {
+        Access-Control-Allow-Origin "{http.request.header.Origin}"
+        Access-Control-Allow-Credentials "true"
+        Access-Control-Allow-Headers "Accept, Authorization, Content-Type, X-CSRFToken, X-Requested-With"
+        Access-Control-Allow-Methods "DELETE, GET, OPTIONS, PATCH, POST, PUT"
+        Vary "Origin"
+    }
+
+    @preflight {
+        method OPTIONS
+        header_regexp Origin ^https://(store|admin)\.vortexusindustrial\.com$
+    }
+
+    respond @preflight 204
+
     handle_path /static/* {
         root * /srv/backend/static
         file_server

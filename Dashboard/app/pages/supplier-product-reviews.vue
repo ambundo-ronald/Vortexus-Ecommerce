@@ -4,6 +4,7 @@ import type { SupplierProductReviewItem } from '~/composables/useSupplierProduct
 const toast = useToast()
 const { getReviews, updateReview } = useSupplierProductReviews()
 
+const ALL_STATUSES = '__all_statuses__'
 const reviews = ref<SupplierProductReviewItem[]>([])
 const selectedReview = ref<SupplierProductReviewItem | null>(null)
 const statusFilter = ref('pending_review')
@@ -17,7 +18,7 @@ const saveError = ref('')
 const pagination = ref({ page: 1, page_size: 24, total: 0, num_pages: 1, has_next: false })
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Pending review', value: 'pending_review' },
   { label: 'Changes requested', value: 'changes_requested' },
   { label: 'Approved', value: 'approved' },
@@ -77,7 +78,7 @@ function money(product: SupplierProductReviewItem['product']) {
 
 async function loadReviews(page = 1) {
   isLoading.value = true
-  const result = await getReviews({ status: statusFilter.value, page, pageSize: pagination.value.page_size })
+  const result = await getReviews({ status: statusFilter.value === ALL_STATUSES ? '' : statusFilter.value, page, pageSize: pagination.value.page_size })
 
   if (result.success && result.data) {
     reviews.value = result.data.results || []
