@@ -1,29 +1,71 @@
+import { useNavigate, useSearchParams } from "react-router-dom";
+
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { readPendingCheckout } from "../../utils/payment";
 
 const STEPS = [
-  { key: "cart", label: "Cart", icon: "shopping_cart" },
-  { key: "shipping", label: "Shipping", icon: "local_shipping" },
-  { key: "payment", label: "Pay", icon: "payments" },
-  { key: "review", label: "Review", icon: "fact_check" },
-  { key: "done", label: "Done", icon: "check_circle" }
+  { key: "cart", label: "Cart", icon: "shopping_cart", path: "/checkout/cart" },
+  { key: "shipping", label: "Shipping", icon: "local_shipping", path: "/checkout/shipping" },
+  { key: "payment", label: "Pay", icon: "payments", path: "/checkout/payment" },
+  { key: "review", label: "Review", icon: "fact_check", path: "/checkout/review" },
+  { key: "done", label: "Done", icon: "check_circle", path: "/checkout/confirmation" }
 ];
 
-export default function CheckoutStepper({ current = "cart" }) {
+export default function CheckoutStepper({ current = "cart", basket, shipping, pendingCheckout, orderNumber = "" }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const activeIndex = Math.max(0, STEPS.findIndex((step) => step.key === current));
+  const pending = pendingCheckout || readPendingCheckout(searchParams);
+  const lastOrderNumber = orderNumber || readLastOrderNumber();
+
+  function routeForStep(step, index) {
+    const hasKnownEmptyBasket = basket?.is_empty === true;
+    const shippingReady = Boolean(shipping?.ready_for_checkout);
+    const hasPendingPayment = Boolean(pending?.payment_reference);
+
+    if (step.key === "cart") return "/checkout/cart";
+    if (hasKnownEmptyBasket) return "/checkout/cart";
+    if (step.key === "shipping") return "/checkout/shipping";
+    if (step.key === "payment") return shippingReady || activeIndex >= 2 ? "/checkout/payment" : "/checkout/shipping";
+    if (step.key === "review") {
+      if (hasPendingPayment) return "/checkout/review";
+      if (!shippingReady && activeIndex < 2) return "/checkout/shipping";
+      return "/checkout/payment";
+    }
+    if (step.key === "done") {
+      if (lastOrderNumber) return `/checkout/confirmation?order_number=${encodeURIComponent(lastOrderNumber)}`;
+      if (hasPendingPayment) return "/checkout/review";
+      if (!shippingReady && activeIndex < 2) return "/checkout/shipping";
+      return activeIndex >= 3 ? "/checkout/review" : "/checkout/payment";
+    }
+    return index <= activeIndex ? step.path : STEPS[Math.min(activeIndex + 1, STEPS.length - 1)].path;
+  }
 
   return (
     <nav className="checkout-stepper" aria-label="Checkout progress">
       {STEPS.map((step, index) => (
-        <div
+        <button
           className={`checkout-step ${index <= activeIndex ? "active" : ""}`}
+          type="button"
+          aria-current={step.key === current ? "step" : undefined}
+          onClick={() => navigate(routeForStep(step, index))}
           key={step.key}
         >
           <span>
             <MaterialIcon name={step.icon} size={18} />
           </span>
           <strong>{step.label}</strong>
-        </div>
+        </button>
       ))}
     </nav>
   );
+}
+
+function readLastOrderNumber() {
+  try {
+    const payload = JSON.parse(sessionStorage.getItem("vortexus:lastOrder") || "null");
+    return payload?.order?.number || payload?.order?.order_number || "";
+  } catch {
+    return "";
+  }
 }

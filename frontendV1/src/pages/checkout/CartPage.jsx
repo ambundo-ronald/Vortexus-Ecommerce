@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import CartEmpty from "../../components/cart/CartEmpty.jsx";
 import CartItem from "../../components/cart/CartItem.jsx";
 import CartSummary from "../../components/cart/CartSummary.jsx";
+import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
@@ -46,6 +47,7 @@ export default function CartPage() {
 
   return (
     <div className="cart-page">
+      <CheckoutStepper current="cart" basket={basket} />
       <Alert>{error}</Alert>
       {loading && !lines.length ? <Spinner label="Loading cart" /> : null}
 

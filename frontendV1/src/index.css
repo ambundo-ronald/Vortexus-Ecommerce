@@ -3574,14 +3574,17 @@ img {
 .checkout-step {
   min-width: 0;
   min-height: 42px;
+  border: 0;
   border-radius: var(--radius-xs);
   display: grid;
   justify-items: center;
   align-content: center;
   gap: 3px;
+  background: transparent;
   color: var(--color-text-soft);
   font-size: 0.62rem;
   font-weight: 600;
+  cursor: pointer;
 }
 
 .checkout-step span {
@@ -3594,6 +3597,15 @@ img {
 .checkout-step.active {
   background: var(--color-info-bg);
   color: var(--color-primary-700);
+}
+
+.checkout-step:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-primary-700);
+}
+
+.checkout-step.active:hover {
+  background: var(--color-info-bg);
 }
 
 .checkout-title-row {

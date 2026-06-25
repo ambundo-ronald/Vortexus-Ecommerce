@@ -76,7 +76,7 @@ export default function OrderConfirmationPage() {
   if (!order) {
     return (
       <section className="checkout-page">
-        <CheckoutStepper current="done" />
+        <CheckoutStepper current="done" orderNumber={orderNumber} />
         <div className="checkout-card confirmation-card">
           <span className="confirmation-icon muted">
             <MaterialIcon name="receipt_long" size={30} />
@@ -94,7 +94,7 @@ export default function OrderConfirmationPage() {
 
   return (
     <section className="checkout-page">
-      <CheckoutStepper current="done" />
+      <CheckoutStepper current="done" orderNumber={order.number || order.order_number || orderNumber} />
 
       <div className="checkout-card confirmation-card printable-order-summary">
         <header className="print-order-header">

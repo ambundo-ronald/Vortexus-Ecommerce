@@ -87,7 +87,7 @@ export default function ShippingPage() {
 
   return (
     <section className="checkout-page">
-      <CheckoutStepper current="shipping" />
+      <CheckoutStepper current="shipping" basket={basket} shipping={shipping} />
 
       <div className="checkout-title-row">
         <Link className="back-link" to="/checkout/cart">
