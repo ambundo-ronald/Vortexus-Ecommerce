@@ -20,6 +20,8 @@ from apps.accounts.two_factor import (
     verify_email_two_factor_challenge,
 )
 from apps.auditlog.services import record_audit_event
+from apps.common.async_utils import dispatch_background_task
+from apps.integrations.tasks import sync_customer_to_erpnext
 from apps.notifications.services import (
     queue_account_reactivation_request_email,
     queue_email_two_factor_code,
@@ -79,6 +81,11 @@ class AccountRegisterAPIView(APIView):
         user = serializer.save()
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
         queue_email_verification_email(user)
+        dispatch_background_task(
+            sync_customer_to_erpnext,
+            run_kwargs={'user_id': user.id},
+            async_kwargs={'user_id': user.id},
+        )
         record_audit_event(
             event_type='account.registered',
             request=request,
@@ -263,6 +270,11 @@ class AccountProfileAPIView(APIView):
         user = serializer.save()
         if previous_email != user.email:
             queue_email_verification_email(user)
+        dispatch_background_task(
+            sync_customer_to_erpnext,
+            run_kwargs={'user_id': user.id},
+            async_kwargs={'user_id': user.id},
+        )
         record_audit_event(
             event_type='account.profile_updated',
             request=request,

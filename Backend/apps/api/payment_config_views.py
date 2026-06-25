@@ -1,11 +1,13 @@
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Count, Prefetch, Q, Sum
-from rest_framework import permissions, serializers
+from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.common.async_utils import dispatch_background_task
+from apps.integrations.tasks import export_refund_credit_note_to_erpnext
 from apps.notifications.secret_store import seal_secret
 from apps.payments.config import (
     get_payment_setting,
@@ -15,7 +17,8 @@ from apps.payments.config import (
     provider_missing_requirements,
 )
 from apps.payments.models import PaymentEvent, PaymentProviderConfiguration, PaymentSession
-from apps.payments.services import payment_reconciliation
+from apps.payments.pesapal import PesapalConfigurationError, PesapalGatewayError, request_refund as request_pesapal_refund
+from apps.payments.services import log_payment_event, payment_reconciliation
 
 
 class MpesaConfigSerializer(serializers.Serializer):
@@ -53,6 +56,19 @@ class AirtelMoneyConfigSerializer(serializers.Serializer):
 class CardConfigSerializer(serializers.Serializer):
     is_enabled = serializers.BooleanField(required=False)
     provider_name = serializers.CharField(required=False, allow_blank=True, max_length=80)
+
+
+class PaymentRefundRequestSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    refund_reference = serializers.CharField(required=False, allow_blank=True, max_length=80)
+    submit_gateway_refund = serializers.BooleanField(required=False, default=True)
+
+    def validate_refund_reference(self, value):
+        return (value or '').strip()
+
+    def validate_reason(self, value):
+        return (value or '').strip()
 
 
 def _serialize_provider(provider: str) -> dict:
@@ -400,3 +416,100 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
                 'summary': summary,
             }
         )
+
+
+class AdminPaymentRefundAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, reference: str):
+        payment = get_payment_or_404(reference)
+        serializer = PaymentRefundRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if payment.status not in {PaymentSession.STATUS_PAID, PaymentSession.STATUS_AUTHORIZED}:
+            return Response({'detail': 'Only paid or authorized payments can be sent for refund accounting.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not payment.order_id:
+            return Response({'detail': 'This payment is not linked to an order.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        refund_amount = serializer.validated_data.get('amount') or payment.amount
+        reason = serializer.validated_data.get('reason') or 'Refund requested by staff.'
+        refund_reference = serializer.validated_data.get('refund_reference') or f'REFUND-{payment.reference}'
+        submit_gateway_refund = serializer.validated_data.get('submit_gateway_refund', True)
+        metadata = payment.metadata or {}
+        refund_requests = metadata.get('refund_requests') or []
+        if any(item.get('refund_reference') == refund_reference for item in refund_requests):
+            return Response({'detail': 'Refund request already recorded.', 'refund_reference': refund_reference}, status=status.HTTP_200_OK)
+
+        gateway_response = None
+        if submit_gateway_refund and payment.method == PaymentSession.METHOD_PESAPAL:
+            try:
+                gateway_response = request_pesapal_refund(
+                    payment,
+                    amount=refund_amount,
+                    username=request.user.get_full_name() or request.user.email or request.user.username,
+                    remarks=reason,
+                )
+            except (PesapalConfigurationError, PesapalGatewayError) as exc:
+                log_payment_event(
+                    payment,
+                    kind='gateway_error',
+                    status_before=payment.status,
+                    status_after=payment.status,
+                    external_reference=payment.external_reference,
+                    message=str(exc),
+                    payload={'phase': 'pesapal_refund_request', 'refund_reference': refund_reference},
+                )
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            log_payment_event(
+                payment,
+                kind='provider_submitted',
+                status_before=payment.status,
+                status_after=payment.status,
+                external_reference=payment.external_reference,
+                message='Pesapal refund request submitted.',
+                payload={'phase': 'pesapal_refund_request', 'refund_reference': refund_reference, 'pesapal_response': gateway_response},
+            )
+
+        refund_requests.append(
+            {
+                'refund_reference': refund_reference,
+                'amount': str(refund_amount),
+                'reason': reason,
+                'requested_by': request.user.id,
+                'gateway': payment.method if submit_gateway_refund else 'manual',
+                'gateway_response': gateway_response or {},
+            }
+        )
+        payment.metadata = {**metadata, 'refund_requests': refund_requests}
+        payment.save(update_fields=['metadata', 'updated_at'])
+
+        dispatch_background_task(
+            export_refund_credit_note_to_erpnext,
+            run_kwargs={
+                'payment_reference': payment.reference,
+                'refund_amount': str(refund_amount),
+                'reason': reason,
+                'refund_reference': refund_reference,
+            },
+            async_kwargs={
+                'payment_reference': payment.reference,
+                'refund_amount': str(refund_amount),
+                'reason': reason,
+                'refund_reference': refund_reference,
+            },
+        )
+        record_audit_event(
+            event_type='payments.refund_requested',
+            request=request,
+            actor=request.user,
+            target=payment,
+            message='Staff requested refund accounting export.',
+            metadata={'payment_reference': payment.reference, 'refund_reference': refund_reference, 'amount': str(refund_amount)},
+        )
+        return Response({'detail': 'Refund accounting export queued.', 'refund_reference': refund_reference}, status=status.HTTP_202_ACCEPTED)
+
+
+def get_payment_or_404(reference: str):
+    from django.shortcuts import get_object_or_404
+
+    return get_object_or_404(PaymentSession.objects.select_related('order'), reference=reference)

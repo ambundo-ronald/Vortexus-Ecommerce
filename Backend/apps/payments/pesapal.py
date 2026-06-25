@@ -103,6 +103,26 @@ def query_transaction_status(payment_session) -> dict:
     return _get_json(f'/Transactions/GetTransactionStatus?{urlencode({"orderTrackingId": order_tracking_id})}', token=token)
 
 
+def request_refund(payment_session, *, amount, username: str, remarks: str) -> dict:
+    confirmation_code = str((payment_session.metadata or {}).get('pesapal_confirmation_code') or '').strip()
+    if not confirmation_code:
+        raise PesapalGatewayError('Missing Pesapal confirmation code for refund request.')
+
+    token = _request_access_token()
+    payload = {
+        'confirmation_code': confirmation_code,
+        'amount': str(Decimal(str(amount)).quantize(Decimal('0.01'))),
+        'username': (username or '').strip() or 'Vortexus Admin',
+        'remarks': (remarks or '').strip() or f'Refund for {payment_session.reference}',
+    }
+    response_data = _post_json('/Transactions/RefundRequest', payload, token=token)
+    status_code = str(response_data.get('status') or response_data.get('error') or '').strip()
+    message = str(response_data.get('message') or '').strip()
+    if status_code and status_code != '200':
+        raise PesapalGatewayError(message or f'Pesapal refund request rejected with status {status_code}.')
+    return response_data
+
+
 def handle_transaction_status(payment_session, status_payload: dict):
     _validate_status_payload(payment_session, status_payload)
 

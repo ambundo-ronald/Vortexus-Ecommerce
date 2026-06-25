@@ -13,10 +13,11 @@ const numPages = ref(1)
 const hasNext = ref(false)
 const isLoading = ref(false)
 const saving = ref(false)
+const ALL_REASONS = '__all_reasons__'
 
 const filters = reactive({
   search: '',
-  reason: '',
+  reason: ALL_REASONS,
 })
 
 const form = reactive({
@@ -27,7 +28,7 @@ const form = reactive({
 })
 
 const reasonOptions = [
-  { label: 'All reasons', value: '' },
+  { label: 'All reasons', value: ALL_REASONS },
   { label: 'Bounce', value: 'bounce' },
   { label: 'Complaint', value: 'complaint' },
   { label: 'Manual', value: 'manual' },
@@ -56,7 +57,7 @@ async function loadSuppressions() {
     page: page.value,
     pageSize: pageSize.value,
     search: filters.search.trim(),
-    reason: filters.reason,
+    reason: filters.reason === ALL_REASONS ? '' : filters.reason,
   })
   if (result.success) {
     suppressions.value = result.data?.results ?? []

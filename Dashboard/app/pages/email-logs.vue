@@ -15,11 +15,12 @@ const hasNext = ref(false)
 const isLoading = ref(false)
 const detailOpen = ref(false)
 const retryingId = ref<number | null>(null)
+const ALL_STATUSES = '__all_statuses__'
 
 const filters = reactive({
   search: '',
   eventType: '',
-  status: '',
+  status: ALL_STATUSES,
   recipient: '',
   relatedObjectType: '',
   relatedObjectId: '',
@@ -28,7 +29,7 @@ const filters = reactive({
 })
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Sent', value: 'sent' },
   { label: 'Failed', value: 'failed' },
   { label: 'Skipped', value: 'skipped' },
@@ -79,7 +80,7 @@ async function loadLogs() {
     pageSize: pageSize.value,
     search: filters.search.trim(),
     eventType: filters.eventType.trim(),
-    status: filters.status,
+    status: filters.status === ALL_STATUSES ? '' : filters.status,
     recipient: filters.recipient.trim(),
     relatedObjectType: filters.relatedObjectType.trim(),
     relatedObjectId: filters.relatedObjectId.trim(),
@@ -138,7 +139,7 @@ function applyFilters() {
 function resetFilters() {
   filters.search = ''
   filters.eventType = ''
-  filters.status = ''
+  filters.status = ALL_STATUSES
   filters.recipient = ''
   filters.relatedObjectType = ''
   filters.relatedObjectId = ''

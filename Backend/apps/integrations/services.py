@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -40,16 +40,18 @@ class ERPNextClient:
     def _headers(self) -> dict[str, str]:
         return {
             'Accept': 'application/json',
+            'Content-Type': 'application/json',
             'Authorization': f'token {self.api_key}:{self.api_secret}',
         }
 
-    def _request(self, path: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _request(self, path: str, query: dict[str, Any] | None = None, *, method: str = 'GET', data: dict[str, Any] | None = None) -> dict[str, Any]:
         url = f'{self.base_url}{quote(path, safe="/")}'
         if query:
             encoded = urlencode(query)
             url = f'{url}?{encoded}'
 
-        request = Request(url=url, headers=self._headers(), method='GET')
+        body = json.dumps(data).encode('utf-8') if data is not None else None
+        request = Request(url=url, data=body, headers=self._headers(), method=method)
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 return json.loads(response.read().decode('utf-8'))
@@ -61,12 +63,28 @@ class ERPNextClient:
         except Exception as exc:
             raise ERPNextIntegrationError(f'ERPNext request failed: {exc}') from exc
 
+    def create_resource(self, doctype: str, data: dict[str, Any]) -> dict[str, Any]:
+        if not doctype:
+            raise ERPNextIntegrationError('ERPNext doctype is required.')
+        payload = self._request(f'/api/resource/{doctype}', method='POST', data=data)
+        resource = payload.get('data') or {}
+        if not isinstance(resource, dict):
+            raise ERPNextIntegrationError(f'ERPNext returned an unexpected {doctype} response shape.')
+        return resource
+
+    def call_method(self, method: str, data: dict[str, Any] | None = None) -> Any:
+        if not method:
+            raise ERPNextIntegrationError('ERPNext method path is required.')
+        payload = self._request(f'/api/method/{method}', method='POST', data=data or {})
+        return payload.get('message')
+
     def fetch_file_bytes(self, file_url: str, *, max_bytes: int | None = None) -> bytes:
         cleaned = (file_url or '').strip()
         if not cleaned:
             raise ERPNextIntegrationError('ERPNext file URL is empty.')
 
         url = cleaned if cleaned.startswith(('http://', 'https://')) else urljoin(f'{self.base_url}/', cleaned.lstrip('/'))
+        url = self._quote_file_url(url)
         request = Request(url=url, headers=self._headers(), method='GET')
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -85,6 +103,18 @@ class ERPNextClient:
             raise
         except Exception as exc:
             raise ERPNextIntegrationError(f'ERPNext file request failed: {exc}') from exc
+
+    def _quote_file_url(self, url: str) -> str:
+        parsed = urlsplit(url)
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                quote(parsed.path, safe='/%'),
+                quote(parsed.query, safe='=&%'),
+                parsed.fragment,
+            )
+        )
 
     def fetch_all(self, path: str, query: dict[str, Any] | None = None, page_length: int = 1000) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = []

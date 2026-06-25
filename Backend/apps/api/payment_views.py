@@ -192,8 +192,18 @@ class MpesaStatusAPIView(APIView):
                 payment_session.metadata = {**payment_session.metadata, 'last_query': query_data}
                 payment_session.save(update_fields=['metadata', 'updated_at'])
                 payment_session = handle_stk_query_result(payment_session, query_data)
-            except (MpesaConfigurationError, MpesaGatewayError):
-                pass
+            except (MpesaConfigurationError, MpesaGatewayError) as exc:
+                payment_session.metadata = {**payment_session.metadata, 'last_status_query_error': str(exc)}
+                payment_session.save(update_fields=['metadata', 'updated_at'])
+                log_payment_event(
+                    payment_session,
+                    kind='gateway_error',
+                    status_before=payment_session.status,
+                    status_after=payment_session.status,
+                    external_reference=payment_session.external_reference,
+                    message=str(exc),
+                    payload={'phase': 'mpesa_status_query'},
+                )
         return Response({'payment': serialize_payment_session(payment_session)})
 
 
@@ -305,8 +315,18 @@ class PesapalStatusAPIView(APIView):
                 PaymentSession = apps.get_model('payments', 'PaymentSession')
                 locked_payment = PaymentSession.objects.select_for_update().get(pk=payment_session.pk)
                 payment_session = handle_transaction_status(locked_payment, status_payload)
-        except (PesapalConfigurationError, PesapalGatewayError):
-            pass
+        except (PesapalConfigurationError, PesapalGatewayError) as exc:
+            payment_session.metadata = {**payment_session.metadata, 'last_status_query_error': str(exc)}
+            payment_session.save(update_fields=['metadata', 'updated_at'])
+            log_payment_event(
+                payment_session,
+                kind='gateway_error',
+                status_before=payment_session.status,
+                status_after=payment_session.status,
+                external_reference=payment_session.external_reference,
+                message=str(exc),
+                payload={'phase': 'pesapal_status_query'},
+            )
         return Response({'payment': serialize_payment_session(payment_session)})
 
 

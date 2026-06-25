@@ -9,6 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.common.async_utils import dispatch_background_task
+from apps.integrations.tasks import sync_order_cancellation_to_erpnext
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_shipping_update_email
 
@@ -342,6 +344,12 @@ class AdminOrderStatusAPIView(APIView):
                 status_label=new_status,
                 tracking_reference=tracking_reference,
                 note=note or 'Updated by admin.',
+            )
+        if new_status == 'Cancelled':
+            dispatch_background_task(
+                sync_order_cancellation_to_erpnext,
+                run_kwargs={'order_number': order.number, 'reason': note or 'Cancelled by admin.'},
+                async_kwargs={'order_number': order.number, 'reason': note or 'Cancelled by admin.'},
             )
 
         record_audit_event(

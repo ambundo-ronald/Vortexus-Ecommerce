@@ -158,6 +158,8 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
             message='Ignored duplicate terminal payment update.',
             payload={'requested_success': success, 'requested_status': next_status, 'metadata': metadata or {}},
         )
+        if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
+            _queue_paid_order_accounting_export(payment_session)
         return payment_session
 
     payment_session.external_reference = external_reference or payment_session.external_reference
@@ -179,6 +181,8 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
         external_reference=payment_session.external_reference,
         payload={'success': success, 'metadata': metadata or {}},
     )
+    if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
+        _queue_paid_order_accounting_export(payment_session)
     return payment_session
 
 
@@ -227,6 +231,8 @@ def link_payment_to_order(payment_session, order):
         external_reference=payment_session.external_reference,
         payload={'order_id': order.id, 'order_number': order.number},
     )
+    if payment_session.status in SUCCESS_PAYMENT_STATUSES:
+        _queue_paid_order_accounting_export(payment_session)
 
     return source
 
@@ -323,6 +329,17 @@ def log_payment_event(
         external_reference=external_reference or '',
         message=message or '',
         payload=payload or {},
+    )
+
+
+def _queue_paid_order_accounting_export(payment_session) -> None:
+    from apps.common.async_utils import dispatch_background_task
+    from apps.integrations.tasks import export_paid_order_accounting_to_erpnext
+
+    dispatch_background_task(
+        export_paid_order_accounting_to_erpnext,
+        run_kwargs={'payment_reference': payment_session.reference},
+        async_kwargs={'payment_reference': payment_session.reference},
     )
 
 

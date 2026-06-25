@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
+from apps.common.async_utils import dispatch_background_task
+from apps.integrations.tasks import export_order_to_erpnext
 from apps.notifications.services import queue_order_confirmation_email
 from apps.inventory.services import (
     InventoryReservationError,
@@ -312,6 +314,11 @@ class OrderPlacementAPIView(APIView):
         checkout_session.flush()
 
         queue_order_confirmation_email(order)
+        dispatch_background_task(
+            export_order_to_erpnext,
+            run_kwargs={'order_number': order.number},
+            async_kwargs={'order_number': order.number},
+        )
         logger.info('Order placed successfully: number=%s user=%s', order.number, getattr(request.user, 'id', None))
         record_audit_event(
             event_type='orders.placed',

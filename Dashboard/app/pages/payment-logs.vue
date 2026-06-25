@@ -2,7 +2,7 @@
 import type { AdminPaymentLogItem } from '~/composables/usePaymentConfig'
 
 const toast = useToast()
-const { getPaymentLogs } = usePaymentConfig()
+const { getPaymentLogs, requestPaymentRefund } = usePaymentConfig()
 
 const logs = ref<AdminPaymentLogItem[]>([])
 const selectedLog = ref<AdminPaymentLogItem | null>(null)
@@ -13,16 +13,26 @@ const totalItems = ref(0)
 const numPages = ref(1)
 const isLoading = ref(false)
 const detailOpen = ref(false)
+const refundSubmitting = ref(false)
+const refundForm = reactive({
+  amount: '',
+  reason: '',
+  refundReference: '',
+  submitGatewayRefund: true,
+})
+const ALL_METHODS = '__all_methods__'
+const ALL_STATUSES = '__all_statuses__'
+const ALL_RECONCILIATION = '__all_reconciliation__'
 
 const filters = reactive({
   search: '',
-  method: '',
-  status: '',
-  reconciliation: '',
+  method: ALL_METHODS,
+  status: ALL_STATUSES,
+  reconciliation: ALL_RECONCILIATION,
 })
 
 const methodOptions = [
-  { label: 'All methods', value: '' },
+  { label: 'All methods', value: ALL_METHODS },
   { label: 'Pesapal', value: 'pesapal' },
   { label: 'M-Pesa', value: 'mpesa' },
   { label: 'Airtel Money', value: 'airtel_money' },
@@ -33,7 +43,7 @@ const methodOptions = [
 ]
 
 const statusOptions = [
-  { label: 'All statuses', value: '' },
+  { label: 'All statuses', value: ALL_STATUSES },
   { label: 'Pending', value: 'pending' },
   { label: 'Paid', value: 'paid' },
   { label: 'Authorized', value: 'authorized' },
@@ -42,7 +52,7 @@ const statusOptions = [
 ]
 
 const reconciliationOptions = [
-  { label: 'All reconciliation', value: '' },
+  { label: 'All reconciliation', value: ALL_RECONCILIATION },
   { label: 'Needs attention', value: 'needs_attention' },
   { label: 'Paid, no order', value: 'paid_no_order' },
   { label: 'Order mismatch', value: 'order_mismatch' },
@@ -108,15 +118,38 @@ function eventLabel(kind: string) {
   return formatLabel(kind)
 }
 
+const canRefundSelectedPayment = computed(() => {
+  if (!selectedLog.value)
+    return false
+  return ['paid', 'authorized'].includes(selectedLog.value.status) && Boolean(selectedLog.value.order_number)
+})
+
+function refundDisabledReason() {
+  if (!selectedLog.value)
+    return 'Select a payment first.'
+  if (!['paid', 'authorized'].includes(selectedLog.value.status))
+    return 'Only paid or authorized payments can be refunded.'
+  if (!selectedLog.value.order_number)
+    return 'Payment must be linked to an order before refund accounting.'
+  return ''
+}
+
+function resetRefundForm(log: AdminPaymentLogItem | null) {
+  refundForm.amount = log ? String(log.amount || '') : ''
+  refundForm.reason = ''
+  refundForm.refundReference = log ? `REFUND-${log.reference}` : ''
+  refundForm.submitGatewayRefund = true
+}
+
 async function loadLogs() {
   isLoading.value = true
   const result = await getPaymentLogs({
     page: page.value,
     pageSize: pageSize.value,
     search: filters.search.trim(),
-    method: filters.method,
-    status: filters.status,
-    reconciliation: filters.reconciliation,
+    method: filters.method === ALL_METHODS ? '' : filters.method,
+    status: filters.status === ALL_STATUSES ? '' : filters.status,
+    reconciliation: filters.reconciliation === ALL_RECONCILIATION ? '' : filters.reconciliation,
   })
 
   if (result.success) {
@@ -135,7 +168,36 @@ async function loadLogs() {
 
 function openDetail(log: AdminPaymentLogItem) {
   selectedLog.value = log
+  resetRefundForm(log)
   detailOpen.value = true
+}
+
+async function submitRefund() {
+  if (!selectedLog.value || !canRefundSelectedPayment.value)
+    return
+  refundSubmitting.value = true
+  const result = await requestPaymentRefund(selectedLog.value.reference, {
+    amount: refundForm.amount || undefined,
+    reason: refundForm.reason,
+    refund_reference: refundForm.refundReference,
+    submit_gateway_refund: refundForm.submitGatewayRefund,
+  })
+  refundSubmitting.value = false
+  if (result.success) {
+    toast.add({
+      title: 'Refund queued',
+      description: result.data?.refund_reference || 'ERPNext credit note export queued.',
+      color: 'success',
+    })
+    await loadLogs()
+    const refreshed = logs.value.find(log => log.reference === selectedLog.value?.reference)
+    if (refreshed) {
+      selectedLog.value = refreshed
+      resetRefundForm(refreshed)
+    }
+    return
+  }
+  toast.add({ title: 'Refund failed', description: result.error || 'Please review the payment logs.', color: 'error' })
 }
 
 function applyFilters() {
@@ -145,9 +207,9 @@ function applyFilters() {
 
 function resetFilters() {
   filters.search = ''
-  filters.method = ''
-  filters.status = ''
-  filters.reconciliation = ''
+  filters.method = ALL_METHODS
+  filters.status = ALL_STATUSES
+  filters.reconciliation = ALL_RECONCILIATION
   page.value = 1
   loadLogs()
 }
@@ -299,6 +361,38 @@ onMounted(loadLogs)
               <ul class="mt-2 space-y-1 text-sm text-orange-900">
                 <li v-for="issue in selectedLog.reconciliation.issues" :key="issue">{{ issue }}</li>
               </ul>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-950">Refund accounting</h3>
+                  <p class="mt-1 text-xs text-slate-500">Submit gateway refund request and queue ERPNext credit note export.</p>
+                </div>
+                <UBadge :color="canRefundSelectedPayment ? 'success' : 'neutral'" variant="soft">
+                  {{ canRefundSelectedPayment ? 'Available' : 'Unavailable' }}
+                </UBadge>
+              </div>
+              <p v-if="!canRefundSelectedPayment" class="mt-3 rounded-md bg-slate-50 p-2 text-xs text-slate-500">
+                {{ refundDisabledReason() }}
+              </p>
+              <div class="mt-3 grid grid-cols-1 gap-3">
+                <UFormField label="Amount">
+                  <UInput v-model="refundForm.amount" type="number" min="0" step="0.01" :disabled="!canRefundSelectedPayment || refundSubmitting" />
+                </UFormField>
+                <UFormField label="Refund reference">
+                  <UInput v-model="refundForm.refundReference" :disabled="!canRefundSelectedPayment || refundSubmitting" />
+                </UFormField>
+                <UFormField label="Reason">
+                  <UTextarea v-model="refundForm.reason" :rows="3" placeholder="Reason for refund or return" :disabled="!canRefundSelectedPayment || refundSubmitting" />
+                </UFormField>
+                <UCheckbox v-model="refundForm.submitGatewayRefund" label="Submit Pesapal refund request when applicable" :disabled="!canRefundSelectedPayment || refundSubmitting" />
+              </div>
+              <div class="mt-3 flex justify-end">
+                <UButton color="error" :loading="refundSubmitting" :disabled="!canRefundSelectedPayment" @click="submitRefund">
+                  <UIcon name="i-lucide-undo-2" />
+                  Queue Refund
+                </UButton>
+              </div>
             </div>
             <div>
               <h3 class="mb-2 text-sm font-bold text-slate-950">Recent events</h3>
