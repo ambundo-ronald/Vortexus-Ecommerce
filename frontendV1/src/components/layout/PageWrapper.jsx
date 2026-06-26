@@ -12,6 +12,7 @@ import { useCartStore } from "../../store/cart.store";
 
 export default function PageWrapper({ children }) {
   const hydrateCart = useCartStore((state) => state.hydrate);
+  const itemCount = useCartStore((state) => state.basket.item_count || 0);
   const { user } = useAuth();
   const bottomItems = [
     { to: "/", label: "Home", icon: "home" },
@@ -39,6 +40,9 @@ export default function PageWrapper({ children }) {
           <NavLink key={item.to} to={item.to} end={item.to === "/"} aria-label={item.label}>
             <span className="bottom-nav__icon">
               <MaterialIcon name={item.icon} size={24} filled />
+              {item.to === "/checkout/cart" && itemCount > 0 ? (
+                <span className="bottom-nav__badge">{itemCount}</span>
+              ) : null}
             </span>
             <span className="bottom-nav__label">{item.label}</span>
           </NavLink>

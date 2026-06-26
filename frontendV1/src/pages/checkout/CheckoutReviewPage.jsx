@@ -172,7 +172,7 @@ export default function CheckoutReviewPage() {
 
   return (
     <section className="checkout-page">
-      <CheckoutStepper current="review" />
+      <CheckoutStepper current="review" basket={preview?.basket} shipping={preview?.shipping} pendingCheckout={pending} />
 
       <div className="checkout-title-row">
         <Link className="back-link" to="/checkout/payment">

@@ -6,7 +6,7 @@ from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
 
-from .config import provider_is_configured, provider_is_enabled
+from .config import get_payment_setting, provider_is_configured, provider_is_enabled
 
 
 OFFLINE_PAYMENT_PROVIDERS = {'bank_transfer', 'cash_on_delivery'}
@@ -21,6 +21,7 @@ def available_payment_methods() -> list[dict]:
         if _payment_method_is_available(provider):
             payload = method.copy()
             payload['is_configured'] = provider_is_configured(provider)
+            payload.update(_payment_method_capabilities(method['code'], provider))
             methods.append(payload)
     return methods
 
@@ -34,6 +35,7 @@ def get_payment_method(code: str) -> dict | None:
                 return None
             payload = method.copy()
             payload['is_configured'] = provider_is_configured(provider)
+            payload.update(_payment_method_capabilities(method['code'], provider))
             return payload
     return None
 
@@ -44,6 +46,35 @@ def _payment_method_is_available(provider: str) -> bool:
     if provider in OFFLINE_PAYMENT_PROVIDERS:
         return True
     return provider_is_configured(provider)
+
+
+def _payment_method_capabilities(method_code: str, provider: str) -> dict:
+    if method_code == 'pesapal':
+        base_url = str(get_payment_setting('pesapal', 'base_url', settings.PESAPAL_BASE_URL)).lower()
+        return {
+            'flow': 'redirect',
+            'is_sandbox': 'cybqa' in base_url or 'sandbox' in base_url,
+        }
+    if method_code == 'mpesa':
+        base_url = str(get_payment_setting('mpesa', 'base_url', settings.MPESA_BASE_URL)).lower()
+        return {
+            'flow': 'mobile_prompt',
+            'is_sandbox': 'sandbox' in base_url,
+        }
+    if method_code == 'airtel_money':
+        return {
+            'flow': 'mobile_prompt',
+            'is_sandbox': bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED),
+        }
+    if provider == 'card':
+        return {
+            'flow': 'card_token',
+            'is_sandbox': bool(settings.CARD_SANDBOX_ENABLED),
+        }
+    return {
+        'flow': 'offline',
+        'is_sandbox': False,
+    }
 
 
 def payment_requires_prepayment(method_code: str) -> bool:

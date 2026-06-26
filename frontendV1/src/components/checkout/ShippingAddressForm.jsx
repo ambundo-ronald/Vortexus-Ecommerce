@@ -32,6 +32,9 @@ export default function ShippingAddressForm({
 }) {
   const [form, setForm] = useState(() => ({ ...defaultAddress, ...normalizeAddress(address) }));
   const [locationStatus, setLocationStatus] = useState("");
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeResults, setPlaceResults] = useState([]);
+  const [placeSearching, setPlaceSearching] = useState(false);
 
   useEffect(() => {
     setForm({ ...defaultAddress, ...normalizeAddress(address) });
@@ -81,6 +84,63 @@ export default function ShippingAddressForm({
       () => setLocationStatus("Could not get your location. You can enter the coordinates manually."),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
     );
+  }
+
+  async function searchDeliveryPlace() {
+    const query = placeQuery.trim();
+    if (!query) {
+      setLocationStatus("Enter a place, road, building, or landmark to search.");
+      return;
+    }
+
+    setPlaceSearching(true);
+    setLocationStatus("Searching for that place...");
+    try {
+      const countryCode = String(form.country_code || "KE").toLowerCase();
+      const params = new URLSearchParams({
+        format: "jsonv2",
+        q: query,
+        limit: "6",
+        addressdetails: "1"
+      });
+      if (countryCode) params.set("countrycodes", countryCode);
+
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) throw new Error("Place search failed.");
+
+      const results = await response.json();
+      setPlaceResults(Array.isArray(results) ? results : []);
+      setLocationStatus(results.length ? "Choose the delivery place from the results." : "No place found. Try a nearby road, building, or town.");
+    } catch {
+      setLocationStatus("Could not search places right now. You can still enter the coordinates manually.");
+      setPlaceResults([]);
+    } finally {
+      setPlaceSearching(false);
+    }
+  }
+
+  function choosePlace(place) {
+    const label = place.display_name || place.name || placeQuery;
+    const addressInfo = place.address || {};
+    const city = addressInfo.city || addressInfo.town || addressInfo.village || addressInfo.county || form.line4;
+    const county = addressInfo.state || addressInfo.county || form.state;
+    const postcode = addressInfo.postcode || form.postcode;
+
+    setForm((current) => ({
+      ...current,
+      line1: current.line1 || compactLocationLabel(addressInfo, label),
+      line4: city || current.line4,
+      state: county || current.state,
+      postcode: postcode || current.postcode,
+      latitude: Number(place.lat).toFixed(6),
+      longitude: Number(place.lon).toFixed(6),
+      location_label: label
+    }));
+    setPlaceQuery(label);
+    setPlaceResults([]);
+    setLocationStatus("Delivery location pinned.");
   }
 
   const hasPinnedLocation = form.latitude !== "" && form.longitude !== "";
@@ -165,10 +225,43 @@ export default function ShippingAddressForm({
         <div>
           <h3>Pin delivery location</h3>
         </div>
-        <button className="secondary-button" type="button" onClick={useCurrentLocation}>
-          <MaterialIcon name="my_location" size={18} />
-          Use my current location
-        </button>
+        <div className="delivery-location-search">
+          <div className="delivery-location-search__form">
+            <label>
+              <span>Search delivery place</span>
+              <input
+                value={placeQuery}
+                onChange={(event) => setPlaceQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void searchDeliveryPlace();
+                  }
+                }}
+                placeholder="Search estate, building, road, shop, landmark"
+                autoComplete="off"
+              />
+            </label>
+            <button className="secondary-button" type="button" disabled={placeSearching} onClick={() => void searchDeliveryPlace()}>
+              <MaterialIcon name="search" size={18} />
+              {placeSearching ? "Searching..." : "Search"}
+            </button>
+          </div>
+          <button className="secondary-button" type="button" onClick={useCurrentLocation}>
+            <MaterialIcon name="my_location" size={18} />
+            Use my current location
+          </button>
+        </div>
+        {placeResults.length ? (
+          <div className="delivery-place-results" aria-label="Delivery place search results">
+            {placeResults.map((place) => (
+              <button key={place.place_id} type="button" onClick={() => choosePlace(place)}>
+                <MaterialIcon name="location_on" size={17} />
+                <span>{place.display_name}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="form-grid two">
           <label>
             <span>Latitude</span>
@@ -213,4 +306,12 @@ function normalizeAddress(address) {
     longitude: location.longitude ?? address.longitude ?? "",
     location_label: location.label ?? address.location_label ?? ""
   };
+}
+
+function compactLocationLabel(addressInfo = {}, fallback = "") {
+  return [
+    addressInfo.road,
+    addressInfo.suburb || addressInfo.neighbourhood,
+    addressInfo.city || addressInfo.town || addressInfo.village
+  ].filter(Boolean).join(", ") || fallback;
 }

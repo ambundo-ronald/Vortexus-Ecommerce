@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 
 from apps.accounts.tokens import email_verification_token_generator
 from apps.accounts.two_factor import (
+    TWO_FACTOR_CODE_TTL_MINUTES,
+    TWO_FACTOR_MAX_ATTEMPTS,
     create_email_two_factor_challenge,
     generate_two_factor_code,
     verify_email_two_factor_challenge,
@@ -20,17 +22,34 @@ from apps.accounts.two_factor import (
 from apps.auditlog.services import record_audit_event
 from apps.common.async_utils import dispatch_background_task
 from apps.integrations.tasks import sync_customer_to_erpnext
-from apps.notifications.services import queue_email_two_factor_code, queue_email_verification_email, queue_password_changed_email
+from apps.notifications.services import (
+    queue_account_reactivation_request_email,
+    queue_email_two_factor_code,
+    queue_email_verification_email,
+    queue_password_changed_email,
+)
 
 from .throttles import AccountLoginIdentityThrottle, AccountRegisterIdentityThrottle
 from .account_serializers import (
     AccountLoginSerializer,
     AccountPasswordChangeSerializer,
     AccountProfileUpdateSerializer,
+    AccountReactivationRequestSerializer,
     AccountRegistrationSerializer,
     AccountSummarySerializer,
     get_or_create_customer_profile,
 )
+
+
+def _mask_email(email: str) -> str:
+    local_part, separator, domain = (email or '').partition('@')
+    if not separator:
+        return email or ''
+    if len(local_part) <= 2:
+        masked_local = f'{local_part[:1]}***'
+    else:
+        masked_local = f'{local_part[:2]}***{local_part[-1:]}'
+    return f'{masked_local}@{domain}'
 
 
 class CsrfTokenAPIView(APIView):
@@ -120,6 +139,10 @@ class AccountLoginAPIView(APIView):
                     'requires_2fa': True,
                     'challenge_id': challenge.id,
                     'detail': 'Enter the verification code sent to your email.',
+                    'email_mask': _mask_email(user.email),
+                    'expires_at': challenge.expires_at.isoformat(),
+                    'expires_in_seconds': int(TWO_FACTOR_CODE_TTL_MINUTES * 60),
+                    'max_attempts': TWO_FACTOR_MAX_ATTEMPTS,
                 }
             )
         login(request, user)
@@ -158,7 +181,8 @@ class AccountLoginTwoFactorAPIView(APIView):
                 message='Email 2FA login failed.',
                 metadata={'email': challenge.user.email},
             )
-            raise ValidationError({'code': error})
+            remaining_attempts = max(TWO_FACTOR_MAX_ATTEMPTS - challenge.attempts, 0)
+            raise ValidationError({'detail': error, 'remaining_attempts': remaining_attempts})
 
         user = challenge.user
         if not user.is_active:
@@ -175,6 +199,34 @@ class AccountLoginTwoFactorAPIView(APIView):
             {
                 'user': AccountSummarySerializer(user).data,
                 'csrf_token': get_token(request),
+            }
+        )
+
+
+class AccountReactivationRequestAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'account_reactivation_request'
+
+    def post(self, request):
+        serializer = AccountReactivationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        identifier = serializer.validated_data['identifier']
+        inactive_user = serializer.validated_data.get('inactive_user')
+        if inactive_user:
+            queue_account_reactivation_request_email(inactive_user, requested_by=identifier)
+        record_audit_event(
+            event_type='account.reactivation_requested',
+            request=request,
+            actor=inactive_user,
+            target=inactive_user,
+            message='Customer account reactivation requested.',
+            metadata={'identifier': identifier, 'matched_inactive_account': bool(inactive_user)},
+        )
+        return Response(
+            {
+                'detail': (
+                    'If this email belongs to a deactivated account, our support team will review the reactivation request.'
+                )
             }
         )
 
@@ -250,7 +302,7 @@ class AccountEmailVerifyAPIView(APIView):
 
         user = get_object_or_404(get_user_model(), pk=user_id)
         if not email_verification_token_generator.check_token(user, token):
-            raise ValidationError({'token': 'Invalid or expired verification token.'})
+            raise ValidationError({'token': 'Invalid, expired, or already-used verification token. Links expire in 30 minutes.'})
 
         profile = get_or_create_customer_profile(user)
         if profile.email_verified_at is None:

@@ -1,50 +1,59 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import toast, { Toaster } from "react-hot-toast";
 
-import MaterialIcon from "./MaterialIcon.jsx";
 import { useUiStore } from "../../store/ui.store";
 
-const toneIcon = {
-  success: "check_circle",
-  danger: "error",
-  warning: "warning",
-  info: "info"
+const toneToast = {
+  danger: toast.error,
+  warning: toast,
+  info: toast,
+  success: toast.success
 };
 
-function ToastItem({ notification }) {
-  const dismiss = useUiStore((state) => state.dismissNotification);
-  const icon = notification.icon || toneIcon[notification.tone] || toneIcon.info;
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => dismiss(notification.id), 3600);
-    return () => window.clearTimeout(timer);
-  }, [dismiss, notification.id]);
-
+function ToastMessage({ title, message }) {
   return (
-    <article className={`toast toast--${notification.tone}`} role="status" aria-live="polite">
-      <span className="toast__icon">
-        <MaterialIcon name={icon} size={20} filled />
-      </span>
-      <div className="toast__body">
-        {notification.title ? <strong>{notification.title}</strong> : null}
-        {notification.message ? <p>{notification.message}</p> : null}
-      </div>
-      <button type="button" onClick={() => dismiss(notification.id)} aria-label="Dismiss message">
-        <MaterialIcon name="close" size={18} />
-      </button>
-    </article>
+    <div className="react-toast-message">
+      {title ? <strong>{title}</strong> : null}
+      {message ? <span>{message}</span> : null}
+    </div>
   );
 }
 
 export default function ToastViewport() {
   const notifications = useUiStore((state) => state.notifications);
+  const dismiss = useUiStore((state) => state.dismissNotification);
+  const shownIds = useRef(new Set());
 
-  if (!notifications.length) return null;
+  useEffect(() => {
+    notifications.forEach((notification) => {
+      if (shownIds.current.has(notification.id)) return;
+
+      shownIds.current.add(notification.id);
+      const showToast = toneToast[notification.tone] || toast;
+      showToast(<ToastMessage title={notification.title} message={notification.message} />, {
+        id: String(notification.id),
+        duration: 3200,
+        icon: notification.tone === "warning" ? "!" : undefined
+      });
+
+      window.setTimeout(() => dismiss(notification.id), 3600);
+    });
+  }, [dismiss, notifications]);
 
   return (
-    <div className="toast-viewport" aria-label="Notifications">
-      {notifications.map((notification) => (
-        <ToastItem key={notification.id} notification={notification} />
-      ))}
-    </div>
+    <Toaster
+      position="bottom-right"
+      gutter={10}
+      toastOptions={{
+        className: "react-hot-toast",
+        style: {
+          borderRadius: "14px",
+          boxShadow: "0 16px 42px rgba(15, 23, 42, 0.18)",
+          color: "#0f172a",
+          maxWidth: "360px",
+          padding: "12px 14px"
+        }
+      }}
+    />
   );
 }

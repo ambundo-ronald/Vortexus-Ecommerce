@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import CartEmpty from "../../components/cart/CartEmpty.jsx";
 import CartItem from "../../components/cart/CartItem.jsx";
 import CartSummary from "../../components/cart/CartSummary.jsx";
+import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
@@ -19,6 +20,7 @@ export default function CartPage() {
   const loadSavedItems = useCartStore((state) => state.loadSavedItems);
   const moveSavedToCart = useCartStore((state) => state.moveSavedToCart);
   const removeSavedItem = useCartStore((state) => state.removeSavedItem);
+  const clearCart = useCartStore((state) => state.clearCart);
   const lines = basket.lines || [];
   const itemCount = basket.item_count || lines.reduce((total, line) => total + Number(line.quantity || 0), 0);
   const itemLabel = itemCount === 1 ? "Item" : "Items";
@@ -35,8 +37,17 @@ export default function CartPage() {
     });
   }
 
+  async function handleClearCart() {
+    try {
+      await clearCart();
+    } catch {
+      // The cart store already shows a notification for failed clearing.
+    }
+  }
+
   return (
     <div className="cart-page">
+      <CheckoutStepper current="cart" basket={basket} />
       <Alert>{error}</Alert>
       {loading && !lines.length ? <Spinner label="Loading cart" /> : null}
 
@@ -49,10 +60,15 @@ export default function CartPage() {
               <div>
                 <h1 id="cart-page-title">Your cart</h1>
               </div>
-              <span className="cart-products-panel__count">
-                <MaterialIcon name="shopping_cart" size={18} />
-                {itemCount} {itemLabel}
-              </span>
+              <div className="cart-products-panel__actions">
+                <span className="cart-products-panel__count">
+                  <MaterialIcon name="shopping_cart" size={18} />
+                  {itemCount} {itemLabel}
+                </span>
+                <button className="cart-products-panel__clear" type="button" disabled={loading} onClick={() => void handleClearCart()}>
+                  Clear cart
+                </button>
+              </div>
             </div>
             <div className="cart-table-head" aria-hidden="true">
               <span>Product</span>

@@ -136,7 +136,7 @@ export default function PaymentPage() {
 
   return (
     <section className="checkout-page">
-      <CheckoutStepper current="payment" />
+      <CheckoutStepper current="payment" basket={basket} shipping={shipping} />
 
       <div className="checkout-title-row">
         <Link className="back-link" to="/checkout/shipping">

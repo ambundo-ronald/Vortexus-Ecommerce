@@ -94,6 +94,32 @@ export const useCartStore = create((set, get) => ({
     });
   },
 
+  clearCart: async () => {
+    const lines = get().basket.lines || [];
+    if (!lines.length) return { basket: get().basket };
+
+    set({ loading: true, error: null });
+    try {
+      let payload = { basket: emptyBasket };
+      for (const line of lines) {
+        payload = await checkoutApi.updateLine(line.id, { quantity: 0 });
+      }
+      set({ basket: basketFromPayload(payload), loading: false });
+      useUiStore.getState().notify({
+        title: "Cart cleared",
+        message: "All items were removed.",
+        icon: "remove_shopping_cart"
+      });
+      trackStorefrontEvent("cart_cleared", { line_count: lines.length });
+      return payload;
+    } catch (error) {
+      const message = error.normalized?.message || error.message;
+      set({ error: message, loading: false });
+      useUiStore.getState().notify({ tone: "danger", title: "Could not clear cart", message });
+      throw error;
+    }
+  },
+
   loadSavedItems: async () => {
     set({ savedLoading: true, error: null });
     try {

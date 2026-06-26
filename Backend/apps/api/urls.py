@@ -8,6 +8,7 @@ from .account_views import (
     AccountEmailVerifyAPIView,
     AccountPasswordAPIView,
     AccountProfileAPIView,
+    AccountReactivationRequestAPIView,
     AccountRegisterAPIView,
     CsrfTokenAPIView,
 )
@@ -231,6 +232,7 @@ urlpatterns = [
     path('account/register/', AccountRegisterAPIView.as_view(), name='account-register'),
     path('account/login/', AccountLoginAPIView.as_view(), name='account-login'),
     path('account/login/2fa/', AccountLoginTwoFactorAPIView.as_view(), name='account-login-2fa'),
+    path('account/reactivation/request/', AccountReactivationRequestAPIView.as_view(), name='account-reactivation-request'),
     path('account/logout/', AccountLogoutAPIView.as_view(), name='account-logout'),
     path('account/email/verify/', AccountEmailVerifyAPIView.as_view(), name='account-email-verify'),
     path('account/email/verification/resend/', AccountEmailVerificationResendAPIView.as_view(), name='account-email-verification-resend'),

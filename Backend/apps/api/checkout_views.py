@@ -21,6 +21,12 @@ from apps.inventory.services import (
 )
 from apps.payments.services import link_payment_to_order, payment_requires_prepayment, serialize_payment_session
 from apps.marketplace.orders import ensure_supplier_order_groups
+from apps.accounts.delivery_locations import (
+    get_session_location,
+    store_session_location,
+    upsert_shipping_address_location,
+)
+
 from .checkout_serializers import (
     BasketItemCreateSerializer,
     BasketLineUpdateSerializer,
@@ -132,6 +138,7 @@ class ShippingAddressAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         checkout_session = get_checkout_session(request)
         checkout_session.ship_to_new_address(serializer.to_session_fields())
+        store_session_location(request, serializer.location_payload())
         clear_selected_shipping_method(request)
         return Response(build_checkout_payload(request))
 
@@ -284,6 +291,7 @@ class OrderPlacementAPIView(APIView):
 
         if shipping_address and shipping_address.pk is None:
             shipping_address.save()
+        delivery_location = get_session_location(request)
 
         extra_order_fields = {'guest_email': guest_email} if guest_email else {}
         try:
@@ -301,6 +309,7 @@ class OrderPlacementAPIView(APIView):
             )
         except ValueError as exc:
             raise serializers.ValidationError({'order': str(exc)}) from exc
+        upsert_shipping_address_location(order.shipping_address, delivery_location)
         link_payment_to_order(payment_session, order)
         ensure_supplier_order_groups(order)
         basket.submit()

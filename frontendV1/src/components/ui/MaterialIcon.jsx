@@ -90,7 +90,8 @@ import {
   Users,
   WalletCards,
   Warehouse,
-  Wrench
+  Wrench,
+  X
 } from "lucide-react";
 
 const iconMap = {
@@ -118,7 +119,7 @@ const iconMap = {
   check_circle: CheckCircle2,
   chevron_left: ChevronLeft,
   chevron_right: ChevronRight,
-  close: CircleOff,
+  close: X,
   company: Building2,
   confirmation_number: Gift,
   contacts: Contact,
@@ -208,6 +209,7 @@ const iconMap = {
   receive_order_updates: Truck,
   refresh: RefreshCw,
   remove: Minus,
+  remove_shopping_cart: Trash2,
   replay: RotateCcw,
   request_quote: FileText,
   reviews: Star,

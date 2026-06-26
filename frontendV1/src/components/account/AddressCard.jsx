@@ -53,8 +53,8 @@ export default function AddressCard({
           </button>
         ) : null}
         {onDelete ? (
-          <button className="danger-link" type="button" disabled={loading} onClick={() => onDelete(address)}>
-            Remove
+          <button className="danger-link address-card__delete" type="button" disabled={loading} onClick={() => onDelete(address)} aria-label={`Delete ${title}`}>
+            <MaterialIcon name="delete" size={18} />
           </button>
         ) : null}
       </div>
