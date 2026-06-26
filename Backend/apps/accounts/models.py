@@ -80,3 +80,42 @@ class DeliveryLocation(models.Model):
     def __str__(self):
         target = self.shipping_address_id or self.user_address_id or 'unassigned'
         return f'DeliveryLocation({target}: {self.latitude}, {self.longitude})'
+
+
+class DistanceDeliveryMethod(models.Model):
+    VEHICLE_MOTORCYCLE = 'motorcycle'
+    VEHICLE_VAN = 'van'
+    VEHICLE_TRUCK = 'truck'
+
+    VEHICLE_CHOICES = [
+        (VEHICLE_MOTORCYCLE, 'Motorcycle'),
+        (VEHICLE_VAN, 'Van'),
+        (VEHICLE_TRUCK, 'Truck'),
+    ]
+
+    code = models.SlugField(max_length=80, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True)
+    vehicle_type = models.CharField(max_length=32, choices=VEHICLE_CHOICES, default=VEHICLE_MOTORCYCLE)
+    base_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    rate_per_km = models.DecimalField(max_digits=10, decimal_places=2)
+    minimum_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    maximum_distance_km = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    maximum_weight_kg = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    origin_label = models.CharField(max_length=120, blank=True)
+    origin_latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    origin_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    is_active = models.BooleanField(default=True, db_index=True)
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+        indexes = [
+            models.Index(fields=['is_active', 'sort_order']),
+            models.Index(fields=['vehicle_type', 'is_active']),
+        ]
+
+    def __str__(self):
+        return self.name

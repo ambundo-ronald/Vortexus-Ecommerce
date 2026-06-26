@@ -321,13 +321,16 @@ def log_payment_event(
     payload: dict | None = None,
 ):
     PaymentEvent = apps.get_model('payments', 'PaymentEvent')
+    safe_message = str(message or '')
+    if len(safe_message) > 255:
+        safe_message = f'{safe_message[:252]}...'
     return PaymentEvent.objects.create(
         payment_session=payment_session,
         kind=kind,
         status_before=status_before or '',
         status_after=status_after or '',
         external_reference=external_reference or '',
-        message=message or '',
+        message=safe_message,
         payload=payload or {},
     )
 

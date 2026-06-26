@@ -50,6 +50,7 @@ export default function OrderConfirmationPage() {
   const order = payload?.order;
   const payment = payload?.payment;
   const paymentView = paymentStatusView(payment);
+  const paymentMethodName = payment?.method_name || readablePaymentMethod(payment?.method);
   const address = order?.shipping_address;
   const lines = order?.lines || [];
   const emailActions = order?.guest_email
@@ -134,7 +135,7 @@ export default function OrderConfirmationPage() {
           </div>
           <div>
             <span>Method</span>
-            <strong>{readablePaymentMethod(payment?.method)}</strong>
+            <strong>{paymentMethodName}</strong>
           </div>
           <div>
             <span>Delivery</span>

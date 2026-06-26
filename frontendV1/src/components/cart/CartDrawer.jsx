@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 
 import Alert from "../ui/Alert.jsx";
@@ -12,6 +13,7 @@ import "./CartDrawer.css";
 const emptyCartImage = "/404 images/you cart is empty.png";
 
 export default function CartDrawer() {
+  const shellRef = useRef(null);
   const open = useUiStore((state) => state.cartDrawerOpen);
   const close = useUiStore((state) => state.closeCartDrawer);
   const { basket, error, loading, updateLine, removeLine, clearCart } = useCart({ auto: open });
@@ -27,9 +29,21 @@ export default function CartDrawer() {
     }
   }
 
+  function handleClose() {
+    if (shellRef.current?.contains(document.activeElement)) {
+      document.activeElement?.blur();
+    }
+    close();
+  }
+
   return (
-    <div className={`drawer-shell cart-drawer-shell ${open ? "open" : ""}`} aria-hidden={!open}>
-      <button className="drawer-shade" type="button" onClick={close} aria-label="Close cart" />
+    <div
+      ref={shellRef}
+      className={`drawer-shell cart-drawer-shell ${open ? "open" : ""}`}
+      aria-hidden={open ? undefined : "true"}
+      inert={open ? undefined : ""}
+    >
+      <button className="drawer-shade" type="button" onClick={handleClose} aria-label="Close cart" />
       <aside className="drawer-panel cart-drawer" aria-label="Cart drawer">
         <div className="drawer-head cart-drawer__head">
           <div className="cart-drawer__title">
@@ -40,7 +54,7 @@ export default function CartDrawer() {
               <strong>Cart</strong>
             </div>
           </div>
-          <button className="cart-drawer__close" type="button" onClick={close} aria-label="Close cart">
+          <button className="cart-drawer__close" type="button" onClick={handleClose} aria-label="Close cart">
             <MaterialIcon name="close" size={21} />
           </button>
         </div>
@@ -51,7 +65,7 @@ export default function CartDrawer() {
               key={line.id}
               line={line}
               loading={loading}
-              onClick={close}
+              onClick={handleClose}
               onRemove={removeLine}
               onUpdateQuantity={updateLine}
             />
@@ -59,7 +73,7 @@ export default function CartDrawer() {
             <div className="empty-state cart-drawer__empty">
               <img className="cart-drawer__empty-image" src={emptyCartImage} alt="Your cart is empty" />
               <strong>Your cart is empty</strong>
-              <Link className="primary-button" to="/catalog" onClick={close}>
+              <Link className="primary-button" to="/catalog" onClick={handleClose}>
                 Shop
               </Link>
             </div>
@@ -71,7 +85,7 @@ export default function CartDrawer() {
             <strong>{formatCurrency(totals.subtotal, totals.currency)}</strong>
           </div>
           <div className="cart-drawer__footer-actions">
-            <Link className="primary-button cart-drawer__view-cart" to="/checkout/cart" onClick={close}>
+            <Link className="primary-button cart-drawer__view-cart" to="/checkout/cart" onClick={handleClose}>
               <MaterialIcon name="shopping_cart" size={18} />
               View cart
             </Link>
@@ -81,7 +95,7 @@ export default function CartDrawer() {
               </button>
             ) : null}
           </div>
-          <Link className="cart-drawer__continue" to="/catalog" onClick={close}>
+          <Link className="cart-drawer__continue" to="/catalog" onClick={handleClose}>
             Continue shopping
           </Link>
         </div>

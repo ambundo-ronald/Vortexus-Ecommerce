@@ -26,6 +26,14 @@ def _decimal(value) -> float:
     return float(value or 0)
 
 
+def _bool_value(value, default=False) -> bool:
+    if value in (None, ''):
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def _page(request, queryset, serializer, default_page_size=50):
     page = max(int(request.query_params.get('page', 1) or 1), 1)
     page_size = min(max(int(request.query_params.get('page_size', default_page_size) or default_page_size), 1), 200)
@@ -1088,6 +1096,98 @@ def _weight_based_payload(method):
         'default_weight': _decimal(method.default_weight),
         'bands': [{'id': band.id, 'upper_limit': _decimal(band.upper_limit), 'charge': _decimal(band.charge)} for band in method.bands.all()],
     }
+
+
+def _distance_delivery_payload(method):
+    return {
+        'id': method.id,
+        'code': method.code,
+        'name': method.name,
+        'description': method.description,
+        'vehicle_type': method.vehicle_type,
+        'base_fee': _decimal(method.base_fee),
+        'rate_per_km': _decimal(method.rate_per_km),
+        'minimum_fee': _decimal(method.minimum_fee),
+        'maximum_distance_km': _decimal(method.maximum_distance_km) if method.maximum_distance_km is not None else None,
+        'maximum_weight_kg': _decimal(method.maximum_weight_kg) if method.maximum_weight_kg is not None else None,
+        'origin_label': method.origin_label,
+        'origin_latitude': _decimal(method.origin_latitude),
+        'origin_longitude': _decimal(method.origin_longitude),
+        'is_active': method.is_active,
+        'sort_order': method.sort_order,
+    }
+
+
+class AdminDistanceDeliveryMethodCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        DistanceDeliveryMethod = apps.get_model('accounts', 'DistanceDeliveryMethod')
+        queryset = DistanceDeliveryMethod.objects.order_by('sort_order', 'name')
+        return Response(_page(request, queryset, _distance_delivery_payload))
+
+    def post(self, request):
+        DistanceDeliveryMethod = apps.get_model('accounts', 'DistanceDeliveryMethod')
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            raise serializers.ValidationError({'name': 'Name is required.'})
+        method = DistanceDeliveryMethod.objects.create(
+            code=request.data.get('code') or slugify(name),
+            name=name,
+            description=request.data.get('description', ''),
+            vehicle_type=request.data.get('vehicle_type') or DistanceDeliveryMethod.VEHICLE_MOTORCYCLE,
+            base_fee=request.data.get('base_fee') or 0,
+            rate_per_km=request.data.get('rate_per_km') or 0,
+            minimum_fee=request.data.get('minimum_fee') or 0,
+            maximum_distance_km=request.data.get('maximum_distance_km') or None,
+            maximum_weight_kg=request.data.get('maximum_weight_kg') or None,
+            origin_label=request.data.get('origin_label', ''),
+            origin_latitude=request.data.get('origin_latitude'),
+            origin_longitude=request.data.get('origin_longitude'),
+            is_active=_bool_value(request.data.get('is_active'), default=True),
+            sort_order=request.data.get('sort_order') or 0,
+        )
+        return Response({'method': _distance_delivery_payload(method)}, status=status.HTTP_201_CREATED)
+
+
+class AdminDistanceDeliveryMethodDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, method_id: int):
+        method = get_object_or_404(apps.get_model('accounts', 'DistanceDeliveryMethod'), id=method_id)
+        return Response({'method': _distance_delivery_payload(method)})
+
+    def patch(self, request, method_id: int):
+        method = get_object_or_404(apps.get_model('accounts', 'DistanceDeliveryMethod'), id=method_id)
+        for field in [
+            'code',
+            'name',
+            'description',
+            'vehicle_type',
+            'base_fee',
+            'rate_per_km',
+            'minimum_fee',
+            'maximum_distance_km',
+            'maximum_weight_kg',
+            'origin_label',
+            'origin_latitude',
+            'origin_longitude',
+            'is_active',
+            'sort_order',
+        ]:
+            if field in request.data:
+                value = request.data[field]
+                if field in {'maximum_distance_km', 'maximum_weight_kg'} and value in ('', None):
+                    value = None
+                if field == 'is_active':
+                    value = _bool_value(value, default=method.is_active)
+                setattr(method, field, value)
+        method.save()
+        return Response({'method': _distance_delivery_payload(method)})
+
+    def delete(self, request, method_id: int):
+        get_object_or_404(apps.get_model('accounts', 'DistanceDeliveryMethod'), id=method_id).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminWeightBasedShippingCollectionAPIView(APIView):

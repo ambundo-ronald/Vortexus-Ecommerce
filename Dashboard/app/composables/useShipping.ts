@@ -25,6 +25,41 @@ export interface WeightBandPayload {
   charge: number | string
 }
 
+export interface DistanceDeliveryMethodItem {
+  id: number
+  code: string
+  name: string
+  description: string
+  vehicle_type: string
+  base_fee: number
+  rate_per_km: number
+  minimum_fee: number
+  maximum_distance_km: number | null
+  maximum_weight_kg: number | null
+  origin_label: string
+  origin_latitude: number
+  origin_longitude: number
+  is_active: boolean
+  sort_order: number
+}
+
+export interface DistanceDeliveryMethodPayload {
+  code?: string
+  name: string
+  description?: string
+  vehicle_type: string
+  base_fee: number | string
+  rate_per_km: number | string
+  minimum_fee?: number | string
+  maximum_distance_km?: number | string | null
+  maximum_weight_kg?: number | string | null
+  origin_label?: string
+  origin_latitude: number | string
+  origin_longitude: number | string
+  is_active?: boolean
+  sort_order?: number | string
+}
+
 function readApiError(err: any) {
   const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
   const errors = err?.data?.error?.errors || err?.data
@@ -202,6 +237,83 @@ export function useShipping() {
     }
   }
 
+  async function getDistanceDeliveryMethods(params: { page?: number, pageSize?: number } = {}) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ results: DistanceDeliveryMethodItem[], pagination: any }>('/admin/shipping/distance/', {
+        method: 'GET',
+        query: {
+          page: params.page || 1,
+          page_size: params.pageSize || 200,
+        },
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function createDistanceDeliveryMethod(payload: DistanceDeliveryMethodPayload) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ method: DistanceDeliveryMethodItem }>('/admin/shipping/distance/', {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.method }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function updateDistanceDeliveryMethod(id: number | string, payload: Partial<DistanceDeliveryMethodPayload>) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ method: DistanceDeliveryMethodItem }>(`/admin/shipping/distance/${id}/`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      return { success: true, data: result.method }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function deleteDistanceDeliveryMethod(id: number | string) {
+    loading.value = true
+    error.value = null
+    try {
+      await request(`/admin/shipping/distance/${id}/`, { method: 'DELETE' })
+      return { success: true }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -213,5 +325,9 @@ export function useShipping() {
     getWeightBasedMethods,
     updateWeightBand,
     updateWeightBasedMethod,
+    createDistanceDeliveryMethod,
+    deleteDistanceDeliveryMethod,
+    getDistanceDeliveryMethods,
+    updateDistanceDeliveryMethod,
   }
 }

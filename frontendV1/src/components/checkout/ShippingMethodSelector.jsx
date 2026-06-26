@@ -40,7 +40,7 @@ export default function ShippingMethodSelector({ methods = [], selectedCode = ""
               </span>
               <span className="choice-card__copy">
                 <strong>{method.name}</strong>
-                <small>{method.description || deliveryEta(method)}</small>
+                <small>{deliveryDescription(method)}</small>
               </span>
               <span className="choice-card__price">{formatCurrency(method.charge, method.currency)}</span>
             </button>
@@ -56,4 +56,13 @@ function deliveryEta(method) {
   if (!eta.min_days && !eta.max_days) return "Available for this order";
   if (eta.min_days === eta.max_days) return `${eta.min_days} day${eta.min_days === 1 ? "" : "s"}`;
   return `${eta.min_days || 1}-${eta.max_days} days`;
+}
+
+function deliveryDescription(method) {
+  if (method?.method_type === "distance_delivery" && method.distance?.km) {
+    const distance = Number(method.distance.km || 0).toLocaleString("en-KE", { maximumFractionDigits: 2 });
+    const rate = formatCurrency(method.distance.rate_per_km || 0, method.currency);
+    return `${method.description || "Map distance delivery"} · ${distance} km · ${rate}/km`;
+  }
+  return method.description || deliveryEta(method);
 }

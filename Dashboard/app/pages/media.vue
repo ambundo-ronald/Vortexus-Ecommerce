@@ -10,6 +10,8 @@ const searchQuery = ref("");
 const productIdFilter = ref("");
 const uploadProductId = ref("");
 const uploadAlt = ref("");
+const mediaTypeFilter = ref("");
+const uploadMediaType = ref<"product" | "marketing_block">("product");
 
 const isLoading = ref(false);
 const isUploading = ref(false);
@@ -58,6 +60,7 @@ async function loadMedia() {
     pageSize: pageSize.value,
     search: searchQuery.value,
     productId: productIdFilter.value,
+    mediaType: mediaTypeFilter.value,
   });
 
   if (result.success) {
@@ -137,7 +140,7 @@ function removeStagedFile(index: number) {
 }
 
 async function uploadFiles() {
-  if (!uploadProductId.value) {
+  if (uploadMediaType.value === "product" && !uploadProductId.value) {
     toast.add({
       title: "Product required",
       description: "Enter the product ID this media belongs to.",
@@ -153,7 +156,7 @@ async function uploadFiles() {
   let uploadedCount = 0;
 
   for (const file of stagedFiles.value) {
-    const result = await uploadMedia(file, uploadProductId.value, uploadAlt.value);
+    const result = await uploadMedia(file, uploadProductId.value, uploadAlt.value, uploadMediaType.value);
     if (!result.success) {
       toast.add({
         title: "Upload failed",
@@ -209,8 +212,8 @@ async function deleteSelectedImages() {
   await loadMedia();
 }
 
-watch([currentPage, pageSize, searchQuery, productIdFilter], loadMedia, { immediate: true });
-watch([searchQuery, productIdFilter, pageSize], () => {
+watch([currentPage, pageSize, searchQuery, productIdFilter, mediaTypeFilter], loadMedia, { immediate: true });
+watch([searchQuery, productIdFilter, mediaTypeFilter, pageSize], () => {
   currentPage.value = 1;
 });
 </script>
@@ -247,6 +250,20 @@ watch([searchQuery, productIdFilter, pageSize], () => {
           icon="i-lucide-package"
           placeholder="Product ID"
         />
+        <USelect
+          v-model="mediaTypeFilter"
+          class="w-full sm:w-48"
+          color="neutral"
+          variant="outline"
+          size="lg"
+          :items="[
+            { label: 'All media', value: '' },
+            { label: 'Product images', value: 'product' },
+            { label: 'Marketing blocks', value: 'marketing_block' },
+          ]"
+          value-attribute="value"
+          option-attribute="label"
+        />
         <UButton variant="outline" size="lg" :loading="isLoading" @click="loadMedia">
           <UIcon name="i-lucide-refresh-cw" />
           Refresh
@@ -261,7 +278,7 @@ watch([searchQuery, productIdFilter, pageSize], () => {
     </div>
 
     <section class="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_180px_1fr_auto]">
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_190px_180px_1fr_auto]">
         <div
           :class="[
             'cursor-pointer rounded-2xl border-2 border-dashed p-6 text-center transition-colors',
@@ -291,8 +308,31 @@ watch([searchQuery, productIdFilter, pageSize], () => {
           </p>
         </div>
 
-        <UFormField label="Product ID" required>
-          <UInput v-model="uploadProductId" color="neutral" variant="outline" size="lg" type="number" placeholder="123" />
+        <UFormField label="Media category">
+          <USelect
+            v-model="uploadMediaType"
+            color="neutral"
+            variant="outline"
+            size="lg"
+            :items="[
+              { label: 'Product image', value: 'product' },
+              { label: 'Marketing block', value: 'marketing_block' },
+            ]"
+            value-attribute="value"
+            option-attribute="label"
+          />
+        </UFormField>
+
+        <UFormField label="Product ID" :required="uploadMediaType === 'product'">
+          <UInput
+            v-model="uploadProductId"
+            color="neutral"
+            variant="outline"
+            size="lg"
+            type="number"
+            placeholder="123"
+            :disabled="uploadMediaType !== 'product'"
+          />
         </UFormField>
 
         <UFormField label="Alt text">
@@ -417,7 +457,7 @@ watch([searchQuery, productIdFilter, pageSize], () => {
                   {{ file.name }}
                 </p>
                 <p class="truncate text-xs text-slate-500">
-                  {{ file.productTitle }} · #{{ file.productId }}
+                  {{ file.mediaType === 'marketing_block' ? 'Marketing block' : `${file.productTitle} · #${file.productId}` }}
                 </p>
               </div>
               <button
@@ -473,7 +513,7 @@ watch([searchQuery, productIdFilter, pageSize], () => {
               {{ previewItem.name }}
             </h2>
             <p class="truncate text-sm text-slate-500">
-              {{ previewItem.productTitle }} · Product #{{ previewItem.productId }}
+              {{ previewItem.mediaType === 'marketing_block' ? 'Marketing block media' : `${previewItem.productTitle} · Product #${previewItem.productId}` }}
             </p>
           </div>
           <UButton icon="i-lucide-x" color="neutral" variant="ghost" square @click="previewItem = null" />
@@ -499,7 +539,7 @@ watch([searchQuery, productIdFilter, pageSize], () => {
                 Delete selected media
               </h3>
               <p class="text-sm text-slate-500">
-                This removes images from their products.
+                This removes selected product or marketing media.
               </p>
             </div>
           </div>

@@ -123,13 +123,27 @@ watch(
 )
 
 const selectedRecommendedProductId = ref("")
+const categorySearch = ref("")
+const recommendedProductSearch = ref("")
+const filteredCategories = computed(() => {
+  const search = categorySearch.value.trim().toLowerCase()
+  const items = [{ label: 'Uncategorized', value: '__uncategorized__' }, ...props.categories]
+  if (!search)
+    return items
+  return items.filter(item => item.label.toLowerCase().includes(search) || String(item.value).toLowerCase().includes(search))
+})
 const selectedRecommendedProducts = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   return (props.productOptions || []).filter(option => selectedIds.has(Number(option.value)))
 })
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
-  return (props.productOptions || []).filter(option => !selectedIds.has(Number(option.value)))
+  const search = recommendedProductSearch.value.trim().toLowerCase()
+  return (props.productOptions || []).filter((option) => {
+    if (selectedIds.has(Number(option.value)))
+      return false
+    return !search || option.label.toLowerCase().includes(search) || String(option.value).toLowerCase().includes(search)
+  })
 })
 
 function generateSKU() {
@@ -216,9 +230,16 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
               </template>
               <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <UFormField label="Category" name="category">
+                  <UInput
+                    v-model="categorySearch"
+                    icon="i-lucide-search"
+                    placeholder="Search categories..."
+                    size="sm"
+                    class="mb-2 w-full"
+                  />
                   <USelect
                     v-model="localFormState.category"
-                    :items="[{ label: 'Uncategorized', value: '__uncategorized__' }, ...categories]"
+                    :items="filteredCategories"
                     value-attribute="value"
                     option-attribute="label"
                     size="lg"
@@ -255,6 +276,13 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
               <div class="space-y-4">
                 <div class="flex flex-col gap-3 sm:flex-row">
                   <UFormField label="Recommended product" class="min-w-0 flex-1">
+                    <UInput
+                      v-model="recommendedProductSearch"
+                      icon="i-lucide-search"
+                      placeholder="Search products..."
+                      size="sm"
+                      class="mb-2 w-full"
+                    />
                     <USelect
                       v-model="selectedRecommendedProductId"
                       :items="availableRecommendedProductOptions"

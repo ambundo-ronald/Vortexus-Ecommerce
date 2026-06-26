@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
@@ -7,17 +8,30 @@ import { useWishlist } from "../../hooks/useWishlist";
 import { useUiStore } from "../../store/ui.store";
 
 export default function WishlistDrawer() {
+  const shellRef = useRef(null);
   const open = useUiStore((state) => state.wishlistDrawerOpen);
   const close = useUiStore((state) => state.closeWishlistDrawer);
   const { items, error, saving, removeItem } = useWishlist({ auto: open });
 
+  function handleClose() {
+    if (shellRef.current?.contains(document.activeElement)) {
+      document.activeElement?.blur();
+    }
+    close();
+  }
+
   return (
-    <div className={`drawer-shell ${open ? "open" : ""}`} aria-hidden={!open}>
-      <button className="drawer-shade" type="button" onClick={close} aria-label="Close wishlist" />
+    <div
+      ref={shellRef}
+      className={`drawer-shell ${open ? "open" : ""}`}
+      aria-hidden={open ? undefined : "true"}
+      inert={open ? undefined : ""}
+    >
+      <button className="drawer-shade" type="button" onClick={handleClose} aria-label="Close wishlist" />
       <aside className="drawer-panel" aria-label="Wishlist drawer">
         <div className="drawer-head">
           <strong>Wishlist</strong>
-          <button type="button" onClick={close} aria-label="Close wishlist">
+          <button type="button" onClick={handleClose} aria-label="Close wishlist">
             <MaterialIcon name="close" size={22} />
           </button>
         </div>
@@ -33,7 +47,7 @@ export default function WishlistDrawer() {
           )}
         </div>
         <div className="drawer-footer">
-          <Link className="primary-button" to="/account/wishlist" onClick={close}>
+          <Link className="primary-button" to="/account/wishlist" onClick={handleClose}>
             <MaterialIcon name="favorite" size={19} />
             Open wishlist
           </Link>
