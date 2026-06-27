@@ -4,8 +4,12 @@ export interface AttributeItem {
   name: string
   code: string
   type: string
+  storage_type?: string
   required: boolean
   option_group_id: number | null
+  parent_attribute_id: number | null
+  parent_attribute_name: string
+  uom: string
 }
 
 export interface AttributePayload {
@@ -14,6 +18,8 @@ export interface AttributePayload {
   code?: string
   type: string
   required: boolean
+  parent_attribute_id?: number | null
+  uom?: string
 }
 
 function readApiError(err: any) {

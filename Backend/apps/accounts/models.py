@@ -119,3 +119,34 @@ class DistanceDeliveryMethod(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProductAttributeMetadata(models.Model):
+    DATA_TYPE_UOM = 'uom'
+
+    attribute = models.OneToOneField(
+        'catalogue.ProductAttribute',
+        on_delete=models.CASCADE,
+        related_name='vortexus_metadata',
+    )
+    parent_attribute = models.ForeignKey(
+        'catalogue.ProductAttribute',
+        on_delete=models.SET_NULL,
+        related_name='vortexus_child_metadata',
+        blank=True,
+        null=True,
+    )
+    data_type = models.CharField(max_length=32, blank=True)
+    uom = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['attribute__code']
+        indexes = [
+            models.Index(fields=['data_type']),
+            models.Index(fields=['uom']),
+        ]
+
+    def __str__(self):
+        return f'ProductAttributeMetadata(attribute_id={self.attribute_id})'

@@ -323,15 +323,58 @@ class AdminProductTypeDetailAPIView(APIView):
 
 
 def _attribute_payload(attribute):
+    metadata = getattr(attribute, 'vortexus_metadata', None)
+    data_type = getattr(metadata, 'data_type', '') or attribute.type
+    parent_attribute = getattr(metadata, 'parent_attribute', None)
     return {
         'id': attribute.id,
         'product_class_id': attribute.product_class_id,
         'name': attribute.name,
         'code': attribute.code,
-        'type': attribute.type,
+        'type': data_type,
+        'storage_type': attribute.type,
         'required': attribute.required,
         'option_group_id': attribute.option_group_id,
+        'parent_attribute_id': getattr(metadata, 'parent_attribute_id', None),
+        'parent_attribute_name': parent_attribute.name if parent_attribute else '',
+        'uom': getattr(metadata, 'uom', '') or '',
     }
+
+
+def _attribute_storage_type(requested_type: str) -> str:
+    return 'text' if requested_type == 'uom' else (requested_type or 'text')
+
+
+def _sync_attribute_metadata(attribute, payload):
+    ProductAttributeMetadata = apps.get_model('accounts', 'ProductAttributeMetadata')
+    ProductAttribute = get_model('catalogue', 'ProductAttribute')
+    existing_metadata = getattr(attribute, 'vortexus_metadata', None)
+    requested_type = payload.get('type') or getattr(existing_metadata, 'data_type', '') or attribute.type
+    parent_id = payload.get('parent_attribute_id', None)
+    uom = (payload.get('uom') or '').strip()
+    metadata_requested = requested_type == 'uom' or parent_id not in (None, '') or uom
+
+    if not metadata_requested:
+        if existing_metadata and existing_metadata.data_type:
+            existing_metadata.data_type = ''
+            existing_metadata.save(update_fields=['data_type', 'updated_at'])
+        return
+
+    metadata, _ = ProductAttributeMetadata.objects.get_or_create(attribute=attribute)
+    metadata.data_type = requested_type if requested_type == 'uom' else ''
+    metadata.uom = uom if requested_type == 'uom' else ''
+
+    if parent_id in (None, ''):
+        metadata.parent_attribute = None
+    else:
+        parent = get_object_or_404(ProductAttribute, id=parent_id)
+        if parent.id == attribute.id:
+            raise serializers.ValidationError({'parent_attribute_id': 'An attribute cannot be its own parent.'})
+        if parent.product_class_id != attribute.product_class_id:
+            raise serializers.ValidationError({'parent_attribute_id': 'Parent attribute must use the same product type.'})
+        metadata.parent_attribute = parent
+
+    metadata.save()
 
 
 class AdminAttributeCollectionAPIView(APIView):
@@ -339,18 +382,25 @@ class AdminAttributeCollectionAPIView(APIView):
 
     def get(self, request):
         ProductAttribute = get_model('catalogue', 'ProductAttribute')
-        return Response(_page(request, ProductAttribute.objects.select_related('product_class').order_by('code'), _attribute_payload))
+        queryset = ProductAttribute.objects.select_related(
+            'product_class',
+            'vortexus_metadata',
+            'vortexus_metadata__parent_attribute',
+        ).order_by('code')
+        return Response(_page(request, queryset, _attribute_payload))
 
     def post(self, request):
         ProductAttribute = get_model('catalogue', 'ProductAttribute')
         ProductClass = get_model('catalogue', 'ProductClass')
+        requested_type = request.data.get('type', 'text')
         attribute = ProductAttribute.objects.create(
             product_class=get_object_or_404(ProductClass, id=request.data.get('product_class_id')),
             name=request.data.get('name', ''),
             code=request.data.get('code') or slugify(request.data.get('name', '')).replace('-', '_'),
-            type=request.data.get('type', 'text'),
-            required=bool(request.data.get('required', False)),
+            type=_attribute_storage_type(requested_type),
+            required=_bool_value(request.data.get('required', False)),
         )
+        _sync_attribute_metadata(attribute, request.data)
         return Response({'attribute': _attribute_payload(attribute)}, status=status.HTTP_201_CREATED)
 
 
@@ -358,14 +408,32 @@ class AdminAttributeDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, attribute_id: int):
-        return Response({'attribute': _attribute_payload(get_object_or_404(get_model('catalogue', 'ProductAttribute'), id=attribute_id))})
+        queryset = get_model('catalogue', 'ProductAttribute').objects.select_related(
+            'vortexus_metadata',
+            'vortexus_metadata__parent_attribute',
+        )
+        return Response({'attribute': _attribute_payload(get_object_or_404(queryset, id=attribute_id))})
 
     def patch(self, request, attribute_id: int):
         attribute = get_object_or_404(get_model('catalogue', 'ProductAttribute'), id=attribute_id)
         for field in ['name', 'code', 'type', 'required']:
             if field in request.data:
-                setattr(attribute, field, request.data[field])
+                if field == 'type':
+                    value = _attribute_storage_type(request.data[field])
+                elif field == 'required':
+                    value = _bool_value(request.data[field])
+                else:
+                    value = request.data[field]
+                setattr(attribute, field, value)
         attribute.save()
+        _sync_attribute_metadata(attribute, request.data)
+        attribute = get_object_or_404(
+            get_model('catalogue', 'ProductAttribute').objects.select_related(
+                'vortexus_metadata',
+                'vortexus_metadata__parent_attribute',
+            ),
+            id=attribute_id,
+        )
         return Response({'attribute': _attribute_payload(attribute)})
 
     def delete(self, request, attribute_id: int):

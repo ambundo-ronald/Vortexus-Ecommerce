@@ -24,9 +24,11 @@ const saveError = ref('')
 
 const form = reactive({
   product_class_id: '',
+  parent_attribute_id: '',
   name: '',
   code: '',
   type: 'text',
+  uom: '',
   required: false,
 })
 
@@ -35,6 +37,7 @@ const attributeTypeOptions = [
   { label: 'Integer', value: 'integer' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Float', value: 'float' },
+  { label: 'UOM', value: 'uom' },
   { label: 'Rich text', value: 'richtext' },
   { label: 'Date', value: 'date' },
   { label: 'Datetime', value: 'datetime' },
@@ -65,6 +68,19 @@ const productTypeFilterOptions = computed(() => [
   })),
 ])
 
+const parentAttributeOptions = computed(() => [
+  { label: 'No parent attribute', value: '__no_parent__' },
+  ...attributes.value
+    .filter(attribute =>
+      String(attribute.product_class_id) === String(form.product_class_id)
+      && (!editingAttribute.value || attribute.id !== editingAttribute.value.id),
+    )
+    .map(attribute => ({
+      label: `${attribute.name} (${attribute.code})`,
+      value: String(attribute.id),
+    })),
+])
+
 const filteredAttributes = computed(() => {
   const search = searchQuery.value.trim().toLowerCase()
   return attributes.value.filter((attribute) => {
@@ -72,6 +88,8 @@ const filteredAttributes = computed(() => {
     const matchesSearch = !search
       || attribute.name.toLowerCase().includes(search)
       || attribute.code.toLowerCase().includes(search)
+      || (attribute.parent_attribute_name || '').toLowerCase().includes(search)
+      || (attribute.uom || '').toLowerCase().includes(search)
       || productTypeName.includes(search)
     const matchesType = typeFilter.value === ALL_TYPES || attribute.type === typeFilter.value
     const matchesProductType = productTypeFilter.value === ALL_PRODUCT_TYPES || String(attribute.product_class_id) === productTypeFilter.value
@@ -95,9 +113,11 @@ function resetForm() {
   editingAttribute.value = null
   saveError.value = ''
   form.product_class_id = productTypes.value[0]?.id ? String(productTypes.value[0].id) : ''
+  form.parent_attribute_id = '__no_parent__'
   form.name = ''
   form.code = ''
   form.type = 'text'
+  form.uom = ''
   form.required = false
 }
 
@@ -110,9 +130,11 @@ function openEditAttribute(attribute: AttributeItem) {
   editingAttribute.value = attribute
   saveError.value = ''
   form.product_class_id = String(attribute.product_class_id)
+  form.parent_attribute_id = attribute.parent_attribute_id ? String(attribute.parent_attribute_id) : '__no_parent__'
   form.name = attribute.name
   form.code = attribute.code
   form.type = attribute.type
+  form.uom = attribute.uom || ''
   form.required = attribute.required
   editorOpen.value = true
 }
@@ -164,6 +186,10 @@ async function submitAttribute() {
     name: form.name.trim(),
     code: form.code.trim() || undefined,
     type: form.type,
+    parent_attribute_id: form.parent_attribute_id && form.parent_attribute_id !== '__no_parent__'
+      ? Number(form.parent_attribute_id)
+      : null,
+    uom: form.type === 'uom' ? form.uom.trim() : '',
     required: form.required,
   }
 
@@ -172,6 +198,8 @@ async function submitAttribute() {
         name: payload.name,
         code: payload.code,
         type: payload.type,
+        parent_attribute_id: payload.parent_attribute_id,
+        uom: payload.uom,
         required: payload.required,
       })
     : await createAttribute(payload)
@@ -286,8 +314,9 @@ onMounted(loadAttributes)
 
     <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div class="grid grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-        <div class="col-span-4">Attribute</div>
-        <div class="col-span-3">Product type</div>
+        <div class="col-span-3">Attribute</div>
+        <div class="col-span-2">Parent</div>
+        <div class="col-span-2">Product type</div>
         <div class="col-span-2">Data type</div>
         <div class="col-span-1">Required</div>
         <div class="col-span-2 text-right">Actions</div>
@@ -312,7 +341,7 @@ onMounted(loadAttributes)
         :key="attribute.id"
         class="grid grid-cols-12 items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
       >
-        <div class="col-span-4 min-w-0">
+        <div class="col-span-3 min-w-0">
           <div class="flex min-w-0 items-center gap-3">
             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
               <UIcon name="i-lucide-list-plus" />
@@ -323,9 +352,12 @@ onMounted(loadAttributes)
             </div>
           </div>
         </div>
-        <div class="col-span-3 truncate text-sm text-slate-600">{{ getProductTypeName(attribute.product_class_id) }}</div>
+        <div class="col-span-2 truncate text-sm text-slate-600">
+          {{ attribute.parent_attribute_name || 'None' }}
+        </div>
+        <div class="col-span-2 truncate text-sm text-slate-600">{{ getProductTypeName(attribute.product_class_id) }}</div>
         <div class="col-span-2">
-          <UBadge color="info" variant="soft">{{ getTypeLabel(attribute.type) }}</UBadge>
+          <UBadge color="info" variant="soft">{{ getTypeLabel(attribute.type) }}{{ attribute.uom ? ` · ${attribute.uom}` : '' }}</UBadge>
         </div>
         <div class="col-span-1">
           <UBadge :color="attribute.required ? 'error' : 'neutral'" variant="soft">
@@ -388,6 +420,17 @@ onMounted(loadAttributes)
               value-attribute="value"
               option-attribute="label"
             />
+          </UFormField>
+          <UFormField label="Parent attribute">
+            <USelect
+              v-model="form.parent_attribute_id"
+              :items="parentAttributeOptions"
+              value-attribute="value"
+              option-attribute="label"
+            />
+          </UFormField>
+          <UFormField v-if="form.type === 'uom'" label="UOM" required>
+            <UInput v-model="form.uom" autocomplete="off" placeholder="e.g. LPM, bar, mm, kg" />
           </UFormField>
           <UFormField label="Name" required>
             <UInput v-model="form.name" autocomplete="off" />

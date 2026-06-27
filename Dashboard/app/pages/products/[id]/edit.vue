@@ -7,12 +7,14 @@ import ProductForm, {
 import type { ProductImageItem } from "~/types/ProductImage";
 
 const { deleteProduct, getProduct, getCategoryOptions, getProductOptions, syncProductImages, updateProduct } = useProduct();
+const { getAttributes } = useAttributes();
 
 const route = useRoute();
 
 const product = ref<any>(null)
 const categories = ref<{ label: string; value: string }[]>([])
 const productOptions = ref<{ label: string; value: string }[]>([])
+const attributeDefinitions = ref<any[]>([])
 const originalImages = ref<ProductImageItem[]>([])
 const isDeleteModalOpen = ref(false)
 const isDeleting = ref(false)
@@ -22,9 +24,10 @@ const loadError = ref("")
 
 onMounted(async () => {
   isLoadingProduct.value = true
-  const [productResult, categoryResult] = await Promise.all([
+  const [productResult, categoryResult, attributeResult] = await Promise.all([
     getProduct(route.params.id as string),
     getCategoryOptions(),
+    getAttributes({ pageSize: 500 }),
   ])
 
   if (productResult.success)
@@ -34,13 +37,15 @@ onMounted(async () => {
 
   if (categoryResult.success)
     categories.value = categoryResult.data
+  if (attributeResult.success)
+    attributeDefinitions.value = attributeResult.data?.results ?? []
 
   isLoadingProduct.value = false
 
   const productOptionsResult = await getProductOptions({
     excludeId: route.params.id as string,
-    maxPages: 2,
-    pageSize: 60,
+    maxPages: 10,
+    pageSize: 100,
   })
   if (productOptionsResult.success)
     productOptions.value = productOptionsResult.data
@@ -163,6 +168,7 @@ watch(product, (value) => {
       :status-options="statusOptions"
       :categories="categories"
       :product-options="productOptions"
+      :attribute-definitions="attributeDefinitions"
       @on-submit="submit"
     >
       <template #header="{ submit }">

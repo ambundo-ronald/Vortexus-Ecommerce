@@ -10,7 +10,7 @@ const searchQuery = ref("");
 const productIdFilter = ref("");
 const uploadProductId = ref("");
 const uploadAlt = ref("");
-const mediaTypeFilter = ref("");
+const mediaTypeFilter = ref<"all" | "product" | "marketing_block">("all");
 const uploadMediaType = ref<"product" | "marketing_block">("product");
 
 const isLoading = ref(false);
@@ -60,7 +60,7 @@ async function loadMedia() {
     pageSize: pageSize.value,
     search: searchQuery.value,
     productId: productIdFilter.value,
-    mediaType: mediaTypeFilter.value,
+    mediaType: mediaTypeFilter.value === "all" ? undefined : mediaTypeFilter.value,
   });
 
   if (result.success) {
@@ -257,7 +257,7 @@ watch([searchQuery, productIdFilter, mediaTypeFilter, pageSize], () => {
           variant="outline"
           size="lg"
           :items="[
-            { label: 'All media', value: '' },
+            { label: 'All media', value: 'all' },
             { label: 'Product images', value: 'product' },
             { label: 'Marketing blocks', value: 'marketing_block' },
           ]"
