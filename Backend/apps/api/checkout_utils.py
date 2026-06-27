@@ -1,4 +1,5 @@
 import logging
+from math import asin, cos, radians, sin, sqrt
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
@@ -61,10 +62,17 @@ class IndustrialShippingRepository:
         if not basket.is_shipping_required():
             return [NoShippingRequired()]
 
+        request = kwargs.get('request')
         country_code = shipping_country_code(shipping_addr)
         metrics = basket_shipping_metrics(basket)
 
         methods = []
+        delivery_location = get_session_location(request) if request else None
+        if not delivery_location and shipping_addr:
+            delivery_location = location_for_shipping_address(shipping_addr)
+        if delivery_location:
+            methods.extend(build_distance_delivery_methods(metrics, delivery_location, country_code))
+
         for rule in settings.INDUSTRIAL_SHIPPING_RULES:
             if not shipping_rule_matches(rule, metrics, country_code):
                 continue
@@ -86,6 +94,25 @@ class RuleBasedShippingMethod(FixedPrice):
         self.min_eta_days = rule.get('min_eta_days')
         self.max_eta_days = rule.get('max_eta_days')
         self.is_pickup = bool(rule.get('is_pickup', False))
+
+
+class DistanceDeliveryShippingMethod(FixedPrice):
+    def __init__(self, *, method, charge: Decimal, distance_km: Decimal):
+        super().__init__(charge_excl_tax=charge, charge_incl_tax=charge)
+        self.distance_method = method
+        self.code = f'distance-{method.code}'
+        self.name = method.name
+        self.description = method.description or f'{method.get_vehicle_type_display()} delivery calculated at {method.rate_per_km}/km.'
+        self.carrier_code = 'distance_delivery'
+        self.service_code = method.vehicle_type
+        self.method_type = 'distance_delivery'
+        self.min_eta_days = 0
+        self.max_eta_days = 1
+        self.is_pickup = False
+        self.distance_km = distance_km
+        self.vehicle_type = method.vehicle_type
+        self.rate_per_km = method.rate_per_km
+        self.base_fee = method.base_fee
 
 
 def _decimal(value, default: Decimal = ZERO) -> Decimal:
@@ -189,6 +216,46 @@ def shipping_rule_matches(rule: dict, metrics: dict, country_code: str) -> bool:
         return False
 
     return True
+
+
+def _haversine_km(lat1, lon1, lat2, lon2) -> Decimal:
+    radius_km = Decimal('6371.00')
+    rlat1 = radians(float(lat1))
+    rlon1 = radians(float(lon1))
+    rlat2 = radians(float(lat2))
+    rlon2 = radians(float(lon2))
+    delta_lat = rlat2 - rlat1
+    delta_lon = rlon2 - rlon1
+    value = sin(delta_lat / 2) ** 2 + cos(rlat1) * cos(rlat2) * sin(delta_lon / 2) ** 2
+    distance = 2 * asin(sqrt(value)) * float(radius_km)
+    return Decimal(str(distance)).quantize(Decimal('0.01'))
+
+
+def build_distance_delivery_methods(metrics: dict, delivery_location: dict, country_code: str) -> list:
+    normalized_country = (country_code or '').strip().upper()
+    if normalized_country and normalized_country != 'KE':
+        return []
+
+    latitude = delivery_location.get('latitude')
+    longitude = delivery_location.get('longitude')
+    if latitude is None or longitude is None:
+        return []
+
+    DistanceDeliveryMethod = apps.get_model('accounts', 'DistanceDeliveryMethod')
+    methods = []
+    for method in DistanceDeliveryMethod.objects.filter(is_active=True).order_by('sort_order', 'name'):
+        max_weight = _decimal(method.maximum_weight_kg)
+        if max_weight and metrics['total_weight_kg'] > max_weight:
+            continue
+        distance_km = _haversine_km(method.origin_latitude, method.origin_longitude, latitude, longitude)
+        max_distance = _decimal(method.maximum_distance_km)
+        if max_distance and distance_km > max_distance:
+            continue
+        charge = (method.base_fee + (method.rate_per_km * distance_km)).quantize(Decimal('0.01'))
+        if method.minimum_fee and charge < method.minimum_fee:
+            charge = method.minimum_fee
+        methods.append(DistanceDeliveryShippingMethod(method=method, charge=charge, distance_km=distance_km))
+    return methods
 
 
 def build_shipping_method_from_rule(rule: dict, metrics: dict, country_code: str):
@@ -411,6 +478,12 @@ def serialize_shipping_method(method, basket, selected: bool = False, display_cu
             'min_days': getattr(method, 'min_eta_days', None),
             'max_days': getattr(method, 'max_eta_days', None),
         },
+        'distance': {
+            'km': _money_payload(getattr(method, 'distance_km', ZERO)),
+            'vehicle_type': getattr(method, 'vehicle_type', ''),
+            'rate_per_km': _money_payload(getattr(method, 'rate_per_km', ZERO)),
+            'base_fee': _money_payload(getattr(method, 'base_fee', ZERO)),
+        } if getattr(method, 'method_type', '') == 'distance_delivery' else None,
         'charge': display_amount,
         'currency': output_currency,
         'base_charge': _money_payload(base_amount),

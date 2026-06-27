@@ -3,14 +3,18 @@ export interface MediaListParams {
   pageSize?: number
   search?: string
   productId?: string | number
+  mediaType?: string
 }
 
 export interface MediaAsset {
-  id: number
+  id: string
+  numericId?: number
+  mediaType: 'product' | 'marketing_block'
+  category: string
   name: string
   url: string
   alt: string
-  productId: number
+  productId: number | null
   productTitle: string
   displayOrder: number
   createdAt?: string
@@ -32,6 +36,7 @@ export function useMedia() {
           page_size: params.pageSize || 24,
           q: params.search || '',
           product_id: params.productId || '',
+          media_type: params.mediaType || '',
         },
       })
       return {
@@ -54,10 +59,12 @@ export function useMedia() {
     }
   }
 
-  async function uploadMedia(file: File, productId: string | number, alt = '') {
+  async function uploadMedia(file: File, productId: string | number, alt = '', mediaType = 'product') {
     const formData = new FormData()
     formData.append('image', file)
-    formData.append('product_id', String(productId))
+    formData.append('media_type', mediaType)
+    if (productId)
+      formData.append('product_id', String(productId))
     formData.append('alt', alt)
     try {
       const result = await request<{ media: MediaAsset }>('/admin/media/', {
@@ -71,7 +78,7 @@ export function useMedia() {
     }
   }
 
-  async function deleteMedia(id: number) {
+  async function deleteMedia(id: string) {
     try {
       await request(`/admin/media/${id}/`, {
         method: 'DELETE',

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -59,3 +60,33 @@ class MarketingBlock(models.Model):
         if self.ends_at and self.ends_at <= now:
             return False
         return True
+
+
+class MarketingMediaAsset(models.Model):
+    CATEGORY_MARKETING_BLOCK = 'marketing_block'
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_MARKETING_BLOCK, 'Marketing block'),
+    ]
+
+    category = models.CharField(max_length=40, choices=CATEGORY_CHOICES, default=CATEGORY_MARKETING_BLOCK, db_index=True)
+    title = models.CharField(max_length=160, blank=True)
+    image = models.ImageField(upload_to='marketing-blocks/%Y/%m/')
+    alt_text = models.CharField(max_length=160, blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='marketing_media_assets',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['category', '-created_at']),
+        ]
+
+    def __str__(self):
+        return self.title or self.image.name

@@ -46,6 +46,17 @@ from .order_serializers import OrderPlacementSerializer, OrderSummarySerializer,
 logger = logging.getLogger(__name__)
 
 
+def _order_payment_payload(order):
+    PaymentSession = apps.get_model('payments', 'PaymentSession')
+    payment_session = (
+        PaymentSession.objects.select_related('order')
+        .filter(order=order)
+        .order_by('-paid_at', '-updated_at', '-created_at')
+        .first()
+    )
+    return serialize_payment_session(payment_session) if payment_session else None
+
+
 def _basket_value_error_message(exc: ValueError) -> str:
     message = str(exc)
     if 'same currency' in message and 'Proposed line has currency' in message:
@@ -217,7 +228,13 @@ class CheckoutThankYouAPIView(APIView):
             order = get_object_or_404(queryset, number=order_number, user=request.user)
         else:
             order = get_object_or_404(queryset, number=order_number)
-        return Response({'detail': 'Order placed successfully.', 'order': OrderSummarySerializer(order).data})
+        return Response(
+            {
+                'detail': 'Order placed successfully.',
+                'order': OrderSummarySerializer(order).data,
+                'payment': _order_payment_payload(order),
+            }
+        )
 
 
 class OrderPlacementAPIView(APIView):
@@ -243,13 +260,13 @@ class OrderPlacementAPIView(APIView):
         payment_session = None
         if payment_reference:
             payment_session = get_object_or_404(
-                PaymentSession.objects.select_for_update(),
+                PaymentSession.objects.select_for_update(of=('self',)).select_related('user'),
                 reference=payment_reference,
             )
             if request.user.is_authenticated and payment_session.user_id and payment_session.user_id != request.user.id:
                 raise serializers.ValidationError({'payment_reference': 'This payment session belongs to a different account.'})
             if payment_session.order_id:
-                linked_order = payment_session.order
+                linked_order = get_object_or_404(apps.get_model('order', 'Order'), pk=payment_session.order_id)
                 if request.user.is_authenticated and linked_order.user_id and linked_order.user_id != request.user.id:
                     raise serializers.ValidationError({'payment_reference': 'This payment is linked to a different account.'})
                 checkout_session.set_order_number(linked_order.number)
@@ -338,7 +355,7 @@ class OrderPlacementAPIView(APIView):
             {
                 'detail': 'Order placed successfully.',
                 'order': OrderSummarySerializer(order).data,
-                'payment': {'reference': payment_session.reference, 'status': payment_session.status, 'method': payment_session.method},
+                'payment': serialize_payment_session(payment_session),
                 'taxes': pricing['tax_breakdown'],
             },
             status=status.HTTP_201_CREATED,

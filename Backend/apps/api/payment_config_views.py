@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Count, Prefetch, Q, Sum
+from urllib.parse import urlsplit, urlunsplit
 from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,6 +32,13 @@ class MpesaConfigSerializer(serializers.Serializer):
     callback_url = serializers.URLField(required=False, allow_blank=True)
     transaction_type = serializers.CharField(required=False, allow_blank=True, max_length=80)
     timeout_seconds = serializers.IntegerField(required=False, min_value=1, max_value=120)
+
+    def validate_base_url(self, value):
+        value = (value or '').strip()
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        return urlunsplit((parsed.scheme, parsed.netloc, '', '', '')).rstrip('/')
 
 
 class PesapalConfigSerializer(serializers.Serializer):

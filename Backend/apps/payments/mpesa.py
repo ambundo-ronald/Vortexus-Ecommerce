@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from decimal import Decimal
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -57,7 +57,7 @@ def initiate_stk_push(payment_session) -> dict:
     }
 
     response_data = _post_json(
-        url=f'{get_payment_setting("mpesa", "base_url", "https://sandbox.safaricom.co.ke")}/mpesa/stkpush/v1/processrequest',
+        url=f'{_base_url()}/mpesa/stkpush/v1/processrequest',
         payload=payload,
         headers={'Authorization': f'Bearer {access_token}'},
     )
@@ -96,7 +96,7 @@ def query_stk_push_status(payment_session) -> dict:
         'CheckoutRequestID': checkout_request_id,
     }
     return _post_json(
-        url=f'{get_payment_setting("mpesa", "base_url", "https://sandbox.safaricom.co.ke")}/mpesa/stkpushquery/v1/query',
+        url=f'{_base_url()}/mpesa/stkpushquery/v1/query',
         payload=payload,
         headers={'Authorization': f'Bearer {access_token}'},
     )
@@ -195,7 +195,7 @@ def find_payment_by_callback_reference(PaymentSession, callback_payload: dict):
 def _generate_access_token() -> str:
     credentials = f'{get_payment_setting("mpesa", "consumer_key", "")}:{get_payment_setting("mpesa", "consumer_secret", "")}'.encode('utf-8')
     basic_auth = base64.b64encode(credentials).decode('utf-8')
-    url = f"{get_payment_setting('mpesa', 'base_url', 'https://sandbox.safaricom.co.ke')}/oauth/v1/generate?{urlencode({'grant_type': 'client_credentials'})}"
+    url = f"{_base_url()}/oauth/v1/generate?{urlencode({'grant_type': 'client_credentials'})}"
     response = _request_json(url, headers={'Authorization': f'Basic {basic_auth}'})
     access_token = response.get('access_token', '')
     if not access_token:
@@ -225,6 +225,18 @@ def _execute_request(request: Request) -> dict:
         raise MpesaGatewayError(f'M-Pesa gateway returned HTTP {exc.code}: {body}') from exc
     except URLError as exc:  # pragma: no cover
         raise MpesaGatewayError(f'Unable to reach M-Pesa gateway: {exc.reason}') from exc
+    except TimeoutError as exc:  # pragma: no cover
+        raise MpesaGatewayError('M-Pesa gateway request timed out.') from exc
+    except OSError as exc:  # pragma: no cover
+        raise MpesaGatewayError(f'Unable to reach M-Pesa gateway: {exc}') from exc
+
+
+def _base_url() -> str:
+    raw_url = str(get_payment_setting('mpesa', 'base_url', settings.MPESA_BASE_URL) or settings.MPESA_BASE_URL).strip()
+    parsed = urlsplit(raw_url)
+    if not parsed.scheme or not parsed.netloc:
+        raise MpesaConfigurationError('M-Pesa base URL must be an absolute URL.')
+    return urlunsplit((parsed.scheme, parsed.netloc, '', '', '')).rstrip('/')
 
 
 def _timestamp() -> str:
