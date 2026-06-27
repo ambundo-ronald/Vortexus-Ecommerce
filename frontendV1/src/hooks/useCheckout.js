@@ -2,10 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { checkoutApi } from "../api/checkout.api";
 import { useCartStore } from "../store/cart.store";
-
-function messageFromError(error) {
-  return error?.normalized?.message || error?.message || "Something went wrong. Try again.";
-}
+import { checkoutErrorView } from "../utils/checkoutErrors";
 
 export function useCheckout({ auto = true } = {}) {
   const setBasket = useCartStore((state) => state.hydrate);
@@ -15,17 +12,29 @@ export function useCheckout({ auto = true } = {}) {
   const [loading, setLoading] = useState(Boolean(auto));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [errorView, setErrorView] = useState(null);
+
+  function clearError() {
+    setError("");
+    setErrorView(null);
+  }
+
+  function captureError(error, context) {
+    const view = checkoutErrorView(error, context);
+    setError(view.message);
+    setErrorView(view);
+  }
 
   const loadCheckout = useCallback(async () => {
     setLoading(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.shipping();
       setCheckout(payload);
       checkoutApi.billing().then((billingPayload) => setBilling(billingPayload?.billing || null)).catch(() => {});
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setLoading(false);
@@ -40,14 +49,14 @@ export function useCheckout({ auto = true } = {}) {
 
   const saveAddress = useCallback(async (address) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.saveShippingAddress(address);
       setCheckout(payload);
       await setBasket();
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setSaving(false);
@@ -56,14 +65,14 @@ export function useCheckout({ auto = true } = {}) {
 
   const useShippingAddress = useCallback(async (addressId) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.useShippingAddress({ address_id: addressId });
       setCheckout(payload);
       await setBasket();
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setSaving(false);
@@ -72,13 +81,13 @@ export function useCheckout({ auto = true } = {}) {
 
   const saveBillingAddress = useCallback(async (address) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.saveBillingAddress(address);
       setBilling(payload?.billing || null);
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setSaving(false);
@@ -87,13 +96,13 @@ export function useCheckout({ auto = true } = {}) {
 
   const useBillingAddress = useCallback(async (addressId) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.useBillingAddress({ address_id: addressId });
       setBilling(payload?.billing || null);
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setSaving(false);
@@ -102,14 +111,14 @@ export function useCheckout({ auto = true } = {}) {
 
   const selectMethod = useCallback(async (methodCode) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.selectShippingMethod({ method_code: methodCode });
       setCheckout(payload);
       await setBasket();
       return payload;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "shipping");
       throw error;
     } finally {
       setSaving(false);
@@ -118,13 +127,13 @@ export function useCheckout({ auto = true } = {}) {
 
   const placeOrder = useCallback(async (payload) => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const response = await checkoutApi.placeOrder(payload);
       await setBasket();
       return response;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "place_order");
       throw error;
     } finally {
       setSaving(false);
@@ -133,12 +142,12 @@ export function useCheckout({ auto = true } = {}) {
 
   const previewCheckout = useCallback(async () => {
     setSaving(true);
-    setError("");
+    clearError();
     try {
       const payload = await checkoutApi.preview();
       return payload?.preview || null;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "preview");
       throw error;
     } finally {
       setSaving(false);
@@ -147,11 +156,11 @@ export function useCheckout({ auto = true } = {}) {
 
   const loadOrderConfirmation = useCallback(async (orderNumber) => {
     setLoading(true);
-    setError("");
+    clearError();
     try {
       return await checkoutApi.thankYou(orderNumber);
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "confirmation");
       throw error;
     } finally {
       setLoading(false);
@@ -171,7 +180,10 @@ export function useCheckout({ auto = true } = {}) {
     loading,
     saving,
     error,
+    errorView,
     setError,
+    setErrorView,
+    clearError,
     loadCheckout,
     loadAddresses,
     saveAddress,

@@ -42,7 +42,14 @@ export default function ShippingMethodSelector({ methods = [], selectedCode = ""
                 <strong>{method.name}</strong>
                 <small>{method.description || deliveryEta(method)}</small>
               </span>
-              <span className="choice-card__price">{formatCurrency(method.charge, method.currency)}</span>
+              <span className="choice-card__meta">
+                <span className="choice-card__price">{formatCurrency(method.charge, method.currency)}</span>
+                {active ? (
+                  <span className="choice-card__check" aria-label="Selected">
+                    <MaterialIcon name="check" size={18} />
+                  </span>
+                ) : null}
+              </span>
             </button>
           );
         })}

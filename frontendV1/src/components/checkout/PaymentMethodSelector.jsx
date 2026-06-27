@@ -7,7 +7,7 @@ const preferredOrder = ["mpesa", "pesapal", "bank_transfer", "credit_card", "deb
 const paymentLogoBase = "/payment methods logos";
 const paymentLogos = {
   mpesa: `${paymentLogoBase}/M-PESA logo vector.jpeg`,
-  pesapal: `${paymentLogoBase}/M-PESA logo vector.jpeg`,
+  pesapal: `${paymentLogoBase}/Pesapal.png`,
   airtel_money: `${paymentLogoBase}/airtel money.jpeg`,
   bank_transfer: `${paymentLogoBase}/bank transfer.jpeg`,
   credit_card: `${paymentLogoBase}/visa mastercards.jpeg`,
@@ -28,13 +28,18 @@ export default function PaymentMethodSelector({
     return [...methods].sort((a, b) => methodRank(a.code) - methodRank(b.code));
   }, [methods]);
   const [method, setMethod] = useState("");
+  const [choosingMethod, setChoosingMethod] = useState(true);
   const [phoneNumber, setPhoneNumber] = useState(defaultPhone);
   const [payerEmail, setPayerEmail] = useState(defaultEmail);
   const [holderName, setHolderName] = useState("");
 
   useEffect(() => {
-    if (!method && sortedMethods.length) {
+    if (!method && sortedMethods.length === 1) {
       setMethod(sortedMethods[0].code);
+      setChoosingMethod(false);
+    } else if (method && !sortedMethods.some((item) => item.code === method)) {
+      setMethod("");
+      setChoosingMethod(true);
     }
   }, [method, sortedMethods]);
 
@@ -47,6 +52,7 @@ export default function PaymentMethodSelector({
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (!method) return;
     onSubmit?.({
       method,
       phoneNumber,
@@ -58,6 +64,15 @@ export default function PaymentMethodSelector({
         last4: method === "debit_card" ? "0005" : "4242"
       }
     });
+  }
+
+  function handleChooseMethod(code) {
+    setMethod(code);
+    setChoosingMethod(false);
+  }
+
+  function handleChangeMethod() {
+    setChoosingMethod(true);
   }
 
   return (
@@ -74,6 +89,7 @@ export default function PaymentMethodSelector({
         </div>
       ) : null}
 
+      {sortedMethods.length && choosingMethod ? (
       <section className="payment-method-panel">
         <div className="payment-section-heading">
           <MaterialIcon name="credit_card" size={18} />
@@ -88,7 +104,7 @@ export default function PaymentMethodSelector({
               type="button"
               key={item.code}
               aria-label={`${display.title} ${display.subtitle}`}
-              onClick={() => setMethod(item.code)}
+              onClick={() => handleChooseMethod(item.code)}
             >
               {display.badge || item.is_sandbox ? (
                 <em className={item.is_sandbox ? "muted" : ""}>
@@ -106,12 +122,15 @@ export default function PaymentMethodSelector({
                 {!display.logo ? <strong>{display.title}</strong> : null}
                 <small>{display.subtitle}</small>
               </span>
-              <span className="payment-method-card__radio" aria-hidden="true" />
+              <span className="payment-method-card__radio" aria-hidden="true">
+                {method === item.code ? <MaterialIcon name="check" size={16} /> : null}
+              </span>
             </button>
           );
         })}
         </div>
       </section>
+      ) : null}
 
       {selected ? (
         <section className="payment-details-panel">
@@ -120,6 +139,33 @@ export default function PaymentMethodSelector({
             <strong>Payment details</strong>
           </div>
           <div className="payment-details-box">
+            <div className="selected-payment-method">
+              <span className="selected-payment-method__icon">
+                {selectedDisplay.logo ? (
+                  <img src={selectedDisplay.logo} alt="" loading="lazy" />
+                ) : (
+                  <MaterialIcon name={selectedDisplay.icon} size={30} />
+                )}
+              </span>
+              <span className="selected-payment-method__copy">
+                <strong>{selectedDisplay.title}</strong>
+                <small>{selectedDisplay.subtitle}</small>
+                {selectedDisplay.badge || selected.is_sandbox ? (
+                  <em className={selected.is_sandbox ? "muted" : ""}>
+                    {selected.is_sandbox ? "Test" : selectedDisplay.badge}
+                  </em>
+                ) : null}
+              </span>
+              <span className="selected-payment-method__check" aria-hidden="true">
+                <MaterialIcon name="check" size={17} />
+              </span>
+              {sortedMethods.length > 1 ? (
+                <button className="secondary-button selected-payment-method__change" type="button" onClick={handleChangeMethod}>
+                  Change payment method
+                </button>
+              ) : null}
+            </div>
+
             <div>
               <h3>{selectedDisplay.detailTitle}</h3>
               <p>{selectedDisplay.detailCopy}</p>
@@ -203,7 +249,7 @@ function paymentDisplay(method = {}) {
     logo: paymentLogos[code] || ""
   };
 
-  if (code === "mpesa" || code === "pesapal") {
+  if (code === "mpesa") {
     return {
       ...base,
       title: "M-Pesa",
@@ -213,6 +259,17 @@ function paymentDisplay(method = {}) {
       icon: "phone_iphone",
       badge: "Recommended",
       logo: paymentLogos[code] || paymentLogos.mpesa
+    };
+  }
+  if (code === "pesapal") {
+    return {
+      ...base,
+      title: "Pesapal",
+      subtitle: "Secure checkout",
+      detailTitle: "Pesapal checkout",
+      detailCopy: "Continue to Pesapal's secure checkout to complete payment.",
+      icon: "account_balance_wallet",
+      logo: paymentLogos.pesapal
     };
   }
   if (code === "bank_transfer") {
@@ -261,7 +318,8 @@ function paymentDisplay(method = {}) {
 }
 
 function paymentSubmitLabel(method, fallback) {
-  if (method === "mpesa" || method === "pesapal") return "Receive STK Push";
+  if (method === "mpesa") return "Receive STK Push";
+  if (method === "pesapal") return "Continue to Pesapal";
   if (method === "airtel_money") return "Receive payment prompt";
   return fallback;
 }

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
+import CheckoutErrorAlert from "../../components/checkout/CheckoutErrorAlert.jsx";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
 import PaymentMethodSelector from "../../components/checkout/PaymentMethodSelector.jsx";
 import PaymentProgressPanel from "../../components/payment/PaymentProgressPanel.jsx";
-import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
@@ -18,6 +18,7 @@ import {
   paymentRequiresPrepayment,
   storePendingCheckout
 } from "../../utils/payment";
+import { checkoutToastPayload } from "../../utils/checkoutErrors";
 import "./CheckoutFlow.css";
 
 export default function PaymentPage() {
@@ -26,8 +27,9 @@ export default function PaymentPage() {
   const paymentState = usePayment();
   const user = useAuthStore((state) => state.user);
   const notify = useUiStore((state) => state.notify);
-  const { basket, shipping, loading, saving, error, previewCheckout } = checkoutState;
+  const { basket, shipping, loading, saving, error, errorView, previewCheckout } = checkoutState;
   const paymentError = paymentState.error;
+  const paymentErrorView = paymentState.errorView;
   const [activePayment, setActivePayment] = useState(null);
   const [activeMethod, setActiveMethod] = useState(null);
   const [guestEmail, setGuestEmail] = useState("");
@@ -95,8 +97,9 @@ export default function PaymentPage() {
       });
       setActivePayment(finalPayment);
       continueToReview(finalPayment, selectedMethod, form.payerEmail);
-    } catch {
-      // Hook state already exposes the normalized message.
+    } catch (error) {
+      const context = error?.message?.toLowerCase?.().includes("pending") ? "payment_status" : "payment";
+      notify(checkoutToastPayload(error, context));
     }
   }
 
@@ -117,8 +120,8 @@ export default function PaymentPage() {
       } else if (isPaymentFailed(nextPayment)) {
         notify({ tone: "warning", title: "Payment not completed", message: "Retry or choose another payment method.", icon: "error" });
       }
-    } catch {
-      // Hook state already exposes the normalized message.
+    } catch (error) {
+      notify(checkoutToastPayload(error, "payment_status"));
     } finally {
       setCheckingStatus(false);
     }
@@ -127,7 +130,7 @@ export default function PaymentPage() {
   function handleChangeMethod() {
     setActivePayment(null);
     setActiveMethod(null);
-    paymentState.setError("");
+    paymentState.clearError();
   }
 
   if (loading || paymentState.loading) return <Spinner label="Loading payment" />;
@@ -138,14 +141,7 @@ export default function PaymentPage() {
     <section className="checkout-page">
       <CheckoutStepper current="payment" basket={basket} shipping={shipping} />
 
-      <div className="checkout-title-row">
-        <Link className="back-link" to="/checkout/shipping">
-          <MaterialIcon name="arrow_back" size={18} /> Delivery
-        </Link>
-        <h1>Payment</h1>
-      </div>
-
-      <Alert>{error || paymentError}</Alert>
+      <CheckoutErrorAlert error={paymentErrorView || errorView} fallback={paymentError || error} />
 
       <div className="checkout-layout">
         <div className="checkout-stack">

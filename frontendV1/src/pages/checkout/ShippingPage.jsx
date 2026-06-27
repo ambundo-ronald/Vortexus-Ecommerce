@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
@@ -88,13 +88,6 @@ export default function ShippingPage() {
   return (
     <section className="checkout-page">
       <CheckoutStepper current="shipping" basket={basket} shipping={shipping} />
-
-      <div className="checkout-title-row">
-        <Link className="back-link" to="/checkout/cart">
-          <MaterialIcon name="arrow_back" size={18} /> Cart
-        </Link>
-        <h1>Delivery</h1>
-      </div>
 
       <Alert>{error}</Alert>
 

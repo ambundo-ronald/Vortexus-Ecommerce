@@ -8,7 +8,7 @@ function firstValidationMessage(errors) {
     for (const [field, value] of Object.entries(errors)) {
       const message = firstValidationMessage(value);
       if (!message) continue;
-      if (field === "non_field_errors" || field === "detail") return message;
+      if (field === "non_field_errors" || field === "detail" || field === "basket") return message;
       return `${field.replaceAll("_", " ")}: ${message}`;
     }
   }

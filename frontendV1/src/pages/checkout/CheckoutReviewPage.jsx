@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
+import CheckoutErrorAlert from "../../components/checkout/CheckoutErrorAlert.jsx";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
 import PaymentProgressPanel from "../../components/payment/PaymentProgressPanel.jsx";
-import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
@@ -20,6 +20,7 @@ import {
   readablePaymentMethod,
   storePendingCheckout
 } from "../../utils/payment";
+import { checkoutToastPayload } from "../../utils/checkoutErrors";
 import { productTitle } from "../../utils/productDisplay";
 import "./CheckoutFlow.css";
 
@@ -44,7 +45,7 @@ export default function CheckoutReviewPage() {
   const [searchParams] = useSearchParams();
   const notify = useUiStore((state) => state.notify);
   const [pending] = useState(() => location.state?.reviewPayload || readPendingCheckout(searchParams));
-  const { loading, saving, error, previewCheckout, placeOrder } = useCheckout({ auto: false });
+  const { loading, saving, error, errorView, previewCheckout, placeOrder } = useCheckout({ auto: false });
   const paymentState = usePayment({ auto: false });
   const [preview, setPreview] = useState(null);
   const [verifiedPayment, setVerifiedPayment] = useState(pending?.payment || null);
@@ -114,7 +115,8 @@ export default function CheckoutReviewPage() {
         paymentForOrder = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
         setVerifiedPayment(paymentForOrder);
         storePendingCheckout({ ...pending, payment: paymentForOrder });
-      } catch {
+      } catch (error) {
+        notify(checkoutToastPayload(error, "payment_status"));
         return;
       } finally {
         setCheckingStatus(false);
@@ -141,8 +143,8 @@ export default function CheckoutReviewPage() {
       const orderNumber = orderPayload?.order?.number || orderPayload?.order?.order_number;
       notify({ title: "Order placed", message: "Your order has been received.", icon: "task_alt" });
       navigate(`/checkout/confirmation${orderNumber ? `?order_number=${encodeURIComponent(orderNumber)}` : ""}`, { replace: true, state: { orderPayload } });
-    } catch {
-      // Hook state already exposes the normalized message.
+    } catch (error) {
+      notify(checkoutToastPayload(error, "place_order"));
     }
   }
 
@@ -159,8 +161,8 @@ export default function CheckoutReviewPage() {
         message: paymentStatusView(nextPayment).message,
         icon: paymentStatusView(nextPayment).icon
       });
-    } catch {
-      // Hook state already exposes the normalized message.
+    } catch (error) {
+      notify(checkoutToastPayload(error, "payment_status"));
     } finally {
       setCheckingStatus(false);
     }
@@ -174,17 +176,18 @@ export default function CheckoutReviewPage() {
     <section className="checkout-page">
       <CheckoutStepper current="review" basket={preview?.basket} shipping={preview?.shipping} pendingCheckout={pending} />
 
-      <div className="checkout-title-row">
-        <Link className="back-link" to="/checkout/payment">
-          <MaterialIcon name="arrow_back" size={18} /> Payment
-        </Link>
-        <h1>Review order</h1>
-      </div>
-
-      <Alert>{error}</Alert>
-      <Alert>{paymentState.error}</Alert>
+      <CheckoutErrorAlert error={errorView} fallback={error} />
+      <CheckoutErrorAlert error={paymentState.errorView} fallback={paymentState.error} />
       {preview && !preview.ready ? (
-        <Alert tone="warning">Some checkout details are missing. Go back and complete delivery before placing the order.</Alert>
+        <CheckoutErrorAlert
+          error={{
+            tone: "warning",
+            title: "Checkout is incomplete",
+            message: "Some checkout details are missing. Go back and complete delivery before placing the order.",
+            actionLabel: "Go to delivery",
+            actionPath: "/checkout/shipping"
+          }}
+        />
       ) : null}
 
       <div className="checkout-layout">

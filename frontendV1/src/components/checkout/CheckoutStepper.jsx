@@ -1,6 +1,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { useUiStore } from "../../store/ui.store";
 import { readPendingCheckout } from "../../utils/payment";
 
 const STEPS = [
@@ -13,6 +14,7 @@ const STEPS = [
 
 export default function CheckoutStepper({ current = "cart", basket, shipping, pendingCheckout, orderNumber = "" }) {
   const navigate = useNavigate();
+  const notify = useUiStore((state) => state.notify);
   const [searchParams] = useSearchParams();
   const activeIndex = Math.max(0, STEPS.findIndex((step) => step.key === current));
   const pending = pendingCheckout || readPendingCheckout(searchParams);
@@ -41,6 +43,20 @@ export default function CheckoutStepper({ current = "cart", basket, shipping, pe
     return index <= activeIndex ? step.path : STEPS[Math.min(activeIndex + 1, STEPS.length - 1)].path;
   }
 
+  function handleStepClick(step, index) {
+    const target = routeForStep(step, index);
+    const message = blockedStepMessage(step, target);
+    if (message) {
+      notify({
+        tone: "info",
+        title: message.title,
+        message: message.message,
+        icon: "info"
+      });
+    }
+    navigate(target);
+  }
+
   return (
     <nav className="checkout-stepper" aria-label="Checkout progress">
       {STEPS.map((step, index) => (
@@ -48,7 +64,7 @@ export default function CheckoutStepper({ current = "cart", basket, shipping, pe
           className={`checkout-step ${index <= activeIndex ? "active" : ""}`}
           type="button"
           aria-current={step.key === current ? "step" : undefined}
-          onClick={() => navigate(routeForStep(step, index))}
+          onClick={() => handleStepClick(step, index)}
           key={step.key}
         >
           <span>
@@ -59,6 +75,35 @@ export default function CheckoutStepper({ current = "cart", basket, shipping, pe
       ))}
     </nav>
   );
+}
+
+function blockedStepMessage(step, target) {
+  if (step.path === target || (step.key === "done" && target.startsWith(step.path))) return null;
+  if (target === "/checkout/cart") {
+    return {
+      title: "Cart needs products",
+      message: "Add products to your cart before continuing checkout."
+    };
+  }
+  if (target === "/checkout/shipping") {
+    return {
+      title: "Delivery comes first",
+      message: "Add delivery details before moving to payment or review."
+    };
+  }
+  if (target === "/checkout/payment") {
+    return {
+      title: "Complete payment first",
+      message: "Choose a payment method before reviewing or finishing the order."
+    };
+  }
+  if (target === "/checkout/review") {
+    return {
+      title: "Review your order",
+      message: "Confirm the order details before opening the final confirmation."
+    };
+  }
+  return null;
 }
 
 function readLastOrderNumber() {

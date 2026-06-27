@@ -5,13 +5,10 @@ import {
   isPaymentComplete,
   isPaymentFailed
 } from "../utils/payment";
+import { checkoutErrorView } from "../utils/checkoutErrors";
 
 const POLL_DELAY_MS = 4000;
 const MAX_PAYMENT_POLLS = 30;
-
-function messageFromError(error) {
-  return error?.normalized?.message || error?.message || "Payment could not be completed.";
-}
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,17 +20,29 @@ export function usePayment({ auto = true } = {}) {
   const [loading, setLoading] = useState(Boolean(auto));
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [errorView, setErrorView] = useState(null);
+
+  function clearError() {
+    setError("");
+    setErrorView(null);
+  }
+
+  function captureError(error, context = "payment") {
+    const view = checkoutErrorView(error, context);
+    setError(view.message);
+    setErrorView(view);
+  }
 
   const loadMethods = useCallback(async () => {
     setLoading(true);
-    setError("");
+    clearError();
     try {
       const payload = await paymentsApi.methods();
       const items = payload?.results || payload?.methods || payload || [];
       setMethods(Array.isArray(items) ? items : []);
       return items;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "payment");
       throw error;
     } finally {
       setLoading(false);
@@ -48,7 +57,7 @@ export function usePayment({ auto = true } = {}) {
     cardDetails = {}
   }) => {
     setProcessing(true);
-    setError("");
+    clearError();
     try {
       let payload;
       if (method === "credit_card" || method === "debit_card") {
@@ -86,7 +95,7 @@ export function usePayment({ auto = true } = {}) {
       setPayment(createdPayment);
       return createdPayment;
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, "payment");
       throw error;
     } finally {
       setProcessing(false);
@@ -94,19 +103,24 @@ export function usePayment({ auto = true } = {}) {
   }, []);
 
   const getPaymentStatus = useCallback(async (reference, method = "") => {
-    let payload;
-    if (method === "mpesa") {
-      payload = await paymentsApi.mpesaStatus(reference);
-    } else if (method === "pesapal") {
-      payload = await paymentsApi.pesapalStatus(reference);
-    } else if (method === "airtel_money") {
-      payload = await paymentsApi.airtelStatus(reference);
-    } else {
-      payload = await paymentsApi.detail(reference);
+    try {
+      let payload;
+      if (method === "mpesa") {
+        payload = await paymentsApi.mpesaStatus(reference);
+      } else if (method === "pesapal") {
+        payload = await paymentsApi.pesapalStatus(reference);
+      } else if (method === "airtel_money") {
+        payload = await paymentsApi.airtelStatus(reference);
+      } else {
+        payload = await paymentsApi.detail(reference);
+      }
+      const nextPayment = payload?.payment || null;
+      if (nextPayment) setPayment(nextPayment);
+      return nextPayment;
+    } catch (error) {
+      captureError(error, "payment_status");
+      throw error;
     }
-    const nextPayment = payload?.payment || null;
-    if (nextPayment) setPayment(nextPayment);
-    return nextPayment;
   }, []);
 
   const waitForPayment = useCallback(async (
@@ -123,11 +137,13 @@ export function usePayment({ auto = true } = {}) {
 
     if (isPaymentComplete(createdPayment)) return createdPayment;
     if (isPaymentFailed(createdPayment)) {
-      throw new Error("Payment was not completed. Choose another payment option.");
+      const error = new Error("Payment was not completed. Choose another payment option.");
+      captureError(error, "payment");
+      throw error;
     }
 
     setProcessing(true);
-    setError("");
+    clearError();
     try {
       for (let attempt = 0; attempt < maxPolls; attempt += 1) {
         if (attempt > 0) await delay(delayMs);
@@ -141,7 +157,7 @@ export function usePayment({ auto = true } = {}) {
 
       throw new Error("Payment is still pending. Confirm the prompt on your phone, then try again.");
     } catch (error) {
-      setError(messageFromError(error));
+      captureError(error, error?.message?.toLowerCase?.().includes("pending") ? "payment_status" : "payment");
       throw error;
     } finally {
       setProcessing(false);
@@ -158,7 +174,10 @@ export function usePayment({ auto = true } = {}) {
     loading,
     processing,
     error,
+    errorView,
     setError,
+    setErrorView,
+    clearError,
     loadMethods,
     initializePayment,
     getPaymentStatus,
