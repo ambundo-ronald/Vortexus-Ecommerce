@@ -18,7 +18,12 @@ from apps.payments.config import (
     provider_missing_requirements,
 )
 from apps.payments.models import PaymentEvent, PaymentProviderConfiguration, PaymentSession
-from apps.payments.pesapal import PesapalConfigurationError, PesapalGatewayError, request_refund as request_pesapal_refund
+from apps.payments.pesapal import (
+    PesapalConfigurationError,
+    PesapalGatewayError,
+    register_ipn_url,
+    request_refund as request_pesapal_refund,
+)
 from apps.payments.services import log_payment_event, payment_reconciliation
 
 
@@ -276,6 +281,54 @@ class AdminPaymentConfigurationAPIView(APIView):
 
     def patch(self, request):
         return _update_payment_configuration(request)
+
+
+class AdminPesapalRegisterIPNAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request):
+        ipn_url = (request.data.get('ipn_url') or get_payment_setting('pesapal', 'ipn_url', settings.PESAPAL_IPN_URL) or '').strip()
+        notification_type = (
+            request.data.get('notification_type')
+            or get_payment_setting('pesapal', 'notification_type', settings.PESAPAL_IPN_NOTIFICATION_TYPE)
+            or 'POST'
+        ).strip().upper()
+
+        try:
+            response_data = register_ipn_url(ipn_url=ipn_url, notification_type=notification_type)
+        except (PesapalConfigurationError, PesapalGatewayError) as exc:
+            return Response(
+                {
+                    'error': {
+                        'code': 'pesapal_ipn_registration_failed',
+                        'detail': str(exc),
+                        'status': status.HTTP_400_BAD_REQUEST,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ipn_id = str(response_data.get('ipn_id') or response_data.get('notification_id') or '').strip()
+        _upsert_provider(
+            'pesapal',
+            is_enabled=None,
+            public_config={
+                'ipn_url': ipn_url,
+                'notification_type': notification_type,
+                'ipn_id': ipn_id,
+            },
+            secret_config={},
+            user=request.user,
+        )
+        record_audit_event(
+            event_type='payments.pesapal_ipn_registered',
+            request=request,
+            actor=request.user,
+            target=request.user,
+            message='Pesapal IPN URL registered.',
+            metadata={'ipn_url': ipn_url, 'notification_type': notification_type, 'ipn_id': ipn_id},
+        )
+        return Response({'pesapal': _serialize_provider('pesapal'), 'pesapal_response': _safe_provider_payload(response_data)})
 
 
 def _payment_session_payload(payment: PaymentSession) -> dict:

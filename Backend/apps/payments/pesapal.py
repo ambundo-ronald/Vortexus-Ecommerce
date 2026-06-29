@@ -1,5 +1,5 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -64,10 +64,11 @@ def submit_order_request(payment_session, *, customer_name: str = '') -> dict:
 
     previous_status = payment_session.status
     response_data = _post_json('/Transactions/SubmitOrderRequest', payload, token=token)
+    _raise_for_pesapal_error(response_data)
     order_tracking_id = response_data.get('order_tracking_id') or ''
     redirect_url = response_data.get('redirect_url') or ''
     if not order_tracking_id or not redirect_url:
-        raise PesapalGatewayError('Pesapal did not return an order tracking ID and redirect URL.')
+        raise PesapalGatewayError(_response_message(response_data) or 'Pesapal did not return an order tracking ID and redirect URL.')
 
     payment_session.status = payment_session.STATUS_PENDING
     payment_session.external_reference = order_tracking_id
@@ -100,7 +101,35 @@ def query_transaction_status(payment_session) -> dict:
     if not order_tracking_id:
         raise PesapalGatewayError('Missing Pesapal order tracking ID for this payment session.')
     token = _request_access_token()
-    return _get_json(f'/Transactions/GetTransactionStatus?{urlencode({"orderTrackingId": order_tracking_id})}', token=token)
+    response_data = _get_json(f'/Transactions/GetTransactionStatus?{urlencode({"orderTrackingId": order_tracking_id})}', token=token)
+    _raise_for_pesapal_error(response_data)
+    return response_data
+
+
+def register_ipn_url(*, ipn_url: str | None = None, notification_type: str | None = None) -> dict:
+    if not get_payment_setting('pesapal', 'consumer_key', '') or not get_payment_setting('pesapal', 'consumer_secret', ''):
+        raise PesapalConfigurationError('Pesapal consumer key and secret are required before registering IPN.')
+
+    url = (ipn_url or get_payment_setting('pesapal', 'ipn_url', settings.PESAPAL_IPN_URL) or '').strip()
+    if not url:
+        raise PesapalConfigurationError('Pesapal IPN URL is required before registering IPN.')
+
+    ipn_notification_type = (
+        notification_type
+        or get_payment_setting('pesapal', 'notification_type', settings.PESAPAL_IPN_NOTIFICATION_TYPE)
+        or 'POST'
+    ).strip().upper()
+    token = _request_access_token()
+    response_data = _post_json(
+        '/URLSetup/RegisterIPN',
+        {'url': url, 'ipn_notification_type': ipn_notification_type},
+        token=token,
+    )
+    _raise_for_pesapal_error(response_data)
+    ipn_id = str(response_data.get('ipn_id') or response_data.get('notification_id') or '').strip()
+    if not ipn_id:
+        raise PesapalGatewayError(_response_message(response_data) or 'Pesapal did not return an IPN ID.')
+    return response_data
 
 
 def request_refund(payment_session, *, amount, username: str, remarks: str) -> dict:
@@ -116,6 +145,7 @@ def request_refund(payment_session, *, amount, username: str, remarks: str) -> d
         'remarks': (remarks or '').strip() or f'Refund for {payment_session.reference}',
     }
     response_data = _post_json('/Transactions/RefundRequest', payload, token=token)
+    _raise_for_pesapal_error(response_data)
     status_code = str(response_data.get('status') or response_data.get('error') or '').strip()
     message = str(response_data.get('message') or '').strip()
     if status_code and status_code != '200':
@@ -191,6 +221,7 @@ def _request_access_token() -> str:
         'consumer_secret': get_payment_setting('pesapal', 'consumer_secret', ''),
     }
     response_data = _post_json('/Auth/RequestToken', payload)
+    _raise_for_pesapal_error(response_data)
     token = response_data.get('token', '')
     if not token:
         raise PesapalGatewayError('Pesapal did not return an access token.')
@@ -221,6 +252,36 @@ def _execute_request(request: Request) -> dict:
         raise PesapalGatewayError(f'Unable to reach Pesapal gateway: {exc.reason}') from exc
 
 
+def _response_message(response_data: dict) -> str:
+    if not isinstance(response_data, dict):
+        return ''
+    error = response_data.get('error')
+    if isinstance(error, dict):
+        return str(error.get('message') or error.get('code') or '').strip()
+    return str(response_data.get('message') or response_data.get('description') or '').strip()
+
+
+def _raise_for_pesapal_error(response_data: dict) -> None:
+    if not isinstance(response_data, dict):
+        return
+    error = response_data.get('error')
+    if error:
+        if isinstance(error, dict):
+            if not any(value not in (None, '') for value in error.values()):
+                error = None
+            else:
+                message = str(error.get('message') or error.get('code') or error).strip()
+                raise PesapalGatewayError(message or 'Pesapal gateway returned an error.')
+        if error:
+            message = str(error).strip()
+            raise PesapalGatewayError(message or 'Pesapal gateway returned an error.')
+
+    status_code = str(response_data.get('status') or '').strip()
+    if status_code and status_code not in {'200', '201'}:
+        message = _response_message(response_data)
+        raise PesapalGatewayError(message or f'Pesapal gateway returned status {status_code}.')
+
+
 def _url(path: str) -> str:
     base_url = str(get_payment_setting('pesapal', 'base_url', settings.PESAPAL_BASE_URL)).rstrip('/')
     return f'{base_url}{path}'
@@ -242,7 +303,13 @@ def _validate_status_payload(payment_session, status_payload: dict) -> None:
         except Exception as exc:
             raise PesapalGatewayError('Pesapal returned an invalid transaction amount.') from exc
         expected_amount = Decimal(str(payment_session.amount)).quantize(Decimal('0.01'))
-        if received_amount != expected_amount:
+        rounded_expected = expected_amount.to_integral_value(rounding=ROUND_CEILING)
+        allows_pesapal_rounding = (
+            str(payment_session.currency).upper() == 'KES'
+            and received_amount == rounded_expected
+            and Decimal('0.00') <= (received_amount - expected_amount) < Decimal('1.00')
+        )
+        if received_amount != expected_amount and not allows_pesapal_rounding:
             raise PesapalGatewayError('Pesapal amount did not match this payment session.')
 
 
