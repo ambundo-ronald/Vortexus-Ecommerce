@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import * as z from "zod/v4";
 import type { FormSubmitEvent } from "@nuxt/ui";
+import type { AttributeItem } from "~/composables/useAttributes";
 
 const props = defineProps<{
   values?: Partial<ProductFormSchema>;
   statusOptions: { label: string; value: string; icon: string; color: string }[];
   categories: { label: string; value: string }[];
   productOptions?: { label: string; value: string }[];
+  attributeDefinitions?: AttributeItem[];
 }>();
 
 const emit = defineEmits<{
@@ -65,6 +67,7 @@ const productSchema = z.object({
     .default(""),
   brand: z.string().optional(),
   tags: z.string().optional(),
+  attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 });
 
 export type ProductFormSchema = z.infer<typeof productSchema>;
@@ -89,6 +92,7 @@ const localFormState = reactive<ProductFormSchema>({
   category: "",
   brand: "",
   tags: "",
+  attributes: {},
   ...props.values,
 }) as ProductFormSchema;
 
@@ -116,8 +120,11 @@ watch(
       category: "",
       brand: "",
       tags: "",
+      attributes: {},
       ...values,
     })
+    if (!localFormState.attributes)
+      localFormState.attributes = {}
   },
   { immediate: true, deep: true },
 )
@@ -125,6 +132,8 @@ watch(
 const selectedRecommendedProductId = ref("")
 const categorySearch = ref("")
 const recommendedProductSearch = ref("")
+const isCategoryPickerOpen = ref(false)
+const isRecommendedPickerOpen = ref(false)
 const filteredCategories = computed(() => {
   const search = categorySearch.value.trim().toLowerCase()
   const items = [{ label: 'Uncategorized', value: '__uncategorized__' }, ...props.categories]
@@ -132,10 +141,27 @@ const filteredCategories = computed(() => {
     return items
   return items.filter(item => item.label.toLowerCase().includes(search) || String(item.value).toLowerCase().includes(search))
 })
+const selectedCategoryLabel = computed(() => {
+  const value = localFormState.category || '__uncategorized__'
+  return filteredCategories.value.find(item => item.value === value)?.label
+    || [{ label: 'Uncategorized', value: '__uncategorized__' }, ...props.categories].find(item => item.value === value)?.label
+    || 'Uncategorized'
+})
 const selectedRecommendedProducts = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   return (props.productOptions || []).filter(option => selectedIds.has(Number(option.value)))
 })
+const dynamicAttributeDefinitions = computed(() =>
+  (props.attributeDefinitions || [])
+    .filter(attribute => !['brand', 'tags', 'dimensions', 'weight_grams'].includes(attribute.code))
+    .sort((a, b) => {
+      const parentA = a.parent_attribute_id || 0
+      const parentB = b.parent_attribute_id || 0
+      if (parentA !== parentB)
+        return parentA - parentB
+      return a.name.localeCompare(b.name)
+    }),
+)
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   const search = recommendedProductSearch.value.trim().toLowerCase()
@@ -162,6 +188,19 @@ function addRecommendedProduct() {
   if (!current.includes(productId))
     localFormState.recommendedProductIds = [...current, productId]
   selectedRecommendedProductId.value = ""
+}
+
+function selectCategory(value: string) {
+  localFormState.category = value
+  categorySearch.value = ''
+  isCategoryPickerOpen.value = false
+}
+
+function selectRecommendedProduct(value: string) {
+  selectedRecommendedProductId.value = value
+  addRecommendedProduct()
+  recommendedProductSearch.value = ''
+  isRecommendedPickerOpen.value = false
 }
 
 function removeRecommendedProduct(productId: number) {
@@ -230,21 +269,36 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
               </template>
               <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <UFormField label="Category" name="category">
-                  <UInput
-                    v-model="categorySearch"
-                    icon="i-lucide-search"
-                    placeholder="Search categories..."
-                    size="sm"
-                    class="mb-2 w-full"
-                  />
-                  <USelect
-                    v-model="localFormState.category"
-                    :items="filteredCategories"
-                    value-attribute="value"
-                    option-attribute="label"
-                    size="lg"
-                    class="w-full"
-                  />
+                  <div class="relative">
+                    <UInput
+                      v-model="categorySearch"
+                      icon="i-lucide-search"
+                      :placeholder="selectedCategoryLabel || 'Search categories...'"
+                      size="lg"
+                      class="w-full"
+                      @focus="isCategoryPickerOpen = true"
+                      @input="isCategoryPickerOpen = true"
+                    />
+                    <div
+                      v-if="isCategoryPickerOpen"
+                      class="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+                    >
+                      <button
+                        v-for="item in filteredCategories"
+                        :key="item.value"
+                        type="button"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-blue-50"
+                        :class="localFormState.category === item.value ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-700'"
+                        @click="selectCategory(item.value)"
+                      >
+                        <span class="truncate">{{ item.label }}</span>
+                        <UIcon v-if="localFormState.category === item.value" name="i-lucide-check" class="size-4" />
+                      </button>
+                      <p v-if="filteredCategories.length === 0" class="px-3 py-2 text-sm text-slate-500">
+                        No matching categories.
+                      </p>
+                    </div>
+                  </div>
                   <p v-if="!categories.length" class="mt-2 text-xs text-amber-600">
                     Category management is waiting for the backend admin category API. You can still save the product without a category.
                   </p>
@@ -276,22 +330,34 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
               <div class="space-y-4">
                 <div class="flex flex-col gap-3 sm:flex-row">
                   <UFormField label="Recommended product" class="min-w-0 flex-1">
-                    <UInput
-                      v-model="recommendedProductSearch"
-                      icon="i-lucide-search"
-                      placeholder="Search products..."
-                      size="sm"
-                      class="mb-2 w-full"
-                    />
-                    <USelect
-                      v-model="selectedRecommendedProductId"
-                      :items="availableRecommendedProductOptions"
-                      value-attribute="value"
-                      option-attribute="label"
-                      placeholder="Select product to recommend"
-                      size="lg"
-                      class="w-full"
-                    />
+                    <div class="relative">
+                      <UInput
+                        v-model="recommendedProductSearch"
+                        icon="i-lucide-search"
+                        placeholder="Search products to recommend..."
+                        size="lg"
+                        class="w-full"
+                        @focus="isRecommendedPickerOpen = true"
+                        @input="isRecommendedPickerOpen = true"
+                      />
+                      <div
+                        v-if="isRecommendedPickerOpen"
+                        class="absolute z-20 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+                      >
+                        <button
+                          v-for="item in availableRecommendedProductOptions"
+                          :key="item.value"
+                          type="button"
+                          class="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+                          @click="selectRecommendedProduct(item.value)"
+                        >
+                          <span class="block truncate">{{ item.label }}</span>
+                        </button>
+                        <p v-if="availableRecommendedProductOptions.length === 0" class="px-3 py-2 text-sm text-slate-500">
+                          No matching products.
+                        </p>
+                      </div>
+                    </div>
                   </UFormField>
                   <div class="flex items-end">
                     <UButton
@@ -326,6 +392,40 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                 <p v-else class="text-sm text-slate-500">
                   No upsell products selected.
                 </p>
+              </div>
+            </UCard>
+            <UCard v-if="dynamicAttributeDefinitions.length" class="rounded-xl">
+              <template #header>
+                <h3 class="text-base font-black leading-6 text-slate-950">
+                  Product Attributes
+                </h3>
+              </template>
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <UFormField
+                  v-for="attribute in dynamicAttributeDefinitions"
+                  :key="attribute.id"
+                  :label="`${attribute.name}${attribute.uom ? ` (${attribute.uom})` : ''}`"
+                  :required="attribute.required"
+                >
+                  <UCheckbox
+                    v-if="attribute.type === 'boolean'"
+                    v-model="localFormState.attributes[attribute.code]"
+                    :label="attribute.name"
+                  />
+                  <UInput
+                    v-else
+                    v-model="localFormState.attributes[attribute.code]"
+                    :type="['integer', 'float'].includes(attribute.type) ? 'number' : 'text'"
+                    :step="attribute.type === 'float' ? '0.01' : undefined"
+                    :placeholder="attribute.parent_attribute_name ? `Child of ${attribute.parent_attribute_name}` : 'Enter value'"
+                    size="lg"
+                    class="w-full"
+                  >
+                    <template v-if="attribute.uom" #trailing>
+                      <span class="text-dimmed text-xs">{{ attribute.uom }}</span>
+                    </template>
+                  </UInput>
+                </UFormField>
               </div>
             </UCard>
             <UCard class="rounded-xl">

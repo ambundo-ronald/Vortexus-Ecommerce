@@ -5,6 +5,7 @@ import type { ProductImageItem } from "~/types/ProductImage";
 
 const pageTitle = computed(() => "New Product");
 const { createProduct, getCategoryOptions, getProductOptions, syncProductImages } = useProduct();
+const { getAttributes } = useAttributes();
 const isSaving = ref(false)
 
 function discardChanges() {
@@ -59,16 +60,20 @@ const statusOptions = [
 ];
 const categories = ref<{ label: string; value: string }[]>([]);
 const productOptions = ref<{ label: string; value: string }[]>([]);
+const attributeDefinitions = ref<any[]>([]);
 
 onMounted(async () => {
-  const [categoryResult, productOptionsResult] = await Promise.all([
+  const [categoryResult, productOptionsResult, attributeResult] = await Promise.all([
     getCategoryOptions(),
     getProductOptions(),
+    getAttributes({ pageSize: 500 }),
   ])
   if (categoryResult.success)
     categories.value = categoryResult.data
   if (productOptionsResult.success)
     productOptions.value = productOptionsResult.data
+  if (attributeResult.success)
+    attributeDefinitions.value = attributeResult.data?.results ?? []
 })
 
 const images = ref<ProductImageItem[]>([]);
@@ -76,7 +81,13 @@ const images = ref<ProductImageItem[]>([]);
 
 <template>
   <div class="w-full">
-    <ProductForm :status-options="statusOptions" :categories="categories" :product-options="productOptions" @on-submit="submit">
+    <ProductForm
+      :status-options="statusOptions"
+      :categories="categories"
+      :product-options="productOptions"
+      :attribute-definitions="attributeDefinitions"
+      @on-submit="submit"
+    >
       <template #header="{ submit }">
         <div class="mx-auto max-w-screen-xl py-4">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

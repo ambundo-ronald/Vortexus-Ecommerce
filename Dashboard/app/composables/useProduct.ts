@@ -44,8 +44,13 @@ function mapSort(sortBy?: string, sortDir: 'asc' | 'desc' = 'asc') {
 
 function flattenCategories(results: any[] = []) {
   const flattened: { label: string, value: string }[] = []
+  const byId = new Map(results.map(category => [category.id, category]))
   for (const category of results) {
-    flattened.push({ label: category.name, value: String(category.id) })
+    const parent = category.parent_id ? byId.get(category.parent_id) : null
+    flattened.push({
+      label: parent ? `${parent.name} / ${category.name}` : category.name,
+      value: String(category.id),
+    })
     for (const child of category.children || [])
       flattened.push({ label: `${category.name} / ${child.name}`, value: String(child.id) })
   }
@@ -76,11 +81,15 @@ function mapProductDetailToForm(product: any) {
     category: firstCategoryId,
     brand: product.brand || specificationMap.brand || '',
     tags: product.tags || specificationMap.tags || '',
+    attributes: specificationMap,
     images: (product.images || []).map((image: any) => mapProductImage(image)),
   }
 }
 
 function mapFormToPayload(data: Record<string, any>) {
+  const dynamicAttributes = data.attributes && typeof data.attributes === 'object'
+    ? data.attributes
+    : {}
   return {
     upc: data.sku,
     title: data.name,
@@ -95,6 +104,7 @@ function mapFormToPayload(data: Record<string, any>) {
     currency: data.currency || DEFAULT_CURRENCY,
     num_in_stock: Number(data.stock || 0),
     attributes: {
+      ...dynamicAttributes,
       weight_grams: data.weight ?? '',
       dimensions: data.dimensions || '',
       brand: data.brand || '',
@@ -163,7 +173,13 @@ export function useProduct() {
 
   async function getCategoryOptions() {
     try {
-      const result = await request<{ results: any[] }>('/catalog/categories/', { method: 'GET' })
+      const result = await request<{ results: any[] }>('/admin/catalog/categories/', {
+        method: 'GET',
+        query: {
+          page: 1,
+          page_size: 1000,
+        },
+      })
       return { success: true, data: flattenCategories(result.results || []) }
     }
     catch (err: any) {
@@ -176,8 +192,8 @@ export function useProduct() {
       const options = typeof params === 'object' && params !== null
         ? params
         : { excludeId: params }
-      const pageSize = options.pageSize || 60
-      const maxPages = options.maxPages || 2
+      const pageSize = options.pageSize || 100
+      const maxPages = options.maxPages || 10
       const results: any[] = []
       let page = 1
       let hasNext = true
