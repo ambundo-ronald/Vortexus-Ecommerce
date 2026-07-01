@@ -18,14 +18,14 @@ const isLinkActive = (item: { to?: string }) => {
   >
     <NuxtLink to="/" class="mb-8 flex items-center gap-3">
       <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
-        VX
+        RM
       </div>
       <div>
         <p class="text-lg font-black leading-tight text-slate-950 dark:text-slate-100">
-          Vortexus
+          Reesolmart
         </p>
         <p class="text-xs text-slate-500 dark:text-slate-400">
-          Operations
+          Just in time, buying
         </p>
       </div>
     </NuxtLink>

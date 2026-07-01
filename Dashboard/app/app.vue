@@ -38,14 +38,14 @@ async function handleLogout() {
           <div class="flex h-18 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <NuxtLink to="/" class="flex items-center gap-3">
               <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
-                VX
+                RM
               </div>
               <div>
                 <p class="text-lg font-black leading-tight">
-                  Vortexus
+                  Reesolmart
                 </p>
                 <p class="text-xs text-slate-500 dark:text-slate-400">
-                  Admin dashboard
+                  Just in time, buying
                 </p>
               </div>
             </NuxtLink>

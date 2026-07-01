@@ -101,6 +101,7 @@ export const ENDPOINTS = {
     savedItem: (savedLineId) => `/checkout/saved/items/${savedLineId}/`,
     moveSavedToCart: (savedLineId) => `/checkout/saved/items/${savedLineId}/move-to-cart/`,
     shipping: "/checkout/shipping/",
+    placeSearch: "/checkout/places/search/",
     addresses: "/checkout/addresses/",
     shippingAddress: "/checkout/shipping/address/",
     useShippingAddress: "/checkout/shipping/use-address/",

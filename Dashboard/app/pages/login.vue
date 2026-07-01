@@ -46,14 +46,14 @@ async function submit() {
         <div>
           <div class="mb-10 flex items-center gap-3">
             <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black">
-              VX
+              RM
             </div>
             <div>
               <p class="text-xl font-bold leading-tight">
-                Vortexus
+                Reesolmart
               </p>
               <p class="text-sm text-slate-300">
-                Admin dashboard
+                Just in time, buying
               </p>
             </div>
           </div>
@@ -97,14 +97,14 @@ async function submit() {
       <form class="p-6 sm:p-10 md:p-12" @submit.prevent="submit">
         <div class="mb-9 flex items-center gap-3 md:hidden">
           <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black text-white">
-            VX
+            RM
           </div>
           <div>
             <p class="text-xl font-bold leading-tight text-slate-950">
-              Vortexus
+              Reesolmart
             </p>
             <p class="text-sm text-slate-500">
-              Admin dashboard
+              Just in time, buying
             </p>
           </div>
         </div>

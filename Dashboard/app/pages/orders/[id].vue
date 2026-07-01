@@ -222,7 +222,7 @@ async function submitShippingAddress() {
   }
 
   isSavingAddress.value = true;
-  const result = await updateOrderShippingAddress(order.value.orderNo, {
+  const payload = {
     first_name: shippingForm.first_name.trim(),
     last_name: shippingForm.last_name.trim(),
     line1: shippingForm.line1.trim(),
@@ -237,7 +237,15 @@ async function submitShippingAddress() {
     latitude: shippingForm.latitude.trim() || null,
     longitude: shippingForm.longitude.trim() || null,
     location_label: shippingForm.location_label.trim(),
-  });
+  };
+  let result = await updateOrderShippingAddress(order.value.orderNo, payload);
+
+  if (!result.success && (result as any).code === "delivery_change_requires_confirmation") {
+    const changedFields = Array.isArray((result as any).errors?.changed_fields) ? (result as any).errors.changed_fields.join(", ") : "delivery details";
+    const confirmed = window.confirm(`This order is already paid or in fulfillment. Confirm changing ${changedFields}?`);
+    if (confirmed)
+      result = await updateOrderShippingAddress(order.value.orderNo, { ...payload, confirm_delivery_change: true });
+  }
 
   if (result.success) {
     toast.add({

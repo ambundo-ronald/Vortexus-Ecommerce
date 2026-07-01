@@ -135,7 +135,7 @@ export default function ProductDetailPage() {
   async function handleNativeShare() {
     const payload = {
       title: resolvedTitle,
-      text: `View ${resolvedTitle} on Vortexus`,
+      text: `View ${resolvedTitle} on Reesolmart`,
       url: shareUrl
     };
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -372,7 +372,7 @@ function buildProductSpecs(product) {
 function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare }) {
   const title = productTitle(product);
   const encodedUrl = encodeURIComponent(shareUrl);
-  const encodedText = encodeURIComponent(`View ${title} on Vortexus`);
+  const encodedText = encodeURIComponent(`View ${title} on Reesolmart`);
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=12&data=${encodedUrl}`;
   const links = [
     {

@@ -104,7 +104,7 @@ export default function SupplierApplyPage() {
           <span><MaterialIcon name="store" size={24} /></span>
           <div>
             <h1>Become a supplier</h1>
-            <p>Submit your company details for review before selling on Vortexus.</p>
+            <p>Submit your company details for review before selling on Reesolmart.</p>
           </div>
         </div>
 

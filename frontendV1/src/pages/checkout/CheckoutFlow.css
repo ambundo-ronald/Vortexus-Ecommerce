@@ -574,6 +574,41 @@
   font-weight: var(--font-weight-semibold);
 }
 
+.checkout-page .delivery-location-confirmed {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.checkout-page .delivery-location-confirmed__copy {
+  border: 1px solid color-mix(in srgb, var(--color-success) 28%, var(--color-border));
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: 0.82rem;
+  font-weight: var(--font-weight-bold);
+}
+
+.checkout-page .delivery-location-advanced {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.checkout-page .delivery-location-advanced summary {
+  width: fit-content;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-bold);
+}
+
+.checkout-page .delivery-location-advanced .form-grid {
+  margin-top: var(--space-2);
+}
+
 .checkout-page .delivery-location-map {
   width: 100%;
   min-height: 210px;
@@ -641,6 +676,32 @@
 
 .checkout-page .delivery-choice-card {
   gap: var(--space-3);
+}
+
+.checkout-page .saved-address-select {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-bold);
+}
+
+.checkout-page .saved-address-select select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+  padding: 0 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: var(--font-weight-regular);
+}
+
+.checkout-page .saved-address-select select:focus {
+  border-color: var(--input-border-focus);
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .checkout-page .previous-address-summary {
@@ -1280,6 +1341,33 @@
   color: var(--color-text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
+}
+
+.checkout-page .delivery-save-required {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+}
+
+.checkout-page .delivery-save-required > .material-symbols-rounded,
+.checkout-page .delivery-save-required > svg {
+  color: var(--color-primary-700);
+}
+
+.checkout-page .delivery-save-required div {
+  display: grid;
+  gap: 3px;
+}
+
+.checkout-page .delivery-save-required strong {
+  color: var(--color-text);
+  font-size: 0.88rem;
+}
+
+.checkout-page .delivery-save-required span {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
 }
 
 .checkout-page .confirmation-payment small {

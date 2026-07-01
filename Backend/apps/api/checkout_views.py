@@ -1,7 +1,12 @@
 import logging
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from django.apps import apps
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from oscar.apps.order.utils import OrderCreator, OrderNumberGenerator
@@ -23,6 +28,7 @@ from apps.payments.services import link_payment_to_order, payment_requires_prepa
 from apps.marketplace.orders import ensure_supplier_order_groups
 from apps.accounts.delivery_locations import (
     get_session_location,
+    upsert_user_address_location,
     store_session_location,
     upsert_shipping_address_location,
 )
@@ -44,6 +50,141 @@ from .checkout_utils import (
 from .order_serializers import OrderPlacementSerializer, OrderSummarySerializer, build_order_prices
 
 logger = logging.getLogger(__name__)
+
+
+def _save_shipping_address_to_book(request, serializer: ShippingAddressSerializer):
+    if not request.user.is_authenticated:
+        return None
+
+    UserAddress = apps.get_model('address', 'UserAddress')
+    session_fields = serializer.to_session_fields()
+    country = serializer.context['country']
+    data = serializer.validated_data
+    title = (
+        data.get('location_label')
+        or data.get('line1')
+        or data.get('line4')
+        or 'Delivery address'
+    )[:64]
+    defaults = {
+        'title': title,
+        'first_name': session_fields['first_name'],
+        'last_name': session_fields['last_name'],
+        'line1': session_fields['line1'],
+        'line2': session_fields.get('line2', ''),
+        'line3': session_fields.get('line3', ''),
+        'line4': session_fields['line4'],
+        'state': session_fields.get('state', ''),
+        'postcode': session_fields.get('postcode', ''),
+        'country': country,
+        'phone_number': session_fields.get('phone_number', ''),
+        'notes': session_fields.get('notes', ''),
+        'user': request.user,
+    }
+    lookup = {
+        'user': request.user,
+        'line1': defaults['line1'],
+        'line2': defaults['line2'],
+        'line3': defaults['line3'],
+        'line4': defaults['line4'],
+        'postcode': defaults['postcode'],
+        'country': country,
+        'phone_number': defaults['phone_number'],
+    }
+    address = UserAddress.objects.filter(**lookup).order_by('-date_created').first()
+    if address:
+        for field, value in defaults.items():
+            setattr(address, field, value)
+        if not request.user.addresses.filter(is_default_for_shipping=True).exclude(id=address.id).exists():
+            address.is_default_for_shipping = True
+        address.save()
+    else:
+        defaults['is_default_for_shipping'] = not request.user.addresses.filter(is_default_for_shipping=True).exists()
+        address = UserAddress.objects.create(**defaults)
+
+    location_payload = serializer.location_payload()
+    if location_payload:
+        upsert_user_address_location(address, location_payload)
+    return address
+
+
+def _nominatim_place_payload(item: dict) -> dict:
+    address = item.get('address') or {}
+    importance = item.get('importance')
+    try:
+        confidence = max(0.0, min(1.0, float(importance or 0)))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return {
+        'place_id': str(item.get('place_id') or item.get('osm_id') or ''),
+        'provider': 'nominatim',
+        'label': item.get('display_name') or item.get('name') or '',
+        'formatted_address': item.get('display_name') or '',
+        'latitude': item.get('lat'),
+        'longitude': item.get('lon'),
+        'confidence': confidence,
+        'address': {
+            'road': address.get('road') or '',
+            'suburb': address.get('suburb') or address.get('neighbourhood') or '',
+            'city': address.get('city') or address.get('town') or address.get('village') or address.get('county') or '',
+            'state': address.get('state') or address.get('county') or '',
+            'postcode': address.get('postcode') or '',
+            'country_code': str(address.get('country_code') or '').upper(),
+        },
+    }
+
+
+class DeliveryPlaceSearchAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        query = str(request.query_params.get('q') or '').strip()
+        if len(query) < 3:
+            raise serializers.ValidationError({'q': 'Enter at least 3 characters to search delivery places.'})
+
+        country_code = str(request.query_params.get('country_code') or 'KE').strip().lower()[:2]
+        limit = min(max(int(request.query_params.get('limit', 6) or 6), 1), 8)
+        cache_key = f'delivery-place-search:{country_code}:{limit}:{query.lower()}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response({'results': cached, 'provider': 'nominatim', 'cached': True})
+
+        params = {
+            'format': 'jsonv2',
+            'q': query,
+            'limit': str(limit),
+            'addressdetails': '1',
+        }
+        if country_code:
+            params['countrycodes'] = country_code
+
+        url = f'https://nominatim.openstreetmap.org/search?{urlencode(params)}'
+        user_agent = getattr(settings, 'DELIVERY_GEOCODING_USER_AGENT', 'Reesolmart delivery search')
+        request_obj = Request(url, headers={'Accept': 'application/json', 'User-Agent': user_agent})
+        try:
+            with urlopen(request_obj, timeout=int(getattr(settings, 'DELIVERY_GEOCODING_TIMEOUT_SECONDS', 8))) as response:
+                raw_payload = response.read().decode('utf-8')
+        except (HTTPError, URLError, TimeoutError) as exc:
+            logger.warning('Delivery place search failed: %s', exc)
+            return Response(
+                {
+                    'error': {
+                        'code': 'place_search_unavailable',
+                        'detail': 'Place search is not available right now. Try again or pin your current location.',
+                        'status': 503,
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            payload = []
+
+        results = [_nominatim_place_payload(item) for item in payload if item.get('lat') and item.get('lon')]
+        cache.set(cache_key, results, int(getattr(settings, 'DELIVERY_GEOCODING_CACHE_SECONDS', 60 * 60 * 24)))
+        return Response({'results': results, 'provider': 'nominatim', 'cached': False})
 
 
 def _order_payment_payload(order):
@@ -148,6 +289,7 @@ class ShippingAddressAPIView(APIView):
         checkout_session = get_checkout_session(request)
         checkout_session.ship_to_new_address(serializer.to_session_fields())
         store_session_location(request, serializer.location_payload())
+        _save_shipping_address_to_book(request, serializer)
         clear_selected_shipping_method(request)
         return Response(build_checkout_payload(request))
 

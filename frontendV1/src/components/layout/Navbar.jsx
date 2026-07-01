@@ -60,11 +60,11 @@ export default function Navbar() {
     <>
       <header className="app-header">
         <div className="app-header__inner">
-          <NavLink to="/" end className="brand-link" aria-label="Vortexus home">
-            <span className="brand-mark">VX</span>
+          <NavLink to="/" end className="brand-link" aria-label="Reesolmart home">
+            <span className="brand-mark">RM</span>
             <span className="brand-copy">
-              <strong>Vortexus</strong>
-              <span>industrial marketplace</span>
+              <strong>Reesolmart</strong>
+              <span>Just in time, buying</span>
             </span>
           </NavLink>
 

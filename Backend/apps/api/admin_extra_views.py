@@ -34,6 +34,53 @@ def _bool_value(value, default=False) -> bool:
     return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _order_has_settled_payment(order) -> bool:
+    PaymentSession = apps.get_model('payments', 'PaymentSession')
+    return PaymentSession.objects.filter(order=order, status__in=['authorized', 'paid']).exists()
+
+
+def _address_change_summary(address, data, new_location):
+    changes = []
+    if not address:
+        return ['delivery address']
+
+    for field, label in [
+        ('line1', 'address line 1'),
+        ('line2', 'address line 2'),
+        ('line3', 'company/site'),
+        ('line4', 'city'),
+        ('state', 'state/county'),
+        ('postcode', 'postcode'),
+        ('phone_number', 'phone'),
+    ]:
+        if field not in data:
+            continue
+        current = str(getattr(address, field, '') or '').strip()
+        incoming = str(data.get(field) or '').strip()
+        if current != incoming:
+            changes.append(label)
+
+    if 'country_code' in data:
+        current_country = getattr(address, 'country_id', '') or ''
+        incoming_country = str(data.get('country_code') or '').strip().upper()
+        if incoming_country and current_country != incoming_country:
+            changes.append('country')
+
+    try:
+        current_location = address.delivery_location
+    except Exception:
+        current_location = None
+    if new_location:
+        current_latitude = str(getattr(current_location, 'latitude', '') or '')
+        current_longitude = str(getattr(current_location, 'longitude', '') or '')
+        if current_latitude != str(new_location.get('latitude')) or current_longitude != str(new_location.get('longitude')):
+            changes.append('map pin')
+    elif ('latitude' in data or 'longitude' in data) and current_location:
+        changes.append('map pin')
+
+    return changes
+
+
 def _page(request, queryset, serializer, default_page_size=50):
     page = max(int(request.query_params.get('page', 1) or 1), 1)
     page_size = min(max(int(request.query_params.get('page_size', default_page_size) or default_page_size), 1), 200)
@@ -1045,6 +1092,43 @@ class AdminOrderShippingAddressAPIView(APIView):
     def patch(self, request, order_number: str):
         order = get_object_or_404(get_model('order', 'Order'), number=order_number)
         address = order.shipping_address
+        location = clean_location_payload({
+            'latitude': request.data.get('latitude'),
+            'longitude': request.data.get('longitude'),
+            'label': request.data.get('location_label', ''),
+            'source': 'admin',
+            'provider': request.data.get('location_provider', ''),
+            'place_id': request.data.get('location_place_id', ''),
+            'formatted_address': request.data.get('location_formatted_address', ''),
+            'confidence': request.data.get('location_confidence'),
+        })
+        changed_fields = _address_change_summary(address, request.data, location)
+        is_protected_order = _order_has_settled_payment(order) or str(order.status or '').lower() in {
+            'paid',
+            'packed',
+            'shipped',
+            'delivered',
+            'complete',
+            'completed',
+        }
+        if changed_fields and is_protected_order and not _bool_value(request.data.get('confirm_delivery_change'), default=False):
+            return Response(
+                {
+                    'error': {
+                        'code': 'delivery_change_requires_confirmation',
+                        'detail': 'This order is already paid or in fulfillment. Confirm before changing delivery details.',
+                        'status': 409,
+                        'errors': {
+                            'delivery': [
+                                'Changing delivery details after payment or fulfillment can affect delivery cost and dispatch.',
+                            ],
+                            'changed_fields': changed_fields,
+                        },
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         if address is None:
             ShippingAddress = get_model('order', 'ShippingAddress')
             address = ShippingAddress()
@@ -1061,16 +1145,20 @@ class AdminOrderShippingAddressAPIView(APIView):
                     return Response({'error': {'detail': 'Unsupported shipping country.', 'errors': {'country_code': ['Unsupported shipping country.']}}}, status=status.HTTP_400_BAD_REQUEST)
                 address.country = country
         address.save()
-        location = clean_location_payload({
-            'latitude': request.data.get('latitude'),
-            'longitude': request.data.get('longitude'),
-            'label': request.data.get('location_label', ''),
-            'source': 'admin',
-        })
         if location:
             upsert_shipping_address_location(address, location)
+        elif 'latitude' in request.data or 'longitude' in request.data:
+            apps.get_model('accounts', 'DeliveryLocation').objects.filter(shipping_address=address).delete()
         order.shipping_address = address
         order.save(update_fields=['shipping_address'])
+        if changed_fields and is_protected_order:
+            Note = get_model('order', 'OrderNote')
+            Note.objects.create(
+                order=order,
+                user=request.user,
+                note_type='Admin',
+                message=f'Delivery details changed after payment/fulfillment confirmation: {", ".join(changed_fields)}.',
+            )
         return Response({'shipping_address': serialize_shipping_address(address)})
 
 

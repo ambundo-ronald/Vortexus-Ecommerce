@@ -68,6 +68,10 @@ class DeliveryLocation(models.Model):
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     label = models.CharField(max_length=120, blank=True)
     source = models.CharField(max_length=32, blank=True)
+    provider = models.CharField(max_length=32, blank=True, default='')
+    place_id = models.CharField(max_length=128, blank=True, default='')
+    formatted_address = models.CharField(max_length=255, blank=True, default='')
+    confidence = models.DecimalField(max_digits=4, decimal_places=2, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -119,6 +123,45 @@ class DistanceDeliveryMethod(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class DeliveryRouteCache(models.Model):
+    provider = models.CharField(max_length=32, default='straight_line')
+    vehicle_type = models.CharField(max_length=32, default='driving')
+    origin_latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    origin_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    destination_latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    destination_longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    distance_km = models.DecimalField(max_digits=10, decimal_places=2)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    source = models.CharField(max_length=32, blank=True, default='')
+    raw_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'provider',
+                    'vehicle_type',
+                    'origin_latitude',
+                    'origin_longitude',
+                    'destination_latitude',
+                    'destination_longitude',
+                ],
+                name='accounts_delivery_route_cache_unique',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['provider', 'vehicle_type']),
+            models.Index(fields=['origin_latitude', 'origin_longitude']),
+            models.Index(fields=['destination_latitude', 'destination_longitude']),
+        ]
+
+    def __str__(self):
+        return f'{self.provider}:{self.vehicle_type}:{self.distance_km}km'
 
 
 class ProductAttributeMetadata(models.Model):
