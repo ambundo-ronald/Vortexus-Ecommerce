@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.common.currency import default_currency
 from apps.common.media import normalize_uploaded_image
+from apps.recommendations.services import RecommendationService
 
 
 class ProductListQuerySerializer(serializers.Serializer):
@@ -377,6 +378,7 @@ class ProductWriteSerializer(serializers.Serializer):
         ]
         if rows:
             ProductRecommendation.objects.bulk_create(rows)
+        RecommendationService.clear_product_cache(product.id)
 
     @staticmethod
     def _normalize_attribute_code(raw_code) -> str:
