@@ -24,11 +24,23 @@ def clean_location_payload(data: dict | None) -> dict | None:
     longitude = clean_coordinate(data.get('longitude'), min_value=Decimal('-180'), max_value=Decimal('180'))
     if latitude is None or longitude is None:
         return None
+    confidence = None
+    if data.get('confidence') not in (None, ''):
+        try:
+            confidence = Decimal(str(data.get('confidence'))).quantize(Decimal('0.01'))
+        except (InvalidOperation, TypeError, ValueError):
+            confidence = None
+        if confidence is not None:
+            confidence = max(Decimal('0.00'), min(Decimal('1.00'), confidence))
     return {
         'latitude': latitude,
         'longitude': longitude,
         'label': str(data.get('label') or '').strip()[:120],
         'source': str(data.get('source') or '').strip()[:32],
+        'provider': str(data.get('provider') or '').strip()[:32],
+        'place_id': str(data.get('place_id') or '').strip()[:128],
+        'formatted_address': str(data.get('formatted_address') or '').strip()[:255],
+        'confidence': confidence,
     }
 
 
@@ -40,6 +52,10 @@ def serialize_location(location) -> dict | None:
         'longitude': float(location.longitude),
         'label': location.label or '',
         'source': location.source or '',
+        'provider': location.provider or '',
+        'place_id': location.place_id or '',
+        'formatted_address': location.formatted_address or '',
+        'confidence': float(location.confidence) if location.confidence is not None else None,
     }
 
 

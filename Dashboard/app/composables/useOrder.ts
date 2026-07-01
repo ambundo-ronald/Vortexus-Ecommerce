@@ -30,6 +30,11 @@ export interface UpdateOrderShippingAddressPayload {
   latitude?: string | number | null
   longitude?: string | number | null
   location_label?: string
+  location_provider?: string
+  location_place_id?: string
+  location_formatted_address?: string
+  location_confidence?: string | number | null
+  confirm_delivery_change?: boolean
 }
 
 export interface CreateOrderNotePayload {
@@ -158,7 +163,13 @@ export function useOrder() {
     }
     catch (err: any) {
       error.value = readApiError(err)
-      return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
+      return {
+        success: false,
+        error: error.value,
+        code: err?.data?.error?.code || null,
+        status: err?.data?.error?.status || err?.status || err?.statusCode || null,
+        errors: err?.data?.error?.errors || null,
+      }
     }
     finally {
       loading.value = false

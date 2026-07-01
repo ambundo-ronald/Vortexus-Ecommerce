@@ -1,5 +1,4 @@
 import logging
-from math import asin, cos, radians, sin, sqrt
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
@@ -13,6 +12,7 @@ from apps.common.products import serialize_product_card
 from apps.inventory.services import available_quantity_for_line, reserved_quantity_for_line
 from apps.common.taxes import calculate_checkout_taxes
 from apps.accounts.delivery_locations import get_session_location, location_for_shipping_address
+from apps.accounts.routing import route_distance
 
 ZERO = Decimal('0.00')
 OfferApplicator = get_class('offer.applicator', 'Applicator')
@@ -102,7 +102,7 @@ class DistanceDeliveryShippingMethod(FixedPrice):
         self.distance_method = method
         self.code = f'distance-{method.code}'
         self.name = method.name
-        self.description = method.description or f'{method.get_vehicle_type_display()} delivery calculated at {method.rate_per_km}/km.'
+        self.description = method.description or 'Delivery to your pinned location.'
         self.carrier_code = 'distance_delivery'
         self.service_code = method.vehicle_type
         self.method_type = 'distance_delivery'
@@ -218,19 +218,6 @@ def shipping_rule_matches(rule: dict, metrics: dict, country_code: str) -> bool:
     return True
 
 
-def _haversine_km(lat1, lon1, lat2, lon2) -> Decimal:
-    radius_km = Decimal('6371.00')
-    rlat1 = radians(float(lat1))
-    rlon1 = radians(float(lon1))
-    rlat2 = radians(float(lat2))
-    rlon2 = radians(float(lon2))
-    delta_lat = rlat2 - rlat1
-    delta_lon = rlon2 - rlon1
-    value = sin(delta_lat / 2) ** 2 + cos(rlat1) * cos(rlat2) * sin(delta_lon / 2) ** 2
-    distance = 2 * asin(sqrt(value)) * float(radius_km)
-    return Decimal(str(distance)).quantize(Decimal('0.01'))
-
-
 def build_distance_delivery_methods(metrics: dict, delivery_location: dict, country_code: str) -> list:
     normalized_country = (country_code or '').strip().upper()
     if normalized_country and normalized_country != 'KE':
@@ -247,7 +234,14 @@ def build_distance_delivery_methods(metrics: dict, delivery_location: dict, coun
         max_weight = _decimal(method.maximum_weight_kg)
         if max_weight and metrics['total_weight_kg'] > max_weight:
             continue
-        distance_km = _haversine_km(method.origin_latitude, method.origin_longitude, latitude, longitude)
+        distance_info = route_distance(
+            origin_latitude=method.origin_latitude,
+            origin_longitude=method.origin_longitude,
+            destination_latitude=latitude,
+            destination_longitude=longitude,
+            vehicle_type=method.vehicle_type,
+        )
+        distance_km = distance_info['distance_km']
         max_distance = _decimal(method.maximum_distance_km)
         if max_distance and distance_km > max_distance:
             continue

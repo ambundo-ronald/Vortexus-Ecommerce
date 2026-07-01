@@ -29,9 +29,14 @@ from apps.common.currency import (
 from apps.common.products import serialize_product_card
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
-from apps.accounts.delivery_locations import location_for_user_address, store_session_location, upsert_user_address_location
+from apps.accounts.delivery_locations import (
+    location_for_shipping_address,
+    location_for_user_address,
+    store_session_location,
+    upsert_user_address_location,
+)
 
-from .checkout_utils import build_checkout_payload, get_checkout_session, serialize_country
+from .checkout_utils import build_checkout_payload, clear_selected_shipping_method, get_checkout_session, serialize_country
 from .order_serializers import OrderSummarySerializer
 from .review_serializers import get_review_model, public_product_queryset, review_payload
 from .wishlist_serializers import (
@@ -89,6 +94,65 @@ def _user_address_payload(address) -> dict:
         'is_default_for_shipping': address.is_default_for_shipping,
         'is_default_for_billing': address.is_default_for_billing,
     }
+
+
+def _sync_order_shipping_addresses_to_book(user):
+    Order = get_model('order', 'Order')
+    UserAddress = apps.get_model('address', 'UserAddress')
+    has_default = user.addresses.filter(is_default_for_shipping=True).exists()
+
+    orders = (
+        Order.objects.filter(user=user, shipping_address__isnull=False)
+        .select_related('shipping_address', 'shipping_address__country')
+        .order_by('-date_placed', '-id')
+    )
+    for order in orders:
+        shipping = order.shipping_address
+        if not shipping or not getattr(shipping, 'country_id', None) or not (shipping.line1 or '').strip():
+            continue
+
+        defaults = {
+            'title': (shipping.line1 or shipping.line4 or 'Delivery address')[:64],
+            'first_name': shipping.first_name or '',
+            'last_name': shipping.last_name or '',
+            'line1': shipping.line1 or '',
+            'line2': shipping.line2 or '',
+            'line3': shipping.line3 or '',
+            'line4': shipping.line4 or '',
+            'state': shipping.state or '',
+            'postcode': shipping.postcode or '',
+            'country': shipping.country,
+            'phone_number': shipping.phone_number or '',
+            'notes': shipping.notes or '',
+            'user': user,
+        }
+        lookup = {
+            'user': user,
+            'line1': defaults['line1'],
+            'line2': defaults['line2'],
+            'line3': defaults['line3'],
+            'line4': defaults['line4'],
+            'postcode': defaults['postcode'],
+            'country': shipping.country,
+            'phone_number': defaults['phone_number'],
+        }
+        address = UserAddress.objects.filter(**lookup).order_by('-date_created').first()
+        if address:
+            changed = False
+            for field, value in defaults.items():
+                if getattr(address, field) != value:
+                    setattr(address, field, value)
+                    changed = True
+            if changed:
+                address.save()
+        else:
+            defaults['is_default_for_shipping'] = not has_default
+            address = UserAddress.objects.create(**defaults)
+            has_default = True
+
+        location = location_for_shipping_address(shipping)
+        if location:
+            upsert_user_address_location(address, location)
 
 
 def _saved_items(request, display_currency: str | None = None) -> list[dict]:
@@ -516,6 +580,7 @@ class AccountAddressCollectionAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        _sync_order_shipping_addresses_to_book(request.user)
         addresses = request.user.addresses.all().order_by('-is_default_for_shipping', '-is_default_for_billing', '-date_created')
         return Response({'results': [_user_address_payload(address) for address in addresses]})
 
@@ -571,6 +636,7 @@ class CheckoutAddressCollectionAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        _sync_order_shipping_addresses_to_book(request.user)
         addresses = request.user.addresses.all().order_by('-is_default_for_shipping', '-date_created')
         return Response({'results': [_user_address_payload(address) for address in addresses]})
 
@@ -582,6 +648,7 @@ class CheckoutUseShippingAddressAPIView(APIView):
         address = get_object_or_404(request.user.addresses.all(), id=request.data.get('address_id'))
         get_checkout_session(request).ship_to_user_address(address)
         store_session_location(request, location_for_user_address(address))
+        clear_selected_shipping_method(request)
         return Response(build_checkout_payload(request))
 
 

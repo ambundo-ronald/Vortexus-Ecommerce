@@ -100,8 +100,8 @@ export default function OrderConfirmationPage() {
       <div className="checkout-card confirmation-card printable-order-summary">
         <header className="print-order-header">
           <div>
-            <strong>Vortexus</strong>
-            <span>Industrial Marketplace</span>
+            <strong>Reesolmart</strong>
+            <span>Just in time, buying</span>
           </div>
           <div>
             <span>Order</span>

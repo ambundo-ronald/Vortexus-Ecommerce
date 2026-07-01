@@ -114,6 +114,11 @@ class ShippingAddressSerializer(serializers.Serializer):
     latitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-90'), max_value=Decimal('90'))
     longitude = serializers.DecimalField(required=False, allow_null=True, max_digits=9, decimal_places=6, min_value=Decimal('-180'), max_value=Decimal('180'))
     location_label = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    location_source = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    location_provider = serializers.CharField(required=False, allow_blank=True, max_length=32)
+    location_place_id = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    location_formatted_address = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    location_confidence = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=32)
 
     def validate_country_code(self, value):
         Country = apps.get_model('address', 'Country')
@@ -125,6 +130,15 @@ class ShippingAddressSerializer(serializers.Serializer):
             raise serializers.ValidationError('Unsupported shipping country.')
         self.context['country'] = country
         return country.iso_3166_1_a2
+
+    def validate_location_confidence(self, value):
+        if value in (None, ''):
+            return None
+        try:
+            confidence = Decimal(str(value)).quantize(Decimal('0.01'))
+        except Exception as exc:
+            raise serializers.ValidationError('Location confidence must be a number between 0 and 1.') from exc
+        return max(Decimal('0.00'), min(Decimal('1.00'), confidence))
 
     def validate(self, attrs):
         country_code = (attrs.get('country_code') or '').strip().upper()
@@ -164,7 +178,11 @@ class ShippingAddressSerializer(serializers.Serializer):
             'latitude': latitude,
             'longitude': longitude,
             'label': data.get('location_label', ''),
-            'source': 'customer_pin',
+            'source': data.get('location_source') or 'customer_pin',
+            'provider': data.get('location_provider', ''),
+            'place_id': data.get('location_place_id', ''),
+            'formatted_address': data.get('location_formatted_address', ''),
+            'confidence': data.get('location_confidence'),
         }
 
 

@@ -8,6 +8,7 @@ export const checkoutApi = {
     apiClient.patch(ENDPOINTS.checkout.basketLine(lineId), payload).then((response) => response.data),
   removeLine: (lineId) => apiClient.delete(ENDPOINTS.checkout.basketLine(lineId)).then((response) => response.data),
   shipping: () => apiClient.get(ENDPOINTS.checkout.shipping).then((response) => response.data),
+  searchPlaces: (params) => apiClient.get(ENDPOINTS.checkout.placeSearch, { params }).then((response) => response.data),
   addresses: () => apiClient.get(ENDPOINTS.checkout.addresses).then((response) => response.data),
   saveShippingAddress: (payload) =>
     apiClient.put(ENDPOINTS.checkout.shippingAddress, payload).then((response) => response.data),

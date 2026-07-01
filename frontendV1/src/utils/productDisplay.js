@@ -106,7 +106,7 @@ export function productInitials(title = "") {
     .filter(Boolean)
     .slice(0, 3);
 
-  if (!words.length) return "VX";
+  if (!words.length) return "RM";
 
   return words
     .map((word) => word[0])

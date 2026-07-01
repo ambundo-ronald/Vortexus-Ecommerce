@@ -106,6 +106,15 @@ Current scope:
    celery -A config worker -l info
    ```
 
+## Local Delivery Distance
+
+Environment variables:
+```env
+DELIVERY_DISTANCE_CACHE_PRECISION=4
+```
+
+The checkout delivery fee uses straight-line distance from the configured dispatch origin to the customer's pinned delivery location. Distance quotes are cached in the database by rounded origin/destination coordinates and vehicle profile, so repeated checkout quotes near the same destination are reused instead of recalculated.
+
 ## 4) API Endpoints (MVP)
 - `GET /api/v1/search/?q=compressor&page=1&page_size=24&in_stock=true`
 - `POST /api/v1/search/image/` (multipart form with `image`, optional `category`, `top_k`)

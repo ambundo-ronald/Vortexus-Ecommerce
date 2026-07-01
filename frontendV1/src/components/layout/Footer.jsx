@@ -33,7 +33,7 @@ const companyLinks = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/offers", label: "Offers", icon: "sell" },
   { to: "/account/reviews", label: "Reviews", icon: "star" },
-  { href: "mailto:support@vortexus.local", label: "Email support", icon: "alternate_email" },
+  { href: "mailto:support@reesolmart.local", label: "Email support", icon: "alternate_email" },
 ];
 
 const quickActions = [
@@ -42,7 +42,7 @@ const quickActions = [
   { to: "/orders/track", label: "Track", icon: "local_shipping" },
   { to: "/account/wishlist", label: "Wishlist", icon: "favorite" },
   { to: "/account/messages", label: "Inbox", icon: "forum" },
-  { href: "mailto:support@vortexus.local", label: "Email", icon: "mail" },
+  { href: "mailto:support@reesolmart.local", label: "Email", icon: "mail" },
 ];
 
 export default function Footer() {
@@ -51,11 +51,11 @@ export default function Footer() {
   return (
     <footer className="store-footer app-footer">
       <div className="store-footer__inner">
-        <NavLink to="/" className="store-footer__logo" aria-label="Vortexus home">
-          <span className="brand-mark">VX</span>
+        <NavLink to="/" className="store-footer__logo" aria-label="Reesolmart home">
+          <span className="brand-mark">RM</span>
           <span>
-            <strong>Vortexus</strong>
-            <small>Industrial marketplace</small>
+            <strong>Reesolmart</strong>
+            <small>Just in time, buying</small>
           </span>
         </NavLink>
 
@@ -72,9 +72,9 @@ export default function Footer() {
                 <MaterialIcon name="location_on" size={20} />
                 <span>Nairobi, Kenya</span>
               </span>
-              <a href="mailto:support@vortexus.local">
+              <a href="mailto:support@reesolmart.local">
                 <MaterialIcon name="mail" size={20} />
-                <span>support@vortexus.local</span>
+                <span>support@reesolmart.local</span>
               </a>
               <NavLink to="/quote">
                 <MaterialIcon name="chat" size={20} />
@@ -94,7 +94,7 @@ export default function Footer() {
         </section>
 
         <div className="store-footer__bottom">
-          <span>© {year} Vortexus Industrial Marketplace.</span>
+          <span>© {year} Reesolmart.</span>
           <span className="store-footer__legal">
             <NavLink to="/offers">Offers</NavLink>
             <NavLink to="/quote">Quote</NavLink>

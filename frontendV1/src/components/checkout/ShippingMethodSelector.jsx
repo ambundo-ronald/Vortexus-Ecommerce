@@ -59,10 +59,8 @@ function deliveryEta(method) {
 }
 
 function deliveryDescription(method) {
-  if (method?.method_type === "distance_delivery" && method.distance?.km) {
-    const distance = Number(method.distance.km || 0).toLocaleString("en-KE", { maximumFractionDigits: 2 });
-    const rate = formatCurrency(method.distance.rate_per_km || 0, method.currency);
-    return `${method.description || "Map distance delivery"} · ${distance} km · ${rate}/km`;
+  if (method?.method_type === "distance_delivery") {
+    return method.description || deliveryEta(method);
   }
   return method.description || deliveryEta(method);
 }

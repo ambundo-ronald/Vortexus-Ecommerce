@@ -491,7 +491,7 @@ onMounted(() => {
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <UFormField label="Site Name" required>
-            <UInput v-model="store.site_name" :loading="isLoading" placeholder="Vortexus" />
+            <UInput v-model="store.site_name" :loading="isLoading" placeholder="Reesolmart" />
           </UFormField>
           <UFormField label="Site Domain" required>
             <UInput v-model="store.site_domain" :loading="isLoading" placeholder="admin.example.com" />

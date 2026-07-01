@@ -493,7 +493,7 @@ onMounted(loadConnections)
       </div>
 
       <div class="grid grid-cols-1 gap-3 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 xl:grid-cols-3">
-        <UCheckbox v-model="connectionForm.use_vortexus_bridge_app" label="Use Vortexus ERPNext app" />
+        <UCheckbox v-model="connectionForm.use_vortexus_bridge_app" label="Use Reesolmart ERPNext app" />
         <UCheckbox v-model="connectionForm.sync_customers" label="Sync customers" />
         <UCheckbox v-model="connectionForm.export_orders" label="Export sales orders" />
         <UCheckbox v-model="connectionForm.export_order_accounting" label="Export invoices and payments" />

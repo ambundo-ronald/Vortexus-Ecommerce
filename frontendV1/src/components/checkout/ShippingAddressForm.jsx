@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { checkoutApi } from "../../api/checkout.api";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 
 const defaultAddress = {
@@ -16,7 +17,12 @@ const defaultAddress = {
   notes: "",
   latitude: "",
   longitude: "",
-  location_label: ""
+  location_label: "",
+  location_source: "",
+  location_provider: "",
+  location_place_id: "",
+  location_formatted_address: "",
+  location_confidence: ""
 };
 
 export default function ShippingAddressForm({
@@ -60,7 +66,12 @@ export default function ShippingAddressForm({
       country_code: String(form.country_code || "KE").toUpperCase(),
       latitude: form.latitude === "" ? null : form.latitude,
       longitude: form.longitude === "" ? null : form.longitude,
-      location_label: form.location_label || [form.line1, form.line4].filter(Boolean).join(", ")
+      location_label: form.location_label || [form.line1, form.line4].filter(Boolean).join(", "),
+      location_source: form.location_source || "customer_pin",
+      location_provider: form.location_provider,
+      location_place_id: form.location_place_id,
+      location_formatted_address: form.location_formatted_address,
+      location_confidence: normalizeConfidence(form.location_confidence)
     });
   }
 
@@ -77,7 +88,12 @@ export default function ShippingAddressForm({
           ...current,
           latitude: position.coords.latitude.toFixed(6),
           longitude: position.coords.longitude.toFixed(6),
-          location_label: current.location_label || [current.line1, current.line4].filter(Boolean).join(", ")
+          location_label: current.location_label || [current.line1, current.line4].filter(Boolean).join(", "),
+          location_source: "browser_geolocation",
+          location_provider: "browser",
+          location_place_id: "",
+          location_formatted_address: current.location_formatted_address || "",
+          location_confidence: position.coords.accuracy ? String(Math.max(0, Math.min(1, 1 - position.coords.accuracy / 5000)).toFixed(2)) : ""
         }));
         setLocationStatus("Location pinned.");
       },
@@ -96,21 +112,12 @@ export default function ShippingAddressForm({
     setPlaceSearching(true);
     setLocationStatus("Searching for that place...");
     try {
-      const countryCode = String(form.country_code || "KE").toLowerCase();
-      const params = new URLSearchParams({
-        format: "jsonv2",
+      const payload = await checkoutApi.searchPlaces({
         q: query,
-        limit: "6",
-        addressdetails: "1"
+        country_code: form.country_code || "KE",
+        limit: 6
       });
-      if (countryCode) params.set("countrycodes", countryCode);
-
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-        headers: { Accept: "application/json" }
-      });
-      if (!response.ok) throw new Error("Place search failed.");
-
-      const results = await response.json();
+      const results = payload?.results || [];
       setPlaceResults(Array.isArray(results) ? results : []);
       setLocationStatus(results.length ? "Choose the delivery place from the results." : "No place found. Try a nearby road, building, or town.");
     } catch {
@@ -122,11 +129,13 @@ export default function ShippingAddressForm({
   }
 
   function choosePlace(place) {
-    const label = place.display_name || place.name || placeQuery;
+    const label = place.label || place.formatted_address || place.display_name || place.name || placeQuery;
     const addressInfo = place.address || {};
     const city = addressInfo.city || addressInfo.town || addressInfo.village || addressInfo.county || form.line4;
     const county = addressInfo.state || addressInfo.county || form.state;
     const postcode = addressInfo.postcode || form.postcode;
+    const latitude = place.latitude ?? place.lat;
+    const longitude = place.longitude ?? place.lon;
 
     setForm((current) => ({
       ...current,
@@ -134,9 +143,14 @@ export default function ShippingAddressForm({
       line4: city || current.line4,
       state: county || current.state,
       postcode: postcode || current.postcode,
-      latitude: Number(place.lat).toFixed(6),
-      longitude: Number(place.lon).toFixed(6),
-      location_label: label
+      latitude: Number(latitude).toFixed(6),
+      longitude: Number(longitude).toFixed(6),
+      location_label: label,
+      location_source: "place_search",
+      location_provider: place.provider || "",
+      location_place_id: place.place_id || "",
+      location_formatted_address: place.formatted_address || label,
+      location_confidence: normalizeConfidence(place.confidence) ?? ""
     }));
     setPlaceQuery(label);
     setPlaceResults([]);
@@ -257,36 +271,45 @@ export default function ShippingAddressForm({
             {placeResults.map((place) => (
               <button key={place.place_id} type="button" onClick={() => choosePlace(place)}>
                 <MaterialIcon name="location_on" size={17} />
-                <span>{place.display_name}</span>
+                <span>{place.label || place.formatted_address}</span>
               </button>
             ))}
           </div>
         ) : null}
-        <div className="form-grid two">
-          <label>
-            <span>Latitude</span>
-            <input name="latitude" value={form.latitude} onChange={updateField} inputMode="decimal" placeholder="-1.292066" />
-          </label>
-          <label>
-            <span>Longitude</span>
-            <input name="longitude" value={form.longitude} onChange={updateField} inputMode="decimal" placeholder="36.821946" />
-          </label>
-        </div>
         <label>
           <span>Location label</span>
           <input name="location_label" value={form.location_label} onChange={updateField} placeholder="Main gate, site entrance, shop front" />
         </label>
         {locationStatus ? <p className="location-status">{locationStatus}</p> : null}
         {hasPinnedLocation ? (
-          <iframe
-            className="delivery-location-map"
-            title="Pinned delivery location"
-            src={mapUrl}
-            loading="lazy"
-            allowFullScreen
-            referrerPolicy="no-referrer-when-downgrade"
-          />
+          <div className="delivery-location-confirmed">
+            <div className="delivery-location-confirmed__copy">
+              <MaterialIcon name="task_alt" size={19} />
+              <span>{form.location_label || "Delivery location pinned"}</span>
+            </div>
+            <iframe
+              className="delivery-location-map"
+              title="Pinned delivery location"
+              src={mapUrl}
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
         ) : null}
+        <details className="delivery-location-advanced">
+          <summary>Advanced location details</summary>
+          <div className="form-grid two">
+            <label>
+              <span>Latitude</span>
+              <input name="latitude" value={form.latitude} onChange={updateField} inputMode="decimal" placeholder="-1.292066" />
+            </label>
+            <label>
+              <span>Longitude</span>
+              <input name="longitude" value={form.longitude} onChange={updateField} inputMode="decimal" placeholder="36.821946" />
+            </label>
+          </div>
+        </details>
       </section>
 
       <button className="primary-button checkout-submit" type="submit" disabled={saving}>
@@ -304,7 +327,12 @@ function normalizeAddress(address) {
     ...address,
     latitude: location.latitude ?? address.latitude ?? "",
     longitude: location.longitude ?? address.longitude ?? "",
-    location_label: location.label ?? address.location_label ?? ""
+    location_label: location.label ?? address.location_label ?? "",
+    location_source: location.source ?? address.location_source ?? "",
+    location_provider: location.provider ?? address.location_provider ?? "",
+    location_place_id: location.place_id ?? address.location_place_id ?? "",
+    location_formatted_address: location.formatted_address ?? address.location_formatted_address ?? "",
+    location_confidence: location.confidence ?? address.location_confidence ?? ""
   };
 }
 
@@ -314,4 +342,11 @@ function compactLocationLabel(addressInfo = {}, fallback = "") {
     addressInfo.suburb || addressInfo.neighbourhood,
     addressInfo.city || addressInfo.town || addressInfo.village
   ].filter(Boolean).join(", ") || fallback;
+}
+
+function normalizeConfidence(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return String(Math.max(0, Math.min(1, number)).toFixed(2));
 }
