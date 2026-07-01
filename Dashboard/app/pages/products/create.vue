@@ -62,6 +62,11 @@ const categories = ref<{ label: string; value: string }[]>([]);
 const productOptions = ref<{ label: string; value: string }[]>([]);
 const attributeDefinitions = ref<any[]>([]);
 
+async function searchProductOptions(query: string) {
+  const result = await getProductOptions({ search: query, pageSize: 20, maxPages: 1 })
+  return result.success ? result.data : []
+}
+
 onMounted(async () => {
   const [categoryResult, productOptionsResult, attributeResult] = await Promise.all([
     getCategoryOptions(),
@@ -86,6 +91,7 @@ const images = ref<ProductImageItem[]>([]);
       :categories="categories"
       :product-options="productOptions"
       :attribute-definitions="attributeDefinitions"
+      :search-products="searchProductOptions"
       @on-submit="submit"
     >
       <template #header="{ submit }">

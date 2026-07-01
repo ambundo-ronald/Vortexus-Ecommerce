@@ -257,8 +257,12 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         Product = apps.get_model("catalogue", "Product")
         Review = apps.get_model("reviews", "ProductReview")
+        product_queryset = Product.objects.all()
+        if not (request.user and request.user.is_staff):
+            product_queryset = product_queryset.filter(is_public=True)
+
         queryset = (
-            Product.objects.filter(is_public=True)
+            product_queryset
             .exclude(structure="parent")
             .prefetch_related("stockrecords", "images", "categories", "attribute_values__attribute")
             .annotate(

@@ -192,7 +192,7 @@ export function useProduct() {
       const options = typeof params === 'object' && params !== null
         ? params
         : { excludeId: params }
-      const pageSize = options.pageSize || 100
+      const pageSize = Math.min(options.pageSize || 60, 60)
       const maxPages = options.maxPages || 10
       const results: any[] = []
       let page = 1
@@ -219,7 +219,7 @@ export function useProduct() {
         data: results
           .filter(product => Number(product.id) !== excluded)
           .map(product => ({
-            label: `${product.name}${product.sku ? ` (${product.sku})` : ''}`,
+            label: `${product.name || product.title || `Product #${product.id}`}${product.sku ? ` (${product.sku})` : ''}`,
             value: String(product.id),
           })),
       }

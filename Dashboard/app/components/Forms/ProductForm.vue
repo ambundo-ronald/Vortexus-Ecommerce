@@ -9,6 +9,7 @@ const props = defineProps<{
   categories: { label: string; value: string }[];
   productOptions?: { label: string; value: string }[];
   attributeDefinitions?: AttributeItem[];
+  searchProducts?: (query: string) => Promise<{ label: string; value: string }[]>;
 }>();
 
 const emit = defineEmits<{
@@ -134,6 +135,60 @@ const categorySearch = ref("")
 const recommendedProductSearch = ref("")
 const isCategoryPickerOpen = ref(false)
 const isRecommendedPickerOpen = ref(false)
+const isSearchingRecommendedProducts = ref(false)
+const productOptionPool = ref<{ label: string; value: string }[]>([])
+let recommendedSearchTimer: ReturnType<typeof setTimeout> | null = null
+let recommendedSearchRequestId = 0
+
+function mergeProductOptions(options: { label: string; value: string }[] = []) {
+  const byId = new Map(productOptionPool.value.map(option => [String(option.value), option]))
+  for (const option of options) {
+    if (!option?.value)
+      continue
+    byId.set(String(option.value), {
+      label: option.label || `Product #${option.value}`,
+      value: String(option.value),
+    })
+  }
+  productOptionPool.value = Array.from(byId.values())
+}
+
+watch(
+  () => props.productOptions,
+  options => mergeProductOptions(options || []),
+  { immediate: true, deep: true },
+)
+
+watch(
+  recommendedProductSearch,
+  (value) => {
+    if (!props.searchProducts)
+      return
+    if (recommendedSearchTimer)
+      clearTimeout(recommendedSearchTimer)
+
+    const query = value.trim()
+    if (query.length < 2) {
+      isSearchingRecommendedProducts.value = false
+      return
+    }
+
+    const requestId = ++recommendedSearchRequestId
+    recommendedSearchTimer = setTimeout(async () => {
+      isSearchingRecommendedProducts.value = true
+      try {
+        const results = await props.searchProducts?.(query)
+        if (requestId === recommendedSearchRequestId)
+          mergeProductOptions(results || [])
+      }
+      finally {
+        if (requestId === recommendedSearchRequestId)
+          isSearchingRecommendedProducts.value = false
+      }
+    }, 250)
+  },
+)
+
 const filteredCategories = computed(() => {
   const search = categorySearch.value.trim().toLowerCase()
   const items = [{ label: 'Uncategorized', value: '__uncategorized__' }, ...props.categories]
@@ -149,7 +204,10 @@ const selectedCategoryLabel = computed(() => {
 })
 const selectedRecommendedProducts = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
-  return (props.productOptions || []).filter(option => selectedIds.has(Number(option.value)))
+  return Array.from(selectedIds).map((id) => {
+    const option = productOptionPool.value.find(item => Number(item.value) === id)
+    return option || { label: `Product #${id}`, value: String(id) }
+  })
 })
 const dynamicAttributeDefinitions = computed(() =>
   (props.attributeDefinitions || [])
@@ -165,7 +223,7 @@ const dynamicAttributeDefinitions = computed(() =>
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   const search = recommendedProductSearch.value.trim().toLowerCase()
-  return (props.productOptions || []).filter((option) => {
+  return productOptionPool.value.filter((option) => {
     if (selectedIds.has(Number(option.value)))
       return false
     return !search || option.label.toLowerCase().includes(search) || String(option.value).toLowerCase().includes(search)
@@ -354,7 +412,7 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                           <span class="block truncate">{{ item.label }}</span>
                         </button>
                         <p v-if="availableRecommendedProductOptions.length === 0" class="px-3 py-2 text-sm text-slate-500">
-                          No matching products.
+                          {{ isSearchingRecommendedProducts ? 'Searching products...' : 'No matching products.' }}
                         </p>
                       </div>
                     </div>
