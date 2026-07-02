@@ -1,0 +1,83 @@
+{
+    "task_name": "Hybrid Product System Implementation",
+    "description": "Implement a hybrid product management system combining DRF serializers with MongoDB collections for domain-specific product specifications.",
+    "requirements": {
+        "django_serializer_layer": {
+            "validate_fields": [
+                "title",
+                "description",
+                "price",
+                "category_ids",
+                "partner_id"
+            ],
+            "business_rules": [
+                "UPC uniqueness",
+                "required fields validation",
+                "partner validation",
+                "stock/price snapshot validation"
+            ],
+            "route_to_service": "ProductService"
+        },
+        "product_service_layer": {
+            "orchestrate_operations": true,
+            "determine_mongo_collection": true,
+            "call_router": true,
+            "update_sql_models": [
+                "StockRecord",
+                "Partner",
+                "PricingHistory"
+            ],
+            "ensure_atomicity": true
+        },
+        "product_domain_router": {
+            "map_product_class_to_model": [
+                "filter",
+                "surface_pump",
+                "submersible_pump",
+                "blower",
+                "chemical"
+            ],
+            "methods": [
+                "create",
+                "update",
+                "get"
+            ]
+        },
+        "mongodb_collections": {
+            "Filter": "Filter product schema with specifications",
+            "SurfacePump": "Surface pump product schema",
+            "SubmersiblePump": "Submersible pump schema",
+            "Blower": "Blower schema",
+            "Chemical": "Chemical product schema"
+        },
+        "synchronization": {
+            "store_mongo_id_in_django": true,
+            "merge_reads_for_api": true
+        },
+        "api_integration": {
+            "update_serializers": [
+                "ProductWriteSerializer"
+            ],
+            "ensure_backwards_compatibility": true
+        },
+        "optional_enhancements": [
+            "type validation for product_class",
+            "logging for SQL and Mongo operations",
+            "atomicity error handling",
+            "unit tests for full flow"
+        ]
+    },
+    "deliverables": [
+        "Updated Django serializers",
+        "ProductService implementation",
+        "ProductDomainRouter implementation",
+        "MongoDB schemas for all five product types",
+        "Documentation with data flow diagram"
+    ],
+    "constraints": [
+        "Preserve existing Django relational logic",
+        "Mongo collections must store detailed engineering specs",
+        "All Mongo updates should reflect in Django product reference",
+        "Use DRF validation, Django ORM, and MongoEngine/PyMongo as appropriate"
+    ]
+}
