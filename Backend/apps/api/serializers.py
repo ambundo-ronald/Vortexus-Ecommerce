@@ -1,11 +1,13 @@
 from django.apps import apps
-from django.db import transaction
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
 
 from apps.common.currency import default_currency
 from apps.common.media import normalize_uploaded_image
 from apps.recommendations.services import RecommendationService
+
+from .product_domain_router import ProductDomainRouter
+from .product_services import ProductService
 
 
 class ProductListQuerySerializer(serializers.Serializer):
@@ -75,6 +77,7 @@ class ProductWriteSerializer(serializers.Serializer):
         required=False,
         child=serializers.CharField(required=False, allow_blank=True, allow_null=True),
     )
+    domain_specs = serializers.JSONField(required=False)
     recommended_product_ids = serializers.ListField(
         required=False,
         child=serializers.IntegerField(min_value=1),
@@ -133,6 +136,15 @@ class ProductWriteSerializer(serializers.Serializer):
         if 'product_class' in attrs or is_create:
             attrs['resolved_product_class_name'] = attrs.get('product_class') or self.DEFAULT_PRODUCT_CLASS
 
+        if 'domain_specs' in attrs:
+            if not isinstance(attrs['domain_specs'], dict):
+                raise serializers.ValidationError({'domain_specs': 'Expected an object of engineering specifications.'})
+            product_class_name = attrs.get('resolved_product_class_name')
+            if not product_class_name and self.instance is not None and getattr(self.instance, 'product_class', None):
+                product_class_name = self.instance.product_class.name
+            if not ProductDomainRouter.resolve_domain(product_class_name):
+                raise serializers.ValidationError({'product_class': 'Unsupported Mongo product class for domain_specs.'})
+
         stock_requested = is_create or any(
             field in attrs for field in ('price', 'currency', 'num_in_stock', 'partner_sku', 'partner_id', 'partner_name')
         )
@@ -142,95 +154,11 @@ class ProductWriteSerializer(serializers.Serializer):
 
         return attrs
 
-    @transaction.atomic
     def create(self, validated_data):
-        Product = apps.get_model('catalogue', 'Product')
+        return ProductService(serializer=self).create(validated_data)
 
-        categories = validated_data.pop('resolved_categories', None)
-        product_class_name = validated_data.pop('resolved_product_class_name', self.DEFAULT_PRODUCT_CLASS)
-        product_class = self._get_or_create_product_class(product_class_name)
-        attributes = validated_data.pop('attributes', {})
-        recommended_products = validated_data.pop('resolved_recommended_products', None)
-        stock_requested = validated_data.pop('stock_requested', False)
-
-        validated_data.pop('product_class', None)
-        validated_data.pop('recommended_product_ids', None)
-
-        product = Product.objects.create(
-            upc=validated_data['upc'],
-            title=validated_data['title'],
-            slug=validated_data.get('slug') or slugify(validated_data['title']),
-            description=validated_data.get('description') or '',
-            meta_title=validated_data.get('meta_title') or '',
-            meta_description=validated_data.get('meta_description') or '',
-            is_public=validated_data.get('is_public', True),
-            product_class=product_class,
-            structure=getattr(Product, 'STANDALONE', 'standalone'),
-        )
-
-        if categories is not None:
-            product.categories.set(categories)
-
-        if stock_requested:
-            partner = self._resolve_partner(product=product, payload=validated_data)
-            self._save_stockrecord(product=product, partner=partner, payload=validated_data)
-
-        self._save_attributes(product=product, product_class=product_class, attributes=attributes)
-        if recommended_products is not None:
-            self._save_recommendations(product=product, recommended_products=recommended_products)
-        return product
-
-    @transaction.atomic
     def update(self, instance, validated_data):
-        categories = validated_data.pop('resolved_categories', None)
-        product_class_name = validated_data.pop('resolved_product_class_name', None)
-        attributes = validated_data.pop('attributes', None)
-        recommended_products = validated_data.pop('resolved_recommended_products', None)
-        stock_requested = validated_data.pop('stock_requested', False)
-
-        validated_data.pop('product_class', None)
-        validated_data.pop('recommended_product_ids', None)
-
-        product_class = self._get_or_create_product_class(product_class_name) if product_class_name else instance.product_class
-        dirty_fields = []
-
-        for field in ('upc', 'title', 'slug', 'meta_title', 'meta_description', 'is_public'):
-            if field in validated_data and getattr(instance, field) != validated_data[field]:
-                setattr(instance, field, validated_data[field])
-                dirty_fields.append(field)
-
-        if 'description' in validated_data:
-            description = validated_data.get('description') or ''
-            if (instance.description or '') != description:
-                instance.description = description
-                dirty_fields.append('description')
-
-        if instance.product_class_id != getattr(product_class, 'id', None):
-            instance.product_class = product_class
-            dirty_fields.append('product_class')
-
-        expected_structure = getattr(instance.__class__, 'STANDALONE', 'standalone')
-        if instance.structure != expected_structure:
-            instance.structure = expected_structure
-            dirty_fields.append('structure')
-
-        if dirty_fields:
-            instance.save(update_fields=dirty_fields)
-
-        if categories is not None:
-            instance.categories.set(categories)
-
-        if stock_requested:
-            partner = self._resolve_partner(product=instance, payload=validated_data)
-            self._save_stockrecord(product=instance, partner=partner, payload=validated_data)
-
-        if attributes is not None:
-            self._save_attributes(product=instance, product_class=product_class, attributes=attributes)
-
-        if recommended_products is not None:
-            self._save_recommendations(product=instance, recommended_products=recommended_products)
-
-        return instance
+        return ProductService(serializer=self).update(instance, validated_data)
 
     def _get_or_create_product_class(self, name: str):
         ProductClass = apps.get_model('catalogue', 'ProductClass')

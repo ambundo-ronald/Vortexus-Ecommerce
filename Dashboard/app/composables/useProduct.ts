@@ -18,6 +18,21 @@ export interface ProductOptionParams {
 
 const DEFAULT_CURRENCY = 'KES'
 
+export const DOMAIN_PRODUCT_CLASS_OPTIONS = [
+  { label: 'Standard catalogue product', value: '' },
+  { label: 'Filter', value: 'filter' },
+  { label: 'Blower', value: 'blower' },
+  { label: 'Chemical', value: 'chemical' },
+  { label: 'Controller', value: 'controller' },
+  { label: 'Desalination system', value: 'desalination_system' },
+  { label: 'Flow meter', value: 'flow_meter' },
+  { label: 'Plumbing fitting', value: 'plumbing_fitting' },
+  { label: 'Sterilizer', value: 'sterilizer' },
+  { label: 'Surface pump', value: 'surface_pump' },
+  { label: 'Submersible pump', value: 'submersible_pump' },
+  { label: 'Vessel', value: 'vessel' },
+]
+
 function normalizeImageId(id: unknown): number | undefined {
   const value = Number(id)
   return Number.isInteger(value) && value > 0 ? value : undefined
@@ -60,6 +75,10 @@ function flattenCategories(results: any[] = []) {
 function mapProductDetailToForm(product: any) {
   const firstCategoryId = product.categoryIds?.[0] ? String(product.categoryIds[0]) : ''
   const specificationMap = Object.fromEntries((product.specifications || []).map((item: any) => [item.code, item.value]))
+  const domainProduct = product.domain_product || null
+  const domainPayload = domainProduct?.payload && typeof domainProduct.payload === 'object'
+    ? domainProduct.payload
+    : null
 
   return {
     id: product.id,
@@ -82,6 +101,8 @@ function mapProductDetailToForm(product: any) {
     brand: product.brand || specificationMap.brand || '',
     tags: product.tags || specificationMap.tags || '',
     attributes: specificationMap,
+    productClass: domainProduct?.product_class || '',
+    domainSpecsText: domainPayload ? JSON.stringify(domainPayload, null, 2) : '',
     images: (product.images || []).map((image: any) => mapProductImage(image)),
   }
 }
@@ -90,7 +111,8 @@ function mapFormToPayload(data: Record<string, any>) {
   const dynamicAttributes = data.attributes && typeof data.attributes === 'object'
     ? data.attributes
     : {}
-  return {
+  const domainSpecsText = String(data.domainSpecsText || '').trim()
+  const payload: Record<string, any> = {
     upc: data.sku,
     title: data.name,
     slug: data.slug || '',
@@ -111,6 +133,14 @@ function mapFormToPayload(data: Record<string, any>) {
       tags: data.tags || '',
     },
   }
+
+  if (data.productClass)
+    payload.product_class = data.productClass
+
+  if (domainSpecsText)
+    payload.domain_specs = JSON.parse(domainSpecsText)
+
+  return payload
 }
 
 export function useProduct() {
