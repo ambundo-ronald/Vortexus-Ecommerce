@@ -435,7 +435,7 @@ onMounted(loadMethods)
     <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h1 class="text-2xl font-black text-slate-950">Shipping</h1>
-        <p class="mt-1 text-sm text-slate-500">Manage distance delivery fees and Oscar weight-based fallback methods.</p>
+        <p class="mt-1 text-sm text-slate-500">Manage the shipping methods customers can select at checkout.</p>
       </div>
       <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
         <UInput

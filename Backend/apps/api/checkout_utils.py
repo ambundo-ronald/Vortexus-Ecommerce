@@ -2,9 +2,8 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
-from django.conf import settings
 from oscar.apps.checkout.utils import CheckoutSessionData
-from oscar.apps.shipping.methods import FixedPrice, Free, NoShippingRequired
+from oscar.apps.shipping.methods import FixedPrice, NoShippingRequired
 from oscar.core.loading import get_class
 
 from apps.common.currency import convert_amount, default_currency, resolve_display_currency
@@ -31,30 +30,6 @@ def _money_payload(value) -> float:
     return float(_money(value))
 
 
-class DispatchHubPickup(Free):
-    code = 'dispatch-hub-pickup'
-    name = 'Dispatch Hub Pickup'
-    description = 'Collect stocked parts and equipment from the Vortexus dispatch hub.'
-
-
-class StandardFreight(FixedPrice):
-    code = 'standard-freight'
-    name = 'Standard Freight'
-    description = 'Standard freight for stocked pumps, filters, treatment systems, and accessories.'
-
-
-class PriorityDispatch(FixedPrice):
-    code = 'priority-dispatch'
-    name = 'Priority Dispatch'
-    description = 'Priority dispatch for urgent replacements and service-critical equipment.'
-
-
-class ProjectLogistics(FixedPrice):
-    code = 'project-logistics'
-    name = 'Project Logistics'
-    description = 'Coordinated site delivery for larger borehole, pumping, and treatment projects.'
-
-
 class IndustrialShippingRepository:
     LOCAL_COUNTRIES = {'KE'}
 
@@ -73,27 +48,24 @@ class IndustrialShippingRepository:
         if delivery_location:
             methods.extend(build_distance_delivery_methods(metrics, delivery_location, country_code))
 
-        for rule in settings.INDUSTRIAL_SHIPPING_RULES:
-            if not shipping_rule_matches(rule, metrics, country_code):
-                continue
-            methods.append(build_shipping_method_from_rule(rule, metrics, country_code))
+        methods.extend(build_weight_based_shipping_methods(metrics))
 
         return methods
 
 
-class RuleBasedShippingMethod(FixedPrice):
-    def __init__(self, *, rule: dict, charge: Decimal):
+class AdminWeightBasedShippingMethod(FixedPrice):
+    def __init__(self, *, method, charge: Decimal):
         super().__init__(charge_excl_tax=charge, charge_incl_tax=charge)
-        self.rule = rule
-        self.code = rule['code']
-        self.name = rule['name']
-        self.description = rule.get('description', '')
-        self.carrier_code = rule.get('carrier_code', '')
-        self.service_code = rule.get('service_code', '')
-        self.method_type = rule.get('method_type', 'freight')
-        self.min_eta_days = rule.get('min_eta_days')
-        self.max_eta_days = rule.get('max_eta_days')
-        self.is_pickup = bool(rule.get('is_pickup', False))
+        self.weight_method = method
+        self.code = method.code
+        self.name = method.name
+        self.description = method.description or ''
+        self.carrier_code = 'admin_shipping'
+        self.service_code = method.code
+        self.method_type = 'pickup' if method.code == 'dispatch-hub-pickup' else 'freight'
+        self.min_eta_days = None
+        self.max_eta_days = None
+        self.is_pickup = method.code == 'dispatch-hub-pickup'
 
 
 class DistanceDeliveryShippingMethod(FixedPrice):
@@ -189,35 +161,6 @@ def basket_shipping_metrics(basket) -> dict:
     }
 
 
-def shipping_rule_matches(rule: dict, metrics: dict, country_code: str) -> bool:
-    allowed_countries = {code.upper() for code in rule.get('countries', []) if code}
-    normalized_country = (country_code or '').strip().upper()
-    if allowed_countries and normalized_country and normalized_country not in allowed_countries:
-        return False
-    if allowed_countries and not normalized_country:
-        return False
-
-    max_supplier_groups = rule.get('max_supplier_groups')
-    if max_supplier_groups is not None and metrics['supplier_count'] > int(max_supplier_groups):
-        return False
-
-    min_weight = _decimal(rule.get('min_weight_kg'))
-    if min_weight and metrics['total_weight_kg'] < min_weight:
-        return False
-
-    max_weight = _decimal(rule.get('max_weight_kg'))
-    if max_weight and metrics['total_weight_kg'] > max_weight:
-        return False
-
-    if rule.get('project_only') and not metrics['requires_project_logistics']:
-        return False
-
-    if rule.get('exclude_project') and metrics['requires_project_logistics']:
-        return False
-
-    return True
-
-
 def build_distance_delivery_methods(metrics: dict, delivery_location: dict, country_code: str) -> list:
     normalized_country = (country_code or '').strip().upper()
     if normalized_country and normalized_country != 'KE':
@@ -252,53 +195,29 @@ def build_distance_delivery_methods(metrics: dict, delivery_location: dict, coun
     return methods
 
 
-def build_shipping_method_from_rule(rule: dict, metrics: dict, country_code: str):
-    normalized_country = (country_code or '').strip().upper()
-    is_international = bool(normalized_country and normalized_country not in {'KE'})
-    subtotal = metrics['subtotal_excl_tax']
+def build_weight_based_shipping_methods(metrics: dict) -> list:
+    WeightBased = apps.get_model('shipping', 'WeightBased')
+    methods = []
+    basket_weight = metrics['total_weight_kg']
 
-    charge = _decimal(rule.get('international_charge' if is_international else 'charge'))
+    for method in WeightBased.objects.prefetch_related('bands').order_by('name', 'id'):
+        charge = charge_for_weight_based_method(method, basket_weight)
+        if charge is None:
+            continue
+        methods.append(AdminWeightBasedShippingMethod(method=method, charge=charge))
+    return methods
 
-    free_threshold = _decimal(rule.get('free_subtotal_threshold'))
-    if free_threshold and subtotal >= free_threshold:
-        charge = ZERO
 
-    reduced_threshold = _decimal(rule.get('reduced_charge_threshold'))
-    if reduced_threshold and subtotal >= reduced_threshold:
-        reduced_key = 'reduced_international_charge' if is_international else 'reduced_charge'
-        reduced_charge = _decimal(rule.get(reduced_key))
-        if reduced_charge or rule.get(reduced_key) in (0, '0', '0.00'):
-            charge = reduced_charge
+def charge_for_weight_based_method(method, basket_weight: Decimal) -> Decimal | None:
+    effective_weight = basket_weight
+    if effective_weight <= ZERO:
+        effective_weight = _decimal(getattr(method, 'default_weight', 0))
 
-    if rule['code'] == 'dispatch-hub-pickup':
-        method = DispatchHubPickup()
-        method.rule = rule
-        method.carrier_code = rule.get('carrier_code', '')
-        method.service_code = rule.get('service_code', '')
-        method.method_type = rule.get('method_type', 'pickup')
-        method.min_eta_days = rule.get('min_eta_days')
-        method.max_eta_days = rule.get('max_eta_days')
-        method.is_pickup = True
-        return method
-
-    method_map = {
-        'standard-freight': StandardFreight,
-        'priority-dispatch': PriorityDispatch,
-        'project-logistics': ProjectLogistics,
-    }
-    method_class = method_map.get(rule['code'])
-    if method_class:
-        method = method_class(charge_excl_tax=charge, charge_incl_tax=charge)
-        method.rule = rule
-        method.carrier_code = rule.get('carrier_code', '')
-        method.service_code = rule.get('service_code', '')
-        method.method_type = rule.get('method_type', 'freight')
-        method.min_eta_days = rule.get('min_eta_days')
-        method.max_eta_days = rule.get('max_eta_days')
-        method.is_pickup = bool(rule.get('is_pickup', False))
-        return method
-
-    return RuleBasedShippingMethod(rule=rule, charge=charge)
+    bands = sorted(method.bands.all(), key=lambda band: band.upper_limit)
+    for band in bands:
+        if effective_weight <= _decimal(band.upper_limit):
+            return _decimal(band.charge)
+    return None
 
 
 def shipping_country_code(shipping_address) -> str:

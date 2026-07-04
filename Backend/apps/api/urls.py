@@ -88,6 +88,12 @@ from .integration_views import (
     IntegrationLogCollectionAPIView,
 )
 from .audit_views import AuditLogCollectionAPIView, AuditLogDetailAPIView
+from .backup_views import (
+    AdminBackupCollectionAPIView,
+    AdminBackupDetailAPIView,
+    AdminBackupDownloadAPIView,
+    AdminBackupVerifyAPIView,
+)
 from .checkout_views import (
     BasketAPIView,
     BasketItemCollectionAPIView,
@@ -339,6 +345,10 @@ urlpatterns = [
     path('admin/payments/pesapal/register-ipn/', AdminPesapalRegisterIPNAPIView.as_view(), name='admin-payment-pesapal-register-ipn'),
     path('admin/payments/logs/', AdminPaymentSessionLogCollectionAPIView.as_view(), name='admin-payment-logs'),
     path('admin/payments/<str:reference>/refund/', AdminPaymentRefundAPIView.as_view(), name='admin-payment-refund'),
+    path('admin/backups/', AdminBackupCollectionAPIView.as_view(), name='admin-backups'),
+    path('admin/backups/<int:backup_id>/', AdminBackupDetailAPIView.as_view(), name='admin-backup-detail'),
+    path('admin/backups/<int:backup_id>/verify/', AdminBackupVerifyAPIView.as_view(), name='admin-backup-verify'),
+    path('admin/backups/<int:backup_id>/download/', AdminBackupDownloadAPIView.as_view(), name='admin-backup-download'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/statistics/', AdminOrderStatisticsAPIView.as_view(), name='admin-order-statistics'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),
