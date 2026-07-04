@@ -2,6 +2,7 @@
 import * as z from "zod/v4";
 import type { FormSubmitEvent } from "@nuxt/ui";
 import type { AttributeItem } from "~/composables/useAttributes";
+import { DOMAIN_PRODUCT_CLASS_OPTIONS } from "~/composables/useProduct";
 
 const props = defineProps<{
   values?: Partial<ProductFormSchema>;
@@ -69,6 +70,19 @@ const productSchema = z.object({
   brand: z.string().optional(),
   tags: z.string().optional(),
   attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  productClass: z.string().optional().default(""),
+  domainSpecsText: z.string().optional().refine((value) => {
+    const trimmed = String(value || "").trim()
+    if (!trimmed)
+      return true
+    try {
+      JSON.parse(trimmed)
+      return true
+    }
+    catch {
+      return false
+    }
+  }, "Engineering specs must be valid JSON"),
 });
 
 export type ProductFormSchema = z.infer<typeof productSchema>;
@@ -94,6 +108,8 @@ const localFormState = reactive<ProductFormSchema>({
   brand: "",
   tags: "",
   attributes: {},
+  productClass: "",
+  domainSpecsText: "",
   ...props.values,
 }) as ProductFormSchema;
 
@@ -122,6 +138,8 @@ watch(
       brand: "",
       tags: "",
       attributes: {},
+      productClass: "",
+      domainSpecsText: "",
       ...values,
     })
     if (!localFormState.attributes)
@@ -220,6 +238,7 @@ const dynamicAttributeDefinitions = computed(() =>
       return a.name.localeCompare(b.name)
     }),
 )
+const domainProductClassOptions = DOMAIN_PRODUCT_CLASS_OPTIONS
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   const search = recommendedProductSearch.value.trim().toLowerCase()
@@ -375,6 +394,34 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                     placeholder="pump, reverse osmosis, tank"
                     size="lg"
                     class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </UCard>
+            <UCard class="rounded-xl">
+              <template #header>
+                <h3 class="text-base font-black leading-6 text-slate-950">
+                  Engineering Specs
+                </h3>
+              </template>
+              <div class="space-y-4">
+                <UFormField label="Product class" name="productClass">
+                  <USelect
+                    v-model="localFormState.productClass"
+                    :items="domainProductClassOptions"
+                    value-attribute="value"
+                    option-attribute="label"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Domain specifications JSON" name="domainSpecsText">
+                  <UTextarea
+                    v-model="localFormState.domainSpecsText"
+                    placeholder='{"packing_dimensions": {}, "specifications": {}}'
+                    :rows="10"
+                    size="lg"
+                    class="w-full font-mono text-sm"
                   />
                 </UFormField>
               </div>

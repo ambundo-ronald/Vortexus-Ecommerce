@@ -190,6 +190,11 @@ export const navSections: NavSection[] = [
         to: '/integrations',
       },
       {
+        label: 'Backups',
+        icon: 'i-lucide-archive',
+        to: '/backups',
+      },
+      {
         label: 'Settings',
         icon: 'i-lucide-settings',
         to: '/settings',

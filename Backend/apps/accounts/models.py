@@ -193,3 +193,27 @@ class ProductAttributeMetadata(models.Model):
 
     def __str__(self):
         return f'ProductAttributeMetadata(attribute_id={self.attribute_id})'
+
+
+class ProductMongoReference(models.Model):
+    product = models.OneToOneField(
+        'catalogue.Product',
+        on_delete=models.CASCADE,
+        related_name='mongo_reference',
+    )
+    product_class = models.CharField(max_length=64)
+    mongo_id = models.CharField(max_length=64, db_index=True)
+    collection = models.CharField(max_length=64, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['product_id']
+        indexes = [
+            models.Index(fields=['product_class']),
+            models.Index(fields=['collection', 'mongo_id']),
+        ]
+
+    def __str__(self):
+        return f'ProductMongoReference(product_id={self.product_id}, mongo_id={self.mongo_id})'
