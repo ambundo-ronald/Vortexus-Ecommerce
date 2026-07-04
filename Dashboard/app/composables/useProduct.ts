@@ -34,6 +34,93 @@ export const DOMAIN_PRODUCT_CLASS_OPTIONS = [
   { label: 'Vessel', value: 'vessel' },
 ]
 
+function getSpecValue(item: any) {
+  if (item && typeof item === 'object' && 'value' in item)
+    return item.value ?? ''
+  return item ?? ''
+}
+
+function getSpecUnit(item: any) {
+  if (item && typeof item === 'object' && 'unit' in item)
+    return item.unit ?? ''
+  return ''
+}
+
+function flattenSpecRows(source: Record<string, any> = {}, prefix = ''): { key: string, value: string, unit: string }[] {
+  const rows: { key: string, value: string, unit: string }[] = []
+  for (const [key, item] of Object.entries(source || {})) {
+    const path = prefix ? `${prefix}.${key}` : key
+    if (
+      item
+      && typeof item === 'object'
+      && !Array.isArray(item)
+      && !('value' in item)
+      && !('unit' in item)
+    ) {
+      rows.push(...flattenSpecRows(item, path))
+      continue
+    }
+    rows.push({
+      key: path,
+      value: String(getSpecValue(item) ?? ''),
+      unit: String(getSpecUnit(item) ?? ''),
+    })
+  }
+  return rows
+}
+
+function dimensionValue(source: any, key: string) {
+  return source?.[key]?.value ?? source?.[key] ?? ''
+}
+
+function dimensionUnit(source: any, key: string, fallback: string) {
+  return source?.[key]?.unit ?? fallback
+}
+
+function setNestedSpec(target: Record<string, any>, path: string, value: any, unit?: string) {
+  const keys = path.split('.').map(key => key.trim()).filter(Boolean)
+  if (!keys.length)
+    return
+
+  let cursor = target
+  for (const key of keys.slice(0, -1)) {
+    if (!cursor[key] || typeof cursor[key] !== 'object' || Array.isArray(cursor[key]))
+      cursor[key] = {}
+    cursor = cursor[key]
+  }
+  const lastKey = keys[keys.length - 1]
+  cursor[lastKey] = unit ? { value, unit } : { value }
+}
+
+function compactEngineeringSpecs(data: Record<string, any>) {
+  const packingDimensions: Record<string, any> = {}
+  const packingFields = data.packingDimensions || {}
+  for (const key of ['length', 'width', 'height', 'weight', 'quantity']) {
+    const item = packingFields[key] || {}
+    if (String(item.value ?? '').trim())
+      packingDimensions[key] = item.unit ? { value: item.value, unit: item.unit } : { value: item.value }
+  }
+
+  const specifications: Record<string, any> = {}
+  for (const row of data.specificationRows || []) {
+    const key = String(row?.key || '').trim()
+    const value = String(row?.value ?? '').trim()
+    const unit = String(row?.unit || '').trim()
+    if (!key || !value)
+      continue
+    setNestedSpec(specifications, key, value, unit)
+  }
+
+  const payload: Record<string, any> = {}
+  if (String(data.engineeringBrand || '').trim())
+    payload.brand = String(data.engineeringBrand).trim()
+  if (Object.keys(packingDimensions).length)
+    payload.packing_dimensions = packingDimensions
+  if (Object.keys(specifications).length)
+    payload.specifications = specifications
+  return payload
+}
+
 function normalizeImageId(id: unknown): number | undefined {
   const value = Number(id)
   return Number.isInteger(value) && value > 0 ? value : undefined
@@ -103,7 +190,30 @@ function mapProductDetailToForm(product: any) {
     tags: product.tags || specificationMap.tags || '',
     attributes: specificationMap,
     productClass: domainProduct?.product_class || STANDARD_PRODUCT_CLASS,
-    domainSpecsText: domainPayload ? JSON.stringify(domainPayload, null, 2) : '',
+    engineeringBrand: domainPayload?.brand || '',
+    packingDimensions: {
+      length: {
+        value: dimensionValue(domainPayload?.packing_dimensions, 'length'),
+        unit: dimensionUnit(domainPayload?.packing_dimensions, 'length', 'cm'),
+      },
+      width: {
+        value: dimensionValue(domainPayload?.packing_dimensions, 'width'),
+        unit: dimensionUnit(domainPayload?.packing_dimensions, 'width', 'cm'),
+      },
+      height: {
+        value: dimensionValue(domainPayload?.packing_dimensions, 'height'),
+        unit: dimensionUnit(domainPayload?.packing_dimensions, 'height', 'cm'),
+      },
+      weight: {
+        value: dimensionValue(domainPayload?.packing_dimensions, 'weight'),
+        unit: dimensionUnit(domainPayload?.packing_dimensions, 'weight', 'g'),
+      },
+      quantity: {
+        value: dimensionValue(domainPayload?.packing_dimensions, 'quantity'),
+        unit: dimensionUnit(domainPayload?.packing_dimensions, 'quantity', 'pcs'),
+      },
+    },
+    specificationRows: flattenSpecRows(domainPayload?.specifications || {}),
     images: (product.images || []).map((image: any) => mapProductImage(image)),
   }
 }
@@ -112,7 +222,7 @@ function mapFormToPayload(data: Record<string, any>) {
   const dynamicAttributes = data.attributes && typeof data.attributes === 'object'
     ? data.attributes
     : {}
-  const domainSpecsText = String(data.domainSpecsText || '').trim()
+  const domainSpecs = compactEngineeringSpecs(data)
   const payload: Record<string, any> = {
     upc: data.sku,
     title: data.name,
@@ -138,8 +248,8 @@ function mapFormToPayload(data: Record<string, any>) {
   if (data.productClass && data.productClass !== STANDARD_PRODUCT_CLASS)
     payload.product_class = data.productClass
 
-  if (domainSpecsText)
-    payload.domain_specs = JSON.parse(domainSpecsText)
+  if (Object.keys(domainSpecs).length)
+    payload.domain_specs = domainSpecs
 
   return payload
 }

@@ -71,18 +71,16 @@ const productSchema = z.object({
   tags: z.string().optional(),
   attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   productClass: z.string().optional().default(STANDARD_PRODUCT_CLASS),
-  domainSpecsText: z.string().optional().refine((value) => {
-    const trimmed = String(value || "").trim()
-    if (!trimmed)
-      return true
-    try {
-      JSON.parse(trimmed)
-      return true
-    }
-    catch {
-      return false
-    }
-  }, "Engineering specs must be valid JSON"),
+  engineeringBrand: z.string().optional(),
+  packingDimensions: z.record(z.string(), z.object({
+    value: z.union([z.string(), z.number()]).optional(),
+    unit: z.string().optional(),
+  })).optional(),
+  specificationRows: z.array(z.object({
+    key: z.string().optional(),
+    value: z.union([z.string(), z.number()]).optional(),
+    unit: z.string().optional(),
+  })).optional(),
 });
 
 export type ProductFormSchema = z.infer<typeof productSchema>;
@@ -109,7 +107,15 @@ const localFormState = reactive<ProductFormSchema>({
   tags: "",
   attributes: {},
   productClass: STANDARD_PRODUCT_CLASS,
-  domainSpecsText: "",
+  engineeringBrand: "",
+  packingDimensions: {
+    length: { value: "", unit: "cm" },
+    width: { value: "", unit: "cm" },
+    height: { value: "", unit: "cm" },
+    weight: { value: "", unit: "g" },
+    quantity: { value: "", unit: "pcs" },
+  },
+  specificationRows: [],
   ...props.values,
 }) as ProductFormSchema;
 
@@ -139,11 +145,23 @@ watch(
       tags: "",
       attributes: {},
       productClass: STANDARD_PRODUCT_CLASS,
-      domainSpecsText: "",
+      engineeringBrand: "",
+      packingDimensions: {
+        length: { value: "", unit: "cm" },
+        width: { value: "", unit: "cm" },
+        height: { value: "", unit: "cm" },
+        weight: { value: "", unit: "g" },
+        quantity: { value: "", unit: "pcs" },
+      },
+      specificationRows: [],
       ...values,
     })
     if (!localFormState.attributes)
       localFormState.attributes = {}
+    if (!localFormState.packingDimensions)
+      localFormState.packingDimensions = {}
+    if (!localFormState.specificationRows)
+      localFormState.specificationRows = []
   },
   { immediate: true, deep: true },
 )
@@ -239,6 +257,20 @@ const dynamicAttributeDefinitions = computed(() =>
     }),
 )
 const domainProductClassOptions = DOMAIN_PRODUCT_CLASS_OPTIONS
+const dimensionUnitOptions = [
+  { label: 'mm', value: 'mm' },
+  { label: 'cm', value: 'cm' },
+  { label: 'm', value: 'm' },
+]
+const weightUnitOptions = [
+  { label: 'g', value: 'g' },
+  { label: 'kg', value: 'kg' },
+  { label: 'mg', value: 'mg' },
+]
+const quantityUnitOptions = [
+  { label: 'pcs', value: 'pcs' },
+  { label: 'pc', value: 'pc' },
+]
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   const search = recommendedProductSearch.value.trim().toLowerCase()
@@ -282,6 +314,16 @@ function selectRecommendedProduct(value: string) {
 
 function removeRecommendedProduct(productId: number) {
   localFormState.recommendedProductIds = (localFormState.recommendedProductIds || []).filter(id => id !== productId)
+}
+
+function addSpecificationRow() {
+  if (!localFormState.specificationRows)
+    localFormState.specificationRows = []
+  localFormState.specificationRows.push({ key: "", value: "", unit: "" })
+}
+
+function removeSpecificationRow(index: number) {
+  localFormState.specificationRows?.splice(index, 1)
 }
 
 function emitSubmit(data: ProductFormSchema) {
@@ -415,15 +457,97 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                     class="w-full"
                   />
                 </UFormField>
-                <UFormField label="Domain specifications JSON" name="domainSpecsText">
-                  <UTextarea
-                    v-model="localFormState.domainSpecsText"
-                    placeholder='{"packing_dimensions": {}, "specifications": {}}'
-                    :rows="10"
+                <UFormField label="Engineering brand">
+                  <UInput
+                    v-model="localFormState.engineeringBrand"
+                    placeholder="e.g. Grundfos, Norwa, Hidrotek"
                     size="lg"
-                    class="w-full font-mono text-sm"
+                    class="w-full"
                   />
                 </UFormField>
+
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="mb-4 flex items-center gap-2">
+                    <UIcon name="i-lucide-ruler" class="size-4 text-blue-600" />
+                    <h4 class="text-sm font-bold text-slate-950">
+                      Packing dimensions
+                    </h4>
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <UFormField label="Length">
+                      <UInput v-model="localFormState.packingDimensions.length.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.length.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Width">
+                      <UInput v-model="localFormState.packingDimensions.width.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.width.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Height">
+                      <UInput v-model="localFormState.packingDimensions.height.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.height.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Weight">
+                      <UInput v-model="localFormState.packingDimensions.weight.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.weight.unit" :items="weightUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Quantity">
+                      <UInput v-model="localFormState.packingDimensions.quantity.value" type="number" step="1" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.quantity.unit" :items="quantityUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-list-plus" class="size-4 text-blue-600" />
+                      <h4 class="text-sm font-bold text-slate-950">
+                        Technical specifications
+                      </h4>
+                    </div>
+                    <UButton icon="i-lucide-plus" size="sm" variant="outline" type="button" @click="addSpecificationRow">
+                      Add spec
+                    </UButton>
+                  </div>
+                  <div v-if="localFormState.specificationRows?.length" class="space-y-3">
+                    <div
+                      v-for="(row, index) in localFormState.specificationRows"
+                      :key="index"
+                      class="grid grid-cols-1 gap-2 sm:grid-cols-[1.2fr_1fr_120px_auto]"
+                    >
+                      <UInput v-model="row.key" placeholder="Spec name e.g. max_flow_rate" size="lg" />
+                      <UInput v-model="row.value" placeholder="Value e.g. 60" size="lg" />
+                      <UInput v-model="row.unit" placeholder="Unit e.g. lpm" size="lg" />
+                      <UButton
+                        icon="i-lucide-trash-2"
+                        color="error"
+                        variant="ghost"
+                        square
+                        type="button"
+                        :aria-label="`Remove specification ${index + 1}`"
+                        @click="removeSpecificationRow(index)"
+                      />
+                    </div>
+                  </div>
+                  <p v-else class="text-sm text-slate-500">
+                    Add flow rate, pressure, voltage, material, temperature, or other product-specific specs.
+                  </p>
+                </div>
               </div>
             </UCard>
             <UCard class="rounded-xl">
