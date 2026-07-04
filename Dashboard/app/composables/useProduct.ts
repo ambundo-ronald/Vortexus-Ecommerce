@@ -17,9 +17,10 @@ export interface ProductOptionParams {
 }
 
 const DEFAULT_CURRENCY = 'KES'
+export const STANDARD_PRODUCT_CLASS = '__standard_product__'
 
 export const DOMAIN_PRODUCT_CLASS_OPTIONS = [
-  { label: 'Standard catalogue product', value: '' },
+  { label: 'Standard catalogue product', value: STANDARD_PRODUCT_CLASS },
   { label: 'Filter', value: 'filter' },
   { label: 'Blower', value: 'blower' },
   { label: 'Chemical', value: 'chemical' },
@@ -101,7 +102,7 @@ function mapProductDetailToForm(product: any) {
     brand: product.brand || specificationMap.brand || '',
     tags: product.tags || specificationMap.tags || '',
     attributes: specificationMap,
-    productClass: domainProduct?.product_class || '',
+    productClass: domainProduct?.product_class || STANDARD_PRODUCT_CLASS,
     domainSpecsText: domainPayload ? JSON.stringify(domainPayload, null, 2) : '',
     images: (product.images || []).map((image: any) => mapProductImage(image)),
   }
@@ -134,7 +135,7 @@ function mapFormToPayload(data: Record<string, any>) {
     },
   }
 
-  if (data.productClass)
+  if (data.productClass && data.productClass !== STANDARD_PRODUCT_CLASS)
     payload.product_class = data.productClass
 
   if (domainSpecsText)

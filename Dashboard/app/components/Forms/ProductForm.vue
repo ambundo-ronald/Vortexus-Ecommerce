@@ -2,7 +2,7 @@
 import * as z from "zod/v4";
 import type { FormSubmitEvent } from "@nuxt/ui";
 import type { AttributeItem } from "~/composables/useAttributes";
-import { DOMAIN_PRODUCT_CLASS_OPTIONS } from "~/composables/useProduct";
+import { DOMAIN_PRODUCT_CLASS_OPTIONS, STANDARD_PRODUCT_CLASS } from "~/composables/useProduct";
 
 const props = defineProps<{
   values?: Partial<ProductFormSchema>;
@@ -70,7 +70,7 @@ const productSchema = z.object({
   brand: z.string().optional(),
   tags: z.string().optional(),
   attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
-  productClass: z.string().optional().default(""),
+  productClass: z.string().optional().default(STANDARD_PRODUCT_CLASS),
   domainSpecsText: z.string().optional().refine((value) => {
     const trimmed = String(value || "").trim()
     if (!trimmed)
@@ -108,7 +108,7 @@ const localFormState = reactive<ProductFormSchema>({
   brand: "",
   tags: "",
   attributes: {},
-  productClass: "",
+  productClass: STANDARD_PRODUCT_CLASS,
   domainSpecsText: "",
   ...props.values,
 }) as ProductFormSchema;
@@ -138,7 +138,7 @@ watch(
       brand: "",
       tags: "",
       attributes: {},
-      productClass: "",
+      productClass: STANDARD_PRODUCT_CLASS,
       domainSpecsText: "",
       ...values,
     })
