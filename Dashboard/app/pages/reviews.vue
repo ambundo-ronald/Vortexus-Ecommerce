@@ -16,7 +16,7 @@ const totalItems = ref(0)
 const isLoading = ref(false)
 const isSaving = ref(false)
 const searchQuery = ref('')
-const statusFilter = ref(ALL_STATUSES)
+const statusFilter = ref(String(STATUS_MODERATION))
 const ratingFilter = ref(ALL_RATINGS)
 const dateFromFilter = ref('')
 const dateToFilter = ref('')
@@ -235,7 +235,7 @@ onMounted(loadReviews)
     <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h1 class="text-2xl font-black text-slate-950">Review Moderation</h1>
-        <p class="mt-1 text-sm text-slate-500">Moderate customer product reviews and keep storefront feedback clean.</p>
+        <p class="mt-1 text-sm text-slate-500">Approve customer reviews before they appear on the storefront.</p>
       </div>
       <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
         <UInput
@@ -409,7 +409,11 @@ onMounted(loadReviews)
     <div v-if="pendingStatus" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <UCard class="w-full max-w-md">
         <template #header><h3 class="font-semibold text-default">Moderate review</h3></template>
-        <p class="text-sm text-default">Mark review #{{ pendingStatus.review.id }} as <span class="font-semibold">{{ statusLabel(pendingStatus.status).toLowerCase() }}</span>?</p>
+        <p class="text-sm text-default">
+          Mark review #{{ pendingStatus.review.id }} as
+          <span class="font-semibold">{{ statusLabel(pendingStatus.status).toLowerCase() }}</span>?
+          Approved reviews become visible on the storefront.
+        </p>
         <template #footer>
           <div class="flex justify-end gap-3">
             <UButton color="neutral" variant="outline" :disabled="isSaving" @click="pendingStatus = null">Cancel</UButton>

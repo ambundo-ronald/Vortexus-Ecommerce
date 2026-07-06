@@ -25,6 +25,7 @@ export default function ReviewList({ productId }) {
     voteReview
   } = useProductReviews(productId);
   const [visibleCount, setVisibleCount] = useState(2);
+  const [submitMessage, setSubmitMessage] = useState("");
   const visibleReviews = useMemo(() => reviews.slice(0, visibleCount), [reviews, visibleCount]);
   const reviewCount = Number(summary?.review_count || reviews.length || 0);
   const verifiedCount = Number(summary?.verified_rating_count || 0);
@@ -39,6 +40,11 @@ export default function ReviewList({ productId }) {
     }));
   }, [summary?.rating_distribution, verifiedCount]);
   const hasMoreReviews = visibleReviews.length < reviews.length;
+  async function handleCreateReview(payload) {
+    setSubmitMessage("");
+    await createReview(payload);
+    setSubmitMessage("Review submitted. It will appear after dashboard approval.");
+  }
 
   return (
     <section className="content-section reviews-section">
@@ -105,10 +111,13 @@ export default function ReviewList({ productId }) {
       </div>
 
       <div className="review-action-panel">
+        {submitMessage ? <Alert tone="success">{submitMessage}</Alert> : null}
         {user && yourReview ? (
-          <Alert tone="warning">Your review is saved as {yourReview.status_label}. You can manage it from your account.</Alert>
+          <Alert tone="warning">
+            Your review is saved as {yourReview.status_label}. It will appear on the storefront after approval.
+          </Alert>
         ) : user && reviewEligibility?.eligible ? (
-          <ReviewForm saving={saving} onSubmit={createReview} />
+          <ReviewForm saving={saving} onSubmit={handleCreateReview} />
         ) : user ? (
           <div className="review-eligibility-message">
             <MaterialIcon name="verified_user" size={24} />

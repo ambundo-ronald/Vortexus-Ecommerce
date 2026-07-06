@@ -1,6 +1,5 @@
 from django.apps import apps
 from django.db.models import Avg, Count
-from oscar.apps.catalogue.reviews.utils import get_default_review_status
 from rest_framework import serializers
 
 INELIGIBLE_ORDER_STATUSES = ['Failed', 'Cancelled', 'Canceled', 'Refunded']
@@ -12,6 +11,10 @@ def get_product_model():
 
 def get_review_model():
     return apps.get_model('reviews', 'ProductReview')
+
+
+def moderation_review_status() -> int:
+    return get_review_model().FOR_MODERATION
 
 
 def get_order_line_model():
@@ -183,7 +186,7 @@ class ProductReviewCreateSerializer(serializers.Serializer):
             score=validated_data['score'],
             title=validated_data['title'],
             body=validated_data['body'],
-            status=get_default_review_status(),
+            status=Review.FOR_MODERATION,
         )
         review.full_clean()
         review.save()
@@ -214,9 +217,9 @@ class ProductReviewUpdateSerializer(serializers.Serializer):
                 setattr(instance, field, validated_data[field])
                 dirty_fields.append(field)
 
-        default_status = get_default_review_status()
-        if instance.status != default_status:
-            instance.status = default_status
+        moderation_status = moderation_review_status()
+        if instance.status != moderation_status:
+            instance.status = moderation_status
             dirty_fields.append('status')
 
         if dirty_fields:

@@ -1030,6 +1030,7 @@ def _review_payload(review):
         'name': review.name,
         'email': review.email,
         'status': review.status,
+        'status_label': review.get_status_display() if hasattr(review, 'get_status_display') else str(review.status),
         'date_created': review.date_created,
     }
 
@@ -1049,10 +1050,26 @@ class AdminReviewDetailAPIView(APIView):
         return Response({'review': _review_payload(get_object_or_404(get_model('reviews', 'ProductReview'), id=review_id))})
 
     def patch(self, request, review_id: int):
-        review = get_object_or_404(get_model('reviews', 'ProductReview'), id=review_id)
-        for field in ['status', 'title', 'body', 'score']:
-            if field in request.data:
-                setattr(review, field, request.data[field])
+        Review = get_model('reviews', 'ProductReview')
+        review = get_object_or_404(Review, id=review_id)
+        if 'status' in request.data:
+            try:
+                status_value = int(request.data['status'])
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'status': 'Invalid review status.'})
+            if status_value not in {Review.FOR_MODERATION, Review.APPROVED, Review.REJECTED}:
+                raise serializers.ValidationError({'status': 'Invalid review status.'})
+            review.status = status_value
+        if 'title' in request.data:
+            review.title = str(request.data['title']).strip()
+        if 'body' in request.data:
+            review.body = str(request.data['body']).strip()
+        if 'score' in request.data:
+            try:
+                review.score = int(request.data['score'])
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'score': 'Score must be a number from 1 to 5.'})
+        review.full_clean()
         review.save()
         return Response({'review': _review_payload(review)})
 

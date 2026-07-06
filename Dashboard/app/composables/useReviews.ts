@@ -9,6 +9,7 @@ export interface ReviewItem {
   name: string
   email: string
   status: number
+  status_label?: string
   date_created: string | null
 }
 
