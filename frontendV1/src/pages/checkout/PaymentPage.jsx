@@ -14,6 +14,7 @@ import { useAuthStore } from "../../store/auth.store";
 import { useUiStore } from "../../store/ui.store";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
+  PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
   isPaymentComplete,
   isPaymentFailed,
   paymentRequiresPrepayment,
@@ -29,6 +30,7 @@ export default function PaymentPage() {
   const notify = useUiStore((state) => state.notify);
   const { basket, shipping, loading, saving, error, previewCheckout } = checkoutState;
   const paymentError = paymentState.error;
+  const visiblePaymentError = paymentError === PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE ? "" : paymentError;
   const [activePayment, setActivePayment] = useState(null);
   const [activeMethod, setActiveMethod] = useState(null);
   const [guestEmail, setGuestEmail] = useState("");
@@ -193,7 +195,7 @@ export default function PaymentPage() {
         <h1>Payment</h1>
       </div>
 
-      <Alert>{error || paymentError}</Alert>
+      <Alert>{error || visiblePaymentError}</Alert>
 
       <div className="checkout-layout">
         <div className="checkout-stack">

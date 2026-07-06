@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { paymentsApi } from "../api/payments.api";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
+  PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
   isPaymentComplete,
   isPaymentFailed
 } from "../utils/payment";
@@ -143,7 +144,7 @@ export function usePayment({ auto = true } = {}) {
         }
       }
 
-      throw new Error("Payment was not confirmed within 5 minutes. Prompt your phone again or choose another method.");
+      throw new Error(PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE);
     } catch (error) {
       setError(messageFromError(error));
       throw error;

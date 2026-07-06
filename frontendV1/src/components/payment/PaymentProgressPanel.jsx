@@ -1,5 +1,6 @@
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import {
+  PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
   isPaymentComplete,
   isPaymentFailed,
   paymentStatusView
@@ -61,7 +62,7 @@ export default function PaymentProgressPanel({
           <span className="payment-progress__pulse" />
           <span>
             {shouldPromptAgain
-              ? "Payment was not confirmed within 5 minutes. Prompt your phone again."
+              ? PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE.replace(" or choose another method.", "")
               : checking
                 ? "Checking with the payment provider..."
                 : countdownLabel

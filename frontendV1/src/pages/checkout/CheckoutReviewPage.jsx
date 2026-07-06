@@ -13,6 +13,7 @@ import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
+  PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
   isPaymentComplete,
   isPaymentFailed,
   paymentRequiresPrepayment,
@@ -109,6 +110,7 @@ export default function CheckoutReviewPage() {
   const paymentView = paymentStatusView(payment);
   const requiresPrepayment = paymentRequiresPrepayment(pending?.method || payment?.method);
   const paymentReady = !requiresPrepayment || isPaymentComplete(payment);
+  const visiblePaymentError = paymentState.error === PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE ? "" : paymentState.error;
   const elapsedMs = confirmationStartedAt ? Math.max(0, clockTick - confirmationStartedAt) : 0;
   const paymentTimedOut = Boolean(
     requiresPrepayment &&
@@ -211,7 +213,7 @@ export default function CheckoutReviewPage() {
       </div>
 
       <Alert>{error}</Alert>
-      <Alert>{paymentState.error}</Alert>
+      <Alert>{visiblePaymentError}</Alert>
       {preview && !preview.ready ? (
         <Alert tone="warning">Some checkout details are missing. Go back and complete delivery before placing the order.</Alert>
       ) : null}
