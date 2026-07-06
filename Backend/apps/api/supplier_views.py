@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
 from apps.notifications.services import (
+    create_admin_notification,
     queue_shipping_update_email,
     queue_supplier_application_submitted_email,
     queue_supplier_status_changed_email,
@@ -174,6 +175,17 @@ class SupplierProfileAPIView(APIView):
             message='Supplier profile application created.',
             metadata={'company_name': supplier_profile.company_name, 'status': supplier_profile.status},
         )
+        create_admin_notification(
+            event_type='supplier_application_submitted',
+            event_key=f'supplier-application:{supplier_profile.id}',
+            title='Supplier application submitted',
+            message=f'{supplier_profile.company_name} applied to sell on the marketplace.',
+            severity='warning',
+            action_url=f'/suppliers?supplier={supplier_profile.id}',
+            related_object_type='supplier_profile',
+            related_object_id=str(supplier_profile.id),
+            metadata={'supplier_id': supplier_profile.id, 'company_name': supplier_profile.company_name, 'user_id': request.user.id},
+        )
         queue_supplier_application_submitted_email(supplier_profile)
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data}, status=status.HTTP_201_CREATED)
 
@@ -270,6 +282,17 @@ class SupplierProductCollectionAPIView(APIView):
             target=product,
             message='Supplier created a product offer.',
             metadata={'partner_id': supplier_profile.partner_id, 'partner_name': supplier_profile.partner.name},
+        )
+        create_admin_notification(
+            event_type='supplier_product_submitted',
+            event_key=f'supplier-product:{product.id}',
+            title='Supplier product pending review',
+            message=f'{supplier_profile.company_name} submitted {product.title} for approval.',
+            severity='warning',
+            action_url=f'/supplier-product-reviews?product={product.id}',
+            related_object_type='product',
+            related_object_id=str(product.id),
+            metadata={'supplier_id': supplier_profile.id, 'product_id': product.id, 'company_name': supplier_profile.company_name},
         )
         return Response({'product': _build_supplier_product_detail(product, supplier_profile)}, status=status.HTTP_201_CREATED)
 

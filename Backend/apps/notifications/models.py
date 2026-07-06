@@ -117,3 +117,113 @@ class EmailSuppression(models.Model):
 
     def __str__(self) -> str:
         return f'{self.email}:{self.reason}'
+
+
+class AdminNotification(models.Model):
+    SEVERITY_INFO = 'info'
+    SEVERITY_SUCCESS = 'success'
+    SEVERITY_WARNING = 'warning'
+    SEVERITY_ERROR = 'error'
+    SEVERITY_CRITICAL = 'critical'
+
+    SEVERITY_CHOICES = [
+        (SEVERITY_INFO, 'Info'),
+        (SEVERITY_SUCCESS, 'Success'),
+        (SEVERITY_WARNING, 'Warning'),
+        (SEVERITY_ERROR, 'Error'),
+        (SEVERITY_CRITICAL, 'Critical'),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='admin_notifications')
+    event_type = models.CharField(max_length=80)
+    event_key = models.CharField(max_length=160, blank=True)
+    title = models.CharField(max_length=160)
+    message = models.TextField(blank=True)
+    severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, default=SEVERITY_INFO)
+    action_url = models.CharField(max_length=255, blank=True)
+    related_object_type = models.CharField(max_length=64, blank=True)
+    related_object_id = models.CharField(max_length=64, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'event_key'], condition=~models.Q(event_key=''), name='unique_admin_notification_event_per_user'),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'read_at', '-created_at']),
+            models.Index(fields=['event_type', '-created_at']),
+            models.Index(fields=['severity', '-created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.user_id}:{self.event_type}:{self.title}'
+
+
+class PushSubscription(models.Model):
+    CHANNEL_ADMIN = 'admin'
+    CHANNEL_STOREFRONT = 'storefront'
+
+    CHANNEL_CHOICES = [
+        (CHANNEL_ADMIN, 'Admin'),
+        (CHANNEL_STOREFRONT, 'Storefront'),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='push_subscriptions')
+    channel = models.CharField(max_length=32, choices=CHANNEL_CHOICES, default=CHANNEL_STOREFRONT)
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    browser = models.CharField(max_length=120, blank=True)
+    user_agent = models.TextField(blank=True)
+    is_enabled = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user', 'channel', 'is_enabled']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.user_id}:{self.channel}:{self.endpoint[:32]}'
+
+
+class PushDeliveryLog(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_SENT = 'sent'
+    STATUS_FAILED = 'failed'
+    STATUS_SKIPPED = 'skipped'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_SENT, 'Sent'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_SKIPPED, 'Skipped'),
+    ]
+
+    subscription = models.ForeignKey(PushSubscription, null=True, blank=True, on_delete=models.SET_NULL, related_name='delivery_logs')
+    notification = models.ForeignKey(AdminNotification, null=True, blank=True, on_delete=models.SET_NULL, related_name='push_delivery_logs')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    endpoint_hash = models.CharField(max_length=64, blank=True)
+    event_type = models.CharField(max_length=80, blank=True)
+    title = models.CharField(max_length=160, blank=True)
+    error_message = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['event_type', '-created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.event_type}:{self.status}'

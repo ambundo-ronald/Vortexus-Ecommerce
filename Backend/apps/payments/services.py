@@ -181,6 +181,7 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
         external_reference=payment_session.external_reference,
         payload={'success': success, 'metadata': metadata or {}},
     )
+    _notify_admin_payment_status(payment_session, previous_status=previous_status)
     if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
         _queue_paid_order_accounting_export(payment_session)
     return payment_session
@@ -232,6 +233,7 @@ def link_payment_to_order(payment_session, order):
         payload={'order_id': order.id, 'order_number': order.number},
     )
     if payment_session.status in SUCCESS_PAYMENT_STATUSES:
+        _notify_admin_paid_order(payment_session)
         _queue_paid_order_accounting_export(payment_session)
 
     return source
@@ -343,6 +345,78 @@ def _queue_paid_order_accounting_export(payment_session) -> None:
         export_paid_order_accounting_to_erpnext,
         run_kwargs={'payment_reference': payment_session.reference},
         async_kwargs={'payment_reference': payment_session.reference},
+    )
+
+
+def _notify_admin_payment_status(payment_session, *, previous_status: str = '') -> None:
+    from apps.notifications.services import create_admin_notification
+
+    method = get_payment_method(payment_session.method) or {}
+    method_name = method.get('name') or payment_session.method
+    amount = f'{payment_session.currency} {payment_session.amount}'
+    if payment_session.status in SUCCESS_PAYMENT_STATUSES:
+        create_admin_notification(
+            event_type='payment_confirmed',
+            event_key=f'payment-confirmed:{payment_session.reference}',
+            title='Payment confirmed',
+            message=f'{method_name} payment {payment_session.reference} for {amount} was confirmed.',
+            severity='success',
+            action_url=f'/payment-logs?reference={payment_session.reference}',
+            related_object_type='payment_session',
+            related_object_id=payment_session.reference,
+            metadata={
+                'reference': payment_session.reference,
+                'previous_status': previous_status,
+                'status': payment_session.status,
+                'method': payment_session.method,
+                'amount': str(payment_session.amount),
+                'currency': payment_session.currency,
+            },
+        )
+    elif payment_session.status == payment_session.STATUS_FAILED:
+        create_admin_notification(
+            event_type='payment_failed',
+            event_key=f'payment-failed:{payment_session.reference}',
+            title='Payment failed',
+            message=f'{method_name} payment {payment_session.reference} for {amount} failed.',
+            severity='error',
+            action_url=f'/payment-logs?reference={payment_session.reference}',
+            related_object_type='payment_session',
+            related_object_id=payment_session.reference,
+            metadata={
+                'reference': payment_session.reference,
+                'previous_status': previous_status,
+                'status': payment_session.status,
+                'method': payment_session.method,
+                'amount': str(payment_session.amount),
+                'currency': payment_session.currency,
+            },
+        )
+
+
+def _notify_admin_paid_order(payment_session) -> None:
+    from apps.notifications.services import create_admin_notification
+
+    order = payment_session.order
+    if not order:
+        return
+    create_admin_notification(
+        event_type='paid_order_created',
+        event_key=f'paid-order:{order.number}',
+        title='Paid order ready',
+        message=f'Order {order.number} has a confirmed {payment_session.method} payment.',
+        severity='success',
+        action_url=f'/orders/{order.id}',
+        related_object_type='order',
+        related_object_id=str(order.number),
+        metadata={
+            'order_id': order.id,
+            'order_number': order.number,
+            'payment_reference': payment_session.reference,
+            'method': payment_session.method,
+            'amount': str(payment_session.amount),
+            'currency': payment_session.currency,
+        },
     )
 
 

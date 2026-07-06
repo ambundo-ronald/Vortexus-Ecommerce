@@ -64,6 +64,13 @@ from .admin_extra_views import (
     AdminWeightBasedShippingCollectionAPIView,
     AdminWeightBasedShippingDetailAPIView,
 )
+from .admin_notification_views import (
+    AdminNotificationCollectionAPIView,
+    AdminNotificationDetailAPIView,
+    AdminNotificationReadAllAPIView,
+    AdminPushConfigurationAPIView,
+    AdminPushSubscriptionAPIView,
+)
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .email_config_views import (
@@ -295,6 +302,11 @@ urlpatterns = [
     path('admin/dashboard/summary/', AdminDashboardSummaryAPIView.as_view(), name='admin-dashboard-summary'),
     path('admin/campaigns/', AdminCampaignsAPIView.as_view(), name='admin-campaigns'),
     path('admin/support/', AdminSupportAPIView.as_view(), name='admin-support'),
+    path('admin/notifications/', AdminNotificationCollectionAPIView.as_view(), name='admin-notifications'),
+    path('admin/notifications/read-all/', AdminNotificationReadAllAPIView.as_view(), name='admin-notifications-read-all'),
+    path('admin/notifications/<int:notification_id>/', AdminNotificationDetailAPIView.as_view(), name='admin-notification-detail'),
+    path('admin/push/config/', AdminPushConfigurationAPIView.as_view(), name='admin-push-config'),
+    path('admin/push/subscription/', AdminPushSubscriptionAPIView.as_view(), name='admin-push-subscription'),
     path('admin/catalog/categories/', AdminCategoryCollectionAPIView.as_view(), name='admin-catalog-categories'),
     path('admin/catalog/categories/<int:category_id>/', AdminCategoryDetailAPIView.as_view(), name='admin-catalog-category-detail'),
     path('admin/catalog/categories/<int:category_id>/children/', AdminCategoryChildrenAPIView.as_view(), name='admin-catalog-category-children'),
