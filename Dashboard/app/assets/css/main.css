@@ -17,6 +17,7 @@ html {
   --color-primary-700: #20226e;
   --color-accent: #4f5d73;
   --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
   --color-surface-muted: #f4f7fb;
   --color-border: #dbe5f3;
   --color-text: #0f172a;
@@ -50,11 +51,13 @@ html {
 }
 
 .dark {
-  --color-surface: #020617;
+  color-scheme: dark;
+  --color-surface: #090f1d;
+  --color-surface-raised: #111827;
   --color-surface-muted: #0f172a;
-  --color-border: #1e293b;
-  --color-text: #e2e8f0;
-  --color-text-muted: #94a3b8;
+  --color-border: #263244;
+  --color-text: #e5edf8;
+  --color-text-muted: #9aa8bd;
 
   --ui-primary: var(--color-primary);
   --ui-text: var(--color-text);
@@ -67,4 +70,131 @@ html {
   --steps-icon: var(--color-text);
   --steps-icon-complete: white;
 
+}
+
+.dark body,
+.dark #__nuxt {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.dark .bg-white,
+.dark [class~="bg-white/95"],
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark [class~="bg-slate-50/50"],
+.dark [class~="bg-blue-50/40"],
+.dark .bg-blue-50 {
+  background-color: var(--color-surface-raised) !important;
+}
+
+.dark .bg-slate-950 {
+  background-color: #070b14 !important;
+}
+
+.dark .bg-slate-900,
+.dark .bg-slate-800 {
+  background-color: #101828 !important;
+}
+
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: var(--color-text) !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #c7d2e1 !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--color-text-muted) !important;
+}
+
+.dark .text-slate-300 {
+  color: #7f8da3 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--color-border) !important;
+}
+
+.dark .ring-slate-100,
+.dark .ring-blue-100 {
+  --tw-ring-color: rgba(61, 124, 255, 0.22) !important;
+}
+
+.dark .shadow-sm,
+.dark .shadow,
+.dark .shadow-lg,
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  --tw-shadow-color: rgba(0, 0, 0, 0.34) !important;
+}
+
+.dark input,
+.dark textarea,
+.dark select,
+.dark [role="combobox"] {
+  background-color: #0c1424;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #74839a;
+}
+
+.dark table thead,
+.dark thead.bg-white,
+.dark thead.bg-slate-50 {
+  background-color: #0c1424 !important;
+}
+
+.dark tbody tr,
+.dark [class~="hover:bg-blue-50/40"]:hover,
+.dark .hover\:bg-blue-50:hover,
+.dark .hover\:bg-slate-50:hover {
+  background-color: transparent;
+}
+
+.dark [class~="hover:bg-blue-50/40"]:hover,
+.dark .hover\:bg-blue-50:hover,
+.dark .hover\:bg-slate-50:hover {
+  background-color: rgba(61, 124, 255, 0.12) !important;
+}
+
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+.dark .text-emerald-700,
+.dark .text-emerald-600 {
+  color: #6ee7b7 !important;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(248, 113, 113, 0.14) !important;
+}
+
+.dark .text-red-700,
+.dark .text-red-600 {
+  color: #fca5a5 !important;
+}
+
+.dark .bg-amber-50,
+.dark .bg-yellow-50 {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+}
+
+.dark .text-amber-700,
+.dark .text-yellow-700 {
+  color: #fcd34d !important;
 }
