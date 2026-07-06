@@ -8,7 +8,10 @@ import {
 export default function PaymentProgressPanel({
   payment,
   checking = false,
+  timedOut = false,
+  remainingSeconds = null,
   onCheckStatus,
+  onPromptAgain,
   onContinue,
   onChangeMethod
 }) {
@@ -17,6 +20,10 @@ export default function PaymentProgressPanel({
   const view = paymentStatusView(payment);
   const complete = isPaymentComplete(payment);
   const failed = isPaymentFailed(payment);
+  const shouldPromptAgain = timedOut && !complete && !failed;
+  const minutesLeft = typeof remainingSeconds === "number" ? Math.floor(Math.max(0, remainingSeconds) / 60) : null;
+  const secondsLeft = typeof remainingSeconds === "number" ? Math.max(0, remainingSeconds) % 60 : null;
+  const countdownLabel = minutesLeft === null ? "" : `${minutesLeft}:${String(secondsLeft).padStart(2, "0")}`;
   const providerReference =
     payment.external_reference ||
     payment.provider_payload?.checkout_request_id ||
@@ -50,9 +57,17 @@ export default function PaymentProgressPanel({
       </dl>
 
       {!complete && !failed ? (
-        <div className="payment-progress__waiting">
+        <div className={`payment-progress__waiting${shouldPromptAgain ? " payment-progress__waiting--timeout" : ""}`}>
           <span className="payment-progress__pulse" />
-          <span>{checking ? "Checking with the payment provider..." : "Waiting for provider confirmation"}</span>
+          <span>
+            {shouldPromptAgain
+              ? "Payment was not confirmed within 5 minutes. Prompt your phone again."
+              : checking
+                ? "Checking with the payment provider..."
+                : countdownLabel
+                  ? `Waiting for provider confirmation · ${countdownLabel} remaining`
+                  : "Waiting for provider confirmation"}
+          </span>
         </div>
       ) : null}
 
@@ -63,9 +78,14 @@ export default function PaymentProgressPanel({
             Review order
           </button>
         ) : (
-          <button className="primary-button" type="button" disabled={checking} onClick={onCheckStatus}>
-            <MaterialIcon name="sync" size={19} />
-            {checking ? "Checking..." : failed ? "Check again" : "Check payment status"}
+          <button
+            className="primary-button"
+            type="button"
+            disabled={checking}
+            onClick={shouldPromptAgain && onPromptAgain ? onPromptAgain : onCheckStatus}
+          >
+            <MaterialIcon name={shouldPromptAgain ? "replay" : "sync"} size={19} className={checking ? "payment-progress__spin" : ""} />
+            {checking ? "Checking..." : shouldPromptAgain ? "Prompt again" : failed ? "Check again" : "Check payment status"}
           </button>
         )}
         <button className="secondary-button" type="button" onClick={onChangeMethod}>

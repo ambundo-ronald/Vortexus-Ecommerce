@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
@@ -13,6 +13,7 @@ import { usePayment } from "../../hooks/usePayment";
 import { useAuthStore } from "../../store/auth.store";
 import { useUiStore } from "../../store/ui.store";
 import {
+  PAYMENT_CONFIRMATION_TIMEOUT_MS,
   isPaymentComplete,
   isPaymentFailed,
   paymentRequiresPrepayment,
@@ -32,6 +33,27 @@ export default function PaymentPage() {
   const [activeMethod, setActiveMethod] = useState(null);
   const [guestEmail, setGuestEmail] = useState("");
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [lastPaymentForm, setLastPaymentForm] = useState(null);
+  const [confirmationStartedAt, setConfirmationStartedAt] = useState(null);
+  const [clockTick, setClockTick] = useState(() => Date.now());
+
+  const elapsedMs = confirmationStartedAt ? Math.max(0, clockTick - confirmationStartedAt) : 0;
+  const paymentTimedOut = Boolean(
+    activePayment &&
+      confirmationStartedAt &&
+      elapsedMs >= PAYMENT_CONFIRMATION_TIMEOUT_MS &&
+      !isPaymentComplete(activePayment) &&
+      !isPaymentFailed(activePayment)
+  );
+  const remainingSeconds = confirmationStartedAt && !paymentTimedOut
+    ? Math.max(0, Math.ceil((PAYMENT_CONFIRMATION_TIMEOUT_MS - elapsedMs) / 1000))
+    : 0;
+
+  useEffect(() => {
+    if (!activePayment || !confirmationStartedAt || isPaymentComplete(activePayment) || isPaymentFailed(activePayment)) return undefined;
+    const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activePayment, confirmationStartedAt]);
 
   function continueToReview(payment, method, payerEmail) {
     const reviewPayload = {
@@ -46,6 +68,9 @@ export default function PaymentPage() {
   }
 
   async function handlePaymentSubmit(form) {
+    setLastPaymentForm(form);
+    setConfirmationStartedAt(null);
+    setClockTick(Date.now());
     try {
       const preview = await previewCheckout();
       if (preview && !preview.ready) {
@@ -86,7 +111,11 @@ export default function PaymentPage() {
         return;
       }
 
+      const startedAt = Date.now();
+      setConfirmationStartedAt(startedAt);
+      setClockTick(startedAt);
       const finalPayment = await paymentState.waitForPayment(payment, {
+        timeoutMs: PAYMENT_CONFIRMATION_TIMEOUT_MS,
         onUpdate: (nextPayment) => {
           if (!nextPayment) return;
           setActivePayment(nextPayment);
@@ -106,6 +135,9 @@ export default function PaymentPage() {
     try {
       const nextPayment = await paymentState.getPaymentStatus(activePayment.reference, activePayment.method);
       setActivePayment(nextPayment);
+      if (isPaymentComplete(nextPayment) || isPaymentFailed(nextPayment)) {
+        setConfirmationStartedAt(null);
+      }
       storePendingCheckout({
         payment_reference: nextPayment.reference,
         payment: nextPayment,
@@ -127,7 +159,23 @@ export default function PaymentPage() {
   function handleChangeMethod() {
     setActivePayment(null);
     setActiveMethod(null);
+    setConfirmationStartedAt(null);
+    setClockTick(Date.now());
     paymentState.setError("");
+  }
+
+  async function handlePromptAgain() {
+    if (!lastPaymentForm) {
+      handleChangeMethod();
+      return;
+    }
+    setActivePayment(null);
+    setActiveMethod(null);
+    setConfirmationStartedAt(null);
+    setClockTick(Date.now());
+    paymentState.setError("");
+    notify({ title: "Sending a fresh prompt", message: "Check your phone for the new payment prompt.", icon: "phone_iphone" });
+    await handlePaymentSubmit(lastPaymentForm);
   }
 
   if (loading || paymentState.loading) return <Spinner label="Loading payment" />;
@@ -153,7 +201,10 @@ export default function PaymentPage() {
             <PaymentProgressPanel
               payment={activePayment}
               checking={paymentState.processing || checkingStatus}
+              timedOut={paymentTimedOut}
+              remainingSeconds={remainingSeconds}
               onCheckStatus={() => void handleStatusCheck()}
+              onPromptAgain={() => void handlePromptAgain()}
               onContinue={() => continueToReview(activePayment, activeMethod, guestEmail)}
               onChangeMethod={handleChangeMethod}
             />

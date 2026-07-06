@@ -12,6 +12,7 @@ import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
 import {
+  PAYMENT_CONFIRMATION_TIMEOUT_MS,
   isPaymentComplete,
   isPaymentFailed,
   paymentRequiresPrepayment,
@@ -49,6 +50,8 @@ export default function CheckoutReviewPage() {
   const [preview, setPreview] = useState(null);
   const [verifiedPayment, setVerifiedPayment] = useState(pending?.payment || null);
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [confirmationStartedAt, setConfirmationStartedAt] = useState(() => pending?.payment && !isPaymentComplete(pending.payment) ? Date.now() : null);
+  const [clockTick, setClockTick] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -67,9 +70,13 @@ export default function CheckoutReviewPage() {
     if (pending?.payment?.method !== "pesapal" || !pending?.payment_reference || isPaymentComplete(pending.payment)) return;
 
     let active = true;
+    const startedAt = Date.now();
+    setConfirmationStartedAt(startedAt);
+    setClockTick(startedAt);
     paymentState.waitForPayment(pending.payment, {
-      maxPolls: 15,
+      maxPolls: 80,
       delayMs: 3000,
+      timeoutMs: PAYMENT_CONFIRMATION_TIMEOUT_MS,
       onUpdate: (nextPayment) => {
         if (!active || !nextPayment) return;
         setVerifiedPayment(nextPayment);
@@ -79,6 +86,7 @@ export default function CheckoutReviewPage() {
       .then((nextPayment) => {
         if (!active) return;
         setVerifiedPayment(nextPayment);
+        setConfirmationStartedAt(null);
         storePendingCheckout({ ...pending, payment: nextPayment });
       })
       .catch(() => {});
@@ -88,6 +96,12 @@ export default function CheckoutReviewPage() {
     };
   }, [pending, paymentState.waitForPayment]);
 
+  useEffect(() => {
+    if (!confirmationStartedAt || isPaymentComplete(verifiedPayment) || isPaymentFailed(verifiedPayment)) return undefined;
+    const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [confirmationStartedAt, verifiedPayment]);
+
   const shipping = useMemo(() => previewShipping(preview), [preview]);
   const address = preview?.shipping?.address;
   const payment = verifiedPayment || pending?.payment;
@@ -95,6 +109,18 @@ export default function CheckoutReviewPage() {
   const paymentView = paymentStatusView(payment);
   const requiresPrepayment = paymentRequiresPrepayment(pending?.method || payment?.method);
   const paymentReady = !requiresPrepayment || isPaymentComplete(payment);
+  const elapsedMs = confirmationStartedAt ? Math.max(0, clockTick - confirmationStartedAt) : 0;
+  const paymentTimedOut = Boolean(
+    requiresPrepayment &&
+      payment &&
+      confirmationStartedAt &&
+      elapsedMs >= PAYMENT_CONFIRMATION_TIMEOUT_MS &&
+      !isPaymentComplete(payment) &&
+      !isPaymentFailed(payment)
+  );
+  const remainingSeconds = confirmationStartedAt && !paymentTimedOut
+    ? Math.max(0, Math.ceil((PAYMENT_CONFIRMATION_TIMEOUT_MS - elapsedMs) / 1000))
+    : 0;
 
   async function handlePlaceOrder() {
     if (!preview?.ready) {
@@ -152,6 +178,9 @@ export default function CheckoutReviewPage() {
     try {
       const nextPayment = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
       setVerifiedPayment(nextPayment);
+      if (isPaymentComplete(nextPayment) || isPaymentFailed(nextPayment)) {
+        setConfirmationStartedAt(null);
+      }
       storePendingCheckout({ ...pending, payment: nextPayment });
       notify({
         tone: isPaymentComplete(nextPayment) ? "success" : isPaymentFailed(nextPayment) ? "warning" : "info",
@@ -193,7 +222,10 @@ export default function CheckoutReviewPage() {
             <PaymentProgressPanel
               payment={payment}
               checking={paymentState.processing || checkingStatus}
+              timedOut={paymentTimedOut}
+              remainingSeconds={remainingSeconds}
               onCheckStatus={() => void handleStatusCheck()}
+              onPromptAgain={() => navigate("/checkout/payment")}
               onContinue={() => {}}
               onChangeMethod={() => navigate("/checkout/payment")}
             />

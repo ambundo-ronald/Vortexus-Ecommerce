@@ -903,6 +903,11 @@
   font-weight: var(--font-weight-bold);
 }
 
+.checkout-page .payment-progress__waiting--timeout {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
 .checkout-page .payment-progress__pulse {
   width: 9px;
   height: 9px;
@@ -911,6 +916,14 @@
   background: currentColor;
   box-shadow: 0 0 0 0 rgba(47, 109, 246, 0.35);
   animation: payment-status-pulse 1.5s infinite;
+}
+
+.checkout-page .payment-progress__waiting--timeout .payment-progress__pulse {
+  animation: none;
+}
+
+.checkout-page .payment-progress__spin {
+  animation: payment-status-spin 0.9s linear infinite;
 }
 
 .checkout-page .payment-progress__actions {
@@ -931,6 +944,12 @@
   }
   100% {
     box-shadow: 0 0 0 0 rgba(47, 109, 246, 0);
+  }
+}
+
+@keyframes payment-status-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
