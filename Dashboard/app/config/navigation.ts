@@ -100,6 +100,11 @@ export const navSections: NavSection[] = [
         to: '/orders',
       },
       {
+        label: 'Quotations',
+        icon: 'i-lucide-file-question',
+        to: '/quotes',
+      },
+      {
         label: 'Users',
         icon: 'i-lucide-user',
         to: '/users',

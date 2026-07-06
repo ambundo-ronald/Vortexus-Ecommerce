@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
+import { quotesApi } from "../../api/quotes.api";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import OrderSummaryPanel from "../../components/checkout/OrderSummaryPanel.jsx";
 import ShippingAddressForm from "../../components/checkout/ShippingAddressForm.jsx";
@@ -10,11 +11,16 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
+import { useUiStore } from "../../store/ui.store";
+import { formatCurrency } from "../../utils/currency";
 import "./CheckoutFlow.css";
+
+const MPESA_TRANSACTION_LIMIT_KES = 150000;
 
 export default function ShippingPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const notify = useUiStore((state) => state.notify);
   const {
     basket,
     shipping,
@@ -31,6 +37,10 @@ export default function ShippingPage() {
   } = useCheckout();
   const [deliveryMode, setDeliveryMode] = useState("saved");
   const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [quotePromptOpen, setQuotePromptOpen] = useState(false);
+  const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+  const [quoteSuccess, setQuoteSuccess] = useState("");
+  const [quoteError, setQuoteError] = useState("");
   const lines = basket?.lines || [];
 
   useEffect(() => {
@@ -108,10 +118,50 @@ export default function ShippingPage() {
   const editingDeliveryDetails = showDeliveryForm;
   const canContinue = Boolean(shipping?.ready_for_checkout && !editingDeliveryDetails);
   const summaryShipping = editingDeliveryDetails ? null : shipping;
+  const baseOrderTotal = Number(shipping?.totals?.base_order_total ?? basket?.totals?.base_subtotal ?? 0);
+  const exceedsMpesaLimit = baseOrderTotal > MPESA_TRANSACTION_LIMIT_KES;
+
+  function handleContinueToPayment() {
+    if (exceedsMpesaLimit) {
+      setQuotePromptOpen(true);
+      return;
+    }
+    navigate("/checkout/payment");
+  }
+
+  async function submitHighValueQuote() {
+    setQuoteSubmitting(true);
+    setQuoteError("");
+    setQuoteSuccess("");
+    try {
+      const response = await quotesApi.create({
+        name: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.full_name || user?.email || "Customer",
+        email: user?.email || "",
+        phone: shipping?.address?.phone_number || selectedAddress?.phone_number || "",
+        company: shipping?.address?.line3 || selectedAddress?.line3 || "",
+        message: buildHighValueQuoteMessage({ basket, shipping, total: baseOrderTotal })
+      });
+      const message = response.detail || "Quote request received. Our team will contact you shortly.";
+      setQuoteSuccess(message);
+      notify({ title: "Quote request sent", message, icon: "request_quote" });
+    } catch (requestError) {
+      const message = requestError.normalized?.message || requestError.message || "Could not submit quote request.";
+      setQuoteError(message);
+      notify({ tone: "danger", title: "Quote request failed", message, icon: "request_quote" });
+    } finally {
+      setQuoteSubmitting(false);
+    }
+  }
 
   return (
     <section className="checkout-page">
-      <CheckoutStepper current="shipping" basket={basket} shipping={shipping} />
+      <CheckoutStepper
+        current="shipping"
+        basket={basket}
+        shipping={shipping}
+        paymentBlocked={exceedsMpesaLimit}
+        onPaymentBlocked={() => setQuotePromptOpen(true)}
+      />
 
       <Alert>{error}</Alert>
 
@@ -181,7 +231,7 @@ export default function ShippingPage() {
               onSelect={handleMethodSelect}
             />
           )}
-          <button className="primary-button checkout-submit" type="button" disabled={!canContinue || saving} onClick={() => navigate("/checkout/payment")}>
+          <button className="primary-button checkout-submit" type="button" disabled={!canContinue || saving} onClick={handleContinueToPayment}>
             <MaterialIcon name="arrow_forward" size={19} />
             Continue to payment
           </button>
@@ -190,8 +240,80 @@ export default function ShippingPage() {
       </div>
 
       {!lines.length ? <Alert>Your cart is empty.</Alert> : null}
+      {quotePromptOpen ? (
+        <HighValueQuoteModal
+          total={baseOrderTotal}
+          submitting={quoteSubmitting}
+          success={quoteSuccess}
+          error={quoteError}
+          onClose={() => setQuotePromptOpen(false)}
+          onSubmit={submitHighValueQuote}
+        />
+      ) : null}
     </section>
   );
+}
+
+function HighValueQuoteModal({ total, submitting, success, error, onClose, onSubmit }) {
+  return (
+    <div className="quote-limit-modal" role="dialog" aria-modal="true" aria-labelledby="quote-limit-title">
+      <div className="quote-limit-modal__panel">
+        <button className="quote-limit-modal__close" type="button" onClick={onClose} aria-label="Close">
+          <MaterialIcon name="close" size={18} />
+        </button>
+        <div className="quote-limit-modal__icon">
+          <MaterialIcon name="request_quote" size={28} />
+        </div>
+        <h2 id="quote-limit-title">Request quotation</h2>
+        <p>
+          Your order total is {formatCurrency(total, "KES")}. M-Pesa allows up to{" "}
+          {formatCurrency(MPESA_TRANSACTION_LIMIT_KES, "KES")} per transaction, so this order needs a quotation before payment.
+        </p>
+        <Alert tone="success">{success}</Alert>
+        <Alert>{error}</Alert>
+        <div className="quote-limit-modal__actions">
+          {success ? (
+            <button className="primary-button" type="button" onClick={onClose}>
+              <MaterialIcon name="check_circle" size={19} />
+              Done
+            </button>
+          ) : (
+            <button className="primary-button" type="button" disabled={submitting} onClick={onSubmit}>
+              <MaterialIcon name="request_quote" size={19} />
+              {submitting ? "Sending..." : "Request quotation"}
+            </button>
+          )}
+          {!success ? (
+            <button className="secondary-button" type="button" disabled={submitting} onClick={onClose}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildHighValueQuoteMessage({ basket, shipping, total }) {
+  const lines = basket?.lines || [];
+  const items = lines
+    .map((line) => {
+      const title = line.product?.title || line.title || "Product";
+      return `${line.quantity}x ${title}`;
+    })
+    .join("; ");
+  const delivery = shipping?.address
+    ? [shipping.address.line1, shipping.address.line2, shipping.address.line3, shipping.address.line4, shipping.address.state]
+        .filter(Boolean)
+        .join(", ")
+    : "Delivery address not provided";
+  return [
+    "Please prepare a quotation for this high-value checkout.",
+    `Cart total: ${formatCurrency(total, "KES")}.`,
+    `Reason: M-Pesa transaction limit is ${formatCurrency(MPESA_TRANSACTION_LIMIT_KES, "KES")}.`,
+    items ? `Items: ${items}.` : "",
+    `Delivery: ${delivery}.`
+  ].filter(Boolean).join("\n");
 }
 
 function addressTitle(address) {

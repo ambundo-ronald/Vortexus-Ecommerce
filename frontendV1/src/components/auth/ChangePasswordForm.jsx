@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import Alert from "../ui/Alert.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import PasswordInput from "../ui/PasswordInput.jsx";
 
 const emptyForm = {
   current_password: "",
@@ -41,17 +42,17 @@ export default function ChangePasswordForm({ loading = false, error = "", onSubm
 
       <label>
         <span>Current password</span>
-        <input type="password" name="current_password" value={form.current_password} onChange={updateField} autoComplete="current-password" required />
+        <PasswordInput name="current_password" value={form.current_password} onChange={updateField} autoComplete="current-password" required />
       </label>
 
       <div className="form-grid two">
         <label>
           <span>New password</span>
-          <input type="password" name="new_password" value={form.new_password} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="new_password" value={form.new_password} onChange={updateField} autoComplete="new-password" required />
         </label>
         <label>
           <span>Confirm new password</span>
-          <input type="password" name="new_password_confirm" value={form.new_password_confirm} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="new_password_confirm" value={form.new_password_confirm} onChange={updateField} autoComplete="new-password" required />
         </label>
       </div>
 

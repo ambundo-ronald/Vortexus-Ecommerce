@@ -9,6 +9,10 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import { useMarketingBlocks } from "../../hooks/useMarketingBlocks";
 import { useProducts } from "../../hooks/useProducts";
 import { useRecommendations } from "../../hooks/useRecommendations";
+import { useRecentlyBought } from "../../hooks/useRecentlyBought";
+import { useAuth } from "../../hooks/useAuth";
+import { useCartStore } from "../../store/cart.store";
+import { useUiStore } from "../../store/ui.store";
 import { mediaUrl } from "../../utils/media";
 import { productImageUrl } from "../../utils/productImages";
 import { productId, productInitials, productTitle } from "../../utils/productDisplay";
@@ -16,6 +20,9 @@ import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
 
 export default function HomePage() {
+  const { user, initialized: authInitialized } = useAuth();
+  const hydrateCart = useCartStore((state) => state.hydrate);
+  const notify = useUiStore((state) => state.notify);
   const {
     blocks: marketingBlocks,
     blocksByPlacement,
@@ -36,9 +43,42 @@ export default function HomePage() {
     sort_by: "newest",
     page_size: 8
   });
+  const {
+    products: recentlyBoughtProducts,
+    loading: recentlyBoughtLoading,
+    reordering: recentlyBoughtReordering,
+    error: recentlyBoughtError,
+    reorderRecentlyBought
+  } = useRecentlyBought({ limit: 5 }, { auto: Boolean(user) });
 
   const marketingByPlacement = groupMarketingBlocks(marketingBlocks, blocksByPlacement);
   const newestPreview = newestProducts.length ? newestProducts.slice(0, 6) : recommendations.slice(0, 6);
+  const showRecentlyBought =
+    Boolean(user) && (recentlyBoughtLoading || recentlyBoughtProducts.length > 0 || recentlyBoughtError);
+
+  async function handleReorderAll() {
+    try {
+      const payload = await reorderRecentlyBought({ limit: 5 });
+      await hydrateCart();
+      const addedCount = payload?.added?.length || 0;
+      const skippedCount = payload?.skipped?.length || 0;
+      notify({
+        title: addedCount ? "Added to cart" : "Nothing added",
+        message: skippedCount
+          ? `${addedCount} product${addedCount === 1 ? "" : "s"} added. ${skippedCount} could not be added.`
+          : `${addedCount} product${addedCount === 1 ? "" : "s"} added from your recent purchases.`,
+        icon: "shopping_cart_checkout",
+        tone: addedCount ? "success" : "warning"
+      });
+    } catch (error) {
+      notify({
+        tone: "danger",
+        title: "Could not reorder",
+        message: error?.normalized?.message || error.message || "Please try again.",
+        icon: "error"
+      });
+    }
+  }
 
   return (
     <div className="home-page">
@@ -73,6 +113,30 @@ export default function HomePage() {
       <TopCategoryStrip blocks={marketingByPlacement.top_category} />
 
       <FeaturedMarketingBlocks blocks={marketingByPlacement.featured} />
+
+      {showRecentlyBought ? (
+        <section className="content-section home-product-section">
+          <div className="section-heading">
+            <h2>Recently bought</h2>
+            <button
+              className="section-heading__button"
+              type="button"
+              disabled={recentlyBoughtReordering || !recentlyBoughtProducts.length}
+              onClick={() => void handleReorderAll()}
+            >
+              <MaterialIcon name={recentlyBoughtReordering ? "progress_activity" : "shopping_cart_checkout"} size={17} />
+              <span>{recentlyBoughtReordering ? "Adding..." : "Reorder all"}</span>
+            </button>
+          </div>
+          <Alert>{recentlyBoughtError}</Alert>
+          <ProductGrid
+            products={recentlyBoughtProducts}
+            loading={recentlyBoughtLoading && authInitialized}
+            skeletonCount={5}
+            cardActionVariant="reorder"
+          />
+        </section>
+      ) : null}
 
       <section className="content-section home-product-section">
         <div className="section-heading">

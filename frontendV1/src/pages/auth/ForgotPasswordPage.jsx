@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
       if (payload?.account_inactive) {
         setAccountInactive(true);
       }
-      setMessage(payload?.detail || "If that email exists, password reset instructions will be sent.");
+      setMessage(payload?.detail || "Password reset link sent. Check your email.");
     } catch (requestError) {
       setError(normalizeApiError(requestError, "Could not request a password reset.").message);
     } finally {

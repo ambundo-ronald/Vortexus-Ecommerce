@@ -7,7 +7,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  const next = location.state?.from?.pathname || "/account";
+  const from = location.state?.from;
+  const next = from ? `${from.pathname || "/account"}${from.search || ""}` : "/account";
 
   async function handleLogin(payload) {
     const response = await auth.login(payload);

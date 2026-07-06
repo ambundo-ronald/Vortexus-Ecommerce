@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
+import PasswordInput from "../../components/ui/PasswordInput.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiStore } from "../../store/ui.store";
 import { normalizeApiError } from "../../utils/errorHandler";
@@ -75,8 +76,7 @@ export default function AccountDeletePage() {
 
         <label>
           <span>Password</span>
-          <input
-            type="password"
+          <PasswordInput
             value={password}
             autoComplete="current-password"
             placeholder="Enter your password"

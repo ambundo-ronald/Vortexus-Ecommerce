@@ -445,10 +445,10 @@ onMounted(loadConnections)
           <UInput v-model="connectionForm.secret_env_prefix" placeholder="ERPNEXT_MAIN" />
         </UFormField>
         <UFormField v-if="connectionForm.credential_source === 'db'" label="API key">
-          <UInput v-model="connectionForm.api_key" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API key'" autocomplete="new-password" />
+          <PasswordInput v-model="connectionForm.api_key" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API key'" autocomplete="new-password" />
         </UFormField>
         <UFormField v-if="connectionForm.credential_source === 'db'" label="API secret">
-          <UInput v-model="connectionForm.api_secret" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API secret'" autocomplete="new-password" />
+          <PasswordInput v-model="connectionForm.api_secret" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API secret'" autocomplete="new-password" />
         </UFormField>
 
         <UFormField label="Company">

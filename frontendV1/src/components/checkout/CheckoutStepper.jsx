@@ -12,7 +12,15 @@ const STEPS = [
   { key: "done", label: "Done", icon: "check_circle", path: "/checkout/confirmation" }
 ];
 
-export default function CheckoutStepper({ current = "cart", basket, shipping, pendingCheckout, orderNumber = "" }) {
+export default function CheckoutStepper({
+  current = "cart",
+  basket,
+  shipping,
+  pendingCheckout,
+  orderNumber = "",
+  paymentBlocked = false,
+  onPaymentBlocked
+}) {
   const navigate = useNavigate();
   const notify = useUiStore((state) => state.notify);
   const [searchParams] = useSearchParams();
@@ -28,22 +36,31 @@ export default function CheckoutStepper({ current = "cart", basket, shipping, pe
     if (step.key === "cart") return "/checkout/cart";
     if (hasKnownEmptyBasket) return "/checkout/cart";
     if (step.key === "shipping") return "/checkout/shipping";
-    if (step.key === "payment") return shippingReady || activeIndex >= 2 ? "/checkout/payment" : "/checkout/shipping";
+    if (step.key === "payment") {
+      if (paymentBlocked) return "/checkout/shipping";
+      return shippingReady || activeIndex >= 2 ? "/checkout/payment" : "/checkout/shipping";
+    }
     if (step.key === "review") {
       if (hasPendingPayment) return "/checkout/review";
       if (!shippingReady && activeIndex < 2) return "/checkout/shipping";
+      if (paymentBlocked) return "/checkout/shipping";
       return "/checkout/payment";
     }
     if (step.key === "done") {
       if (lastOrderNumber) return `/checkout/confirmation?order_number=${encodeURIComponent(lastOrderNumber)}`;
       if (hasPendingPayment) return "/checkout/review";
       if (!shippingReady && activeIndex < 2) return "/checkout/shipping";
+      if (paymentBlocked) return "/checkout/shipping";
       return activeIndex >= 3 ? "/checkout/review" : "/checkout/payment";
     }
     return index <= activeIndex ? step.path : STEPS[Math.min(activeIndex + 1, STEPS.length - 1)].path;
   }
 
   function handleStepClick(step, index) {
+    if (paymentBlocked && ["payment", "review", "done"].includes(step.key)) {
+      onPaymentBlocked?.();
+      return;
+    }
     const target = routeForStep(step, index);
     const message = blockedStepMessage(step, target);
     if (message) {

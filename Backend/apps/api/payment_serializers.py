@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from django.conf import settings
 
@@ -5,6 +7,8 @@ from apps.payments.services import get_payment_method
 
 from .checkout_utils import get_selected_shipping_method, get_shipping_address
 from .order_serializers import build_order_prices
+
+MPESA_TRANSACTION_LIMIT_KES = Decimal('150000.00')
 
 
 class PaymentMethodSerializer(serializers.Serializer):
@@ -36,9 +40,19 @@ class PaymentInitializationSerializer(serializers.Serializer):
         if method.get('requires_phone') and not (attrs.get('phone_number') or '').strip():
             raise serializers.ValidationError({'phone_number': f"{method['name']} requires a phone number."})
 
+        pricing = build_order_prices(basket, shipping_address, shipping_method)
+        order_total = pricing['order_total']
+        if order_total.currency == 'KES' and order_total.incl_tax > MPESA_TRANSACTION_LIMIT_KES:
+            raise serializers.ValidationError({
+                'basket': (
+                    'Orders above Ksh 150,000 cannot continue to payment because M-Pesa allows '
+                    'a maximum of Ksh 150,000 per transaction. Request a quotation instead.'
+                )
+            })
+
         attrs['shipping_address'] = shipping_address
         attrs['shipping_method'] = shipping_method
-        attrs['pricing'] = build_order_prices(basket, shipping_address, shipping_method)
+        attrs['pricing'] = pricing
         attrs['payer_email'] = (attrs.get('payer_email') or '').strip().lower()
         attrs['phone_number'] = (attrs.get('phone_number') or '').strip()
         return attrs

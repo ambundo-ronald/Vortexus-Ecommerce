@@ -475,7 +475,7 @@ watch([roleFilter, statusFilter, pageSize], () => {
             <UInput v-model="userForm.email" type="email" autocomplete="email" />
           </UFormField>
           <UFormField :label="editingUserId ? 'New password' : 'Password'" :required="!editingUserId">
-            <UInput v-model="userForm.password" type="password" autocomplete="new-password" />
+            <PasswordInput v-model="userForm.password" autocomplete="new-password" />
           </UFormField>
           <UFormField label="First name">
             <UInput v-model="userForm.first_name" />

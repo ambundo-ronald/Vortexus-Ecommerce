@@ -27,7 +27,6 @@ from apps.common.currency import (
     resolve_display_currency,
 )
 from apps.common.products import serialize_product_card
-from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
 from apps.accounts.delivery_locations import (
     location_for_shipping_address,
@@ -401,8 +400,7 @@ class SavedItemMoveToCartAPIView(APIView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             try:
                 line, _ = request.basket.add_product(saved_line.product, quantity=saved_line.quantity)
-                sync_basket_line_reservation(line)
-            except (InventoryReservationError, ValueError) as exc:
+            except ValueError as exc:
                 raise serializers.ValidationError({'saved_item': str(exc)}) from exc
             saved_line.delete()
             payload = build_checkout_payload(request)
@@ -416,8 +414,7 @@ class SavedItemMoveToCartAPIView(APIView):
         product = get_object_or_404(Product, id=item['product_id'])
         try:
             line, _ = request.basket.add_product(product, quantity=item.get('quantity', 1))
-            sync_basket_line_reservation(line)
-        except (InventoryReservationError, ValueError) as exc:
+        except ValueError as exc:
             raise serializers.ValidationError({'saved_item': str(exc)}) from exc
         _save_items(request, [entry for entry in items if entry.get('id') != saved_line_id])
         payload = build_checkout_payload(request)
@@ -881,17 +878,19 @@ class PasswordResetRequestAPIView(APIView):
 
     def post(self, request):
         email = str(request.data.get('email', '')).strip()
+        if not email:
+            raise serializers.ValidationError({'email': 'Enter your account email address.'})
         User = get_user_model()
         user = User.objects.filter(email__iexact=email).first()
-        payload = {'detail': 'If that email exists, password reset instructions will be sent.'}
-        if user:
-            if not user.is_active:
-                return Response({
-                    'detail': 'This account is deactivated. Request reactivation before resetting the password.',
-                    'account_inactive': True,
-                })
-            queue_password_reset_email(user)
-        return Response(payload)
+        if not user:
+            raise serializers.ValidationError({'email': 'We could not find an account registered with this email address.'})
+        if not user.is_active:
+            return Response({
+                'detail': 'This account is deactivated. Request reactivation before resetting the password.',
+                'account_inactive': True,
+            })
+        queue_password_reset_email(user)
+        return Response({'detail': 'Password reset link sent. Check your email.'})
 
 
 class PasswordResetConfirmAPIView(APIView):
@@ -955,6 +954,108 @@ class RecentlyViewedAPIView(APIView):
                 ]
             }
         )
+
+
+class RecentlyBoughtAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _limit(self, request):
+        try:
+            return min(max(int(request.query_params.get('limit', 8) or 8), 1), 16)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({'limit': 'Limit must be a number between 1 and 16.'})
+
+    def _recent_lines(self, request, limit):
+        OrderLine = get_model('order', 'Line')
+        lines = (
+            OrderLine.objects.filter(order__user=request.user, product__isnull=False)
+            .select_related('order', 'product')
+            .order_by('-order__date_placed', '-order_id', '-id')[:100]
+        )
+        recent_lines = []
+        seen = set()
+
+        for line in lines:
+            product_id = line.product_id
+            if product_id in seen:
+                continue
+            if not getattr(line.product, 'is_public', True):
+                continue
+            seen.add(product_id)
+            recent_lines.append(line)
+            if len(recent_lines) >= limit:
+                break
+
+        return recent_lines
+
+    def get(self, request):
+        limit = self._limit(request)
+        Product = apps.get_model('catalogue', 'Product')
+        recent_lines = self._recent_lines(request, limit)
+        product_ids = [line.product_id for line in recent_lines]
+        quantities = {line.product_id: line.quantity for line in recent_lines}
+
+        products = {
+            product.id: product
+            for product in Product.objects.filter(id__in=product_ids, is_public=True).prefetch_related(
+                'stockrecords',
+                'images',
+                'categories',
+            )
+        }
+        display_currency = resolve_display_currency(request)
+        return Response(
+            {
+                'strategy': 'recently_bought',
+                'results': [
+                    {
+                        **serialize_product_card(products[product_id], display_currency=display_currency),
+                        'recent_order_quantity': quantities.get(product_id, 1),
+                    }
+                    for product_id in product_ids
+                    if product_id in products
+                ],
+            }
+        )
+
+    @transaction.atomic
+    def post(self, request):
+        limit = self._limit(request)
+        recent_lines = self._recent_lines(request, limit)
+        if request.basket.pk is None:
+            request.basket.save()
+
+        added = []
+        skipped = []
+        for line in recent_lines:
+            product = line.product
+            if not product or not getattr(product, 'is_public', False):
+                skipped.append({'product_id': line.product_id, 'reason': 'product_unavailable'})
+                continue
+            try:
+                request.basket.add_product(product, quantity=line.quantity)
+                added.append({'product_id': product.id, 'quantity': line.quantity})
+            except ValueError as exc:
+                skipped.append({'product_id': product.id, 'reason': str(exc) or 'could_not_add'})
+
+        request.basket._lines = None
+        request.basket.reset_offer_applications()
+        record_audit_event(
+            event_type='storefront.recently_bought_reordered',
+            request=request,
+            actor=request.user,
+            message='Customer reordered recently bought products.',
+            metadata={'added_count': len(added), 'skipped_count': len(skipped)},
+        )
+        payload = build_checkout_payload(request)
+        payload.update(
+            {
+                'detail': 'Recently bought products added to cart.',
+                'added': added,
+                'skipped': skipped,
+            }
+        )
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class ProductViewedAPIView(APIView):

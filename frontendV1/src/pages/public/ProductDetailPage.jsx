@@ -281,10 +281,12 @@ export default function ProductDetailPage() {
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
             </button>
             <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
-            <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
-              <MaterialIcon name="request_quote" size={19} />
-              Request quote
-            </Link>
+            {!stock.isAvailable ? (
+              <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
+                <MaterialIcon name="request_quote" size={19} />
+                Request quotation
+              </Link>
+            ) : null}
           </div>
 
           {!stock.isAvailable ? (

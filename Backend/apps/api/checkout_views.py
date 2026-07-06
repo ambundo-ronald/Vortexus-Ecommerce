@@ -22,7 +22,6 @@ from apps.inventory.services import (
     InventoryReservationError,
     prepare_basket_for_order_submission,
     release_basket_line_reservation,
-    sync_basket_line_reservation,
 )
 from apps.payments.services import link_payment_to_order, payment_requires_prepayment, serialize_payment_session
 from apps.marketplace.orders import ensure_supplier_order_groups
@@ -232,10 +231,6 @@ class BasketItemCollectionAPIView(APIView):
             )
         except ValueError as exc:
             raise serializers.ValidationError({'basket': _basket_value_error_message(exc)}) from exc
-        try:
-            sync_basket_line_reservation(line)
-        except InventoryReservationError as exc:
-            raise serializers.ValidationError({'quantity': str(exc)}) from exc
         request.basket._lines = None
         return Response(build_checkout_payload(request), status=status.HTTP_201_CREATED)
 
@@ -256,10 +251,6 @@ class BasketLineDetailAPIView(APIView):
         else:
             line.quantity = quantity
             line.save()
-            try:
-                sync_basket_line_reservation(line)
-            except InventoryReservationError as exc:
-                raise serializers.ValidationError({'quantity': str(exc)}) from exc
 
         request.basket.reset_offer_applications()
         return Response(build_checkout_payload(request))

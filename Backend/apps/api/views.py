@@ -628,6 +628,7 @@ class AdminProductImageDetailAPIView(APIView):
 
 
 class QuoteRequestAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     throttle_scope = 'quote_request'
     throttle_classes = [ScopedRateThrottle]
 
@@ -641,17 +642,33 @@ class QuoteRequestAPIView(APIView):
         if product_id:
             product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
 
+        user = request.user
+        contact_email = payload.get('email') or getattr(user, 'email', '') or ''
+        contact_name = payload.get('name') or [getattr(user, 'first_name', ''), getattr(user, 'last_name', '')]
+        if isinstance(contact_name, list):
+            contact_name = ' '.join(part for part in contact_name if part).strip() or getattr(user, 'username', '')
+        payload['email'] = contact_email
+        payload['name'] = contact_name
+
         logger.info("Quote request received: %s", payload)
         queue_quote_request_notifications(payload, product=product)
         record_audit_event(
             event_type='quotes.requested',
             request=request,
+            actor=user,
             target=product,
             message='Quote request submitted.',
             metadata={
+                'name': payload.get('name', ''),
                 'email': payload.get('email', ''),
+                'phone': payload.get('phone', ''),
                 'company': payload.get('company', ''),
+                'message': payload.get('message', ''),
+                'user_id': user.id,
+                'username': getattr(user, 'username', ''),
                 'product_id': product.id if product else None,
+                'product_title': product.title if product else '',
+                'product_upc': product.upc if product else '',
             },
         )
         return Response(

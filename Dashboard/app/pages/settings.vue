@@ -620,7 +620,7 @@ onMounted(() => {
               <UInput v-model="emailConfig.username" :loading="isEmailLoading" autocomplete="username" placeholder="yourname@gmail.com" />
             </UFormField>
             <UFormField label="Password / API key">
-              <UInput v-model="emailConfig.password" :loading="isEmailLoading" type="password" :placeholder="emailConfig.has_password ? 'Saved' : 'Google app password'" autocomplete="new-password" />
+              <PasswordInput v-model="emailConfig.password" :loading="isEmailLoading" :placeholder="emailConfig.has_password ? 'Saved' : 'Google app password'" autocomplete="new-password" />
             </UFormField>
             <UFormField label="From email">
               <UInput v-model="emailConfig.from_email" :loading="isEmailLoading" type="email" placeholder="no-reply@example.com" />
@@ -700,16 +700,16 @@ onMounted(() => {
                 <UInput v-model="paymentConfig.mpesa.base_url" :loading="isPaymentLoading" placeholder="https://sandbox.safaricom.co.ke" />
               </UFormField>
               <UFormField label="Consumer key">
-                <UInput v-model="paymentConfig.mpesa.consumer_key" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
+                <PasswordInput v-model="paymentConfig.mpesa.consumer_key" :loading="isPaymentLoading" :placeholder="paymentConfig.mpesa.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
               </UFormField>
               <UFormField label="Consumer secret">
-                <UInput v-model="paymentConfig.mpesa.consumer_secret" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
+                <PasswordInput v-model="paymentConfig.mpesa.consumer_secret" :loading="isPaymentLoading" :placeholder="paymentConfig.mpesa.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
               </UFormField>
               <UFormField label="Shortcode">
                 <UInput v-model="paymentConfig.mpesa.shortcode" :loading="isPaymentLoading" placeholder="174379" />
               </UFormField>
               <UFormField label="Passkey">
-                <UInput v-model="paymentConfig.mpesa.passkey" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.mpesa.has_passkey ? 'Saved' : 'Required'" autocomplete="new-password" />
+                <PasswordInput v-model="paymentConfig.mpesa.passkey" :loading="isPaymentLoading" :placeholder="paymentConfig.mpesa.has_passkey ? 'Saved' : 'Required'" autocomplete="new-password" />
               </UFormField>
               <UFormField label="Callback URL">
                 <UInput v-model="paymentConfig.mpesa.callback_url" :loading="isPaymentLoading" placeholder="https://example.com/api/v1/payments/mpesa/callback/" />
@@ -757,10 +757,10 @@ onMounted(() => {
               </UFormField>
               <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <UFormField label="Consumer key">
-                  <UInput v-model="paymentConfig.pesapal.consumer_key" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.pesapal.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
+                  <PasswordInput v-model="paymentConfig.pesapal.consumer_key" :loading="isPaymentLoading" :placeholder="paymentConfig.pesapal.has_consumer_key ? 'Saved' : 'Required'" autocomplete="new-password" />
                 </UFormField>
                 <UFormField label="Consumer secret">
-                  <UInput v-model="paymentConfig.pesapal.consumer_secret" :loading="isPaymentLoading" type="password" :placeholder="paymentConfig.pesapal.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
+                  <PasswordInput v-model="paymentConfig.pesapal.consumer_secret" :loading="isPaymentLoading" :placeholder="paymentConfig.pesapal.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
                 </UFormField>
               </div>
               <UFormField label="Checkout callback URL">

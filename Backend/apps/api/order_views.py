@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 from apps.common.async_utils import dispatch_background_task
 from apps.integrations.tasks import sync_order_cancellation_to_erpnext
-from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_shipping_update_email
 
 from .order_serializers import (
@@ -190,11 +189,10 @@ class CustomerOrderReorderAPIView(APIView):
                 continue
             try:
                 with transaction.atomic():
-                    basket_line, _ = request.basket.add_product(product, quantity=line.quantity)
-                    sync_basket_line_reservation(basket_line)
+                    request.basket.add_product(product, quantity=line.quantity)
                 added.append({'line_id': line.id, 'product_id': product.id, 'quantity': line.quantity})
-            except InventoryReservationError:
-                skipped.append({'line_id': line.id, 'reason': 'insufficient_stock'})
+            except ValueError as exc:
+                skipped.append({'line_id': line.id, 'reason': str(exc) or 'could_not_add'})
 
         request.basket._lines = None
         request.basket.reset_offer_applications()

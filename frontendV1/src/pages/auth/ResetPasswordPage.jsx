@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authApi } from "../../api/auth.api";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
+import PasswordInput from "../../components/ui/PasswordInput.jsx";
 import { normalizeApiError } from "../../utils/errorHandler";
 
 const emptyForm = {
@@ -80,12 +81,12 @@ export default function ResetPasswordPage() {
 
         <label>
           <span>New password</span>
-          <input type="password" name="new_password" value={form.new_password} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="new_password" value={form.new_password} onChange={updateField} autoComplete="new-password" required />
         </label>
 
         <label>
           <span>Confirm new password</span>
-          <input type="password" name="new_password_confirm" value={form.new_password_confirm} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="new_password_confirm" value={form.new_password_confirm} onChange={updateField} autoComplete="new-password" required />
         </label>
 
         {passwordMismatch ? <p className="auth-field-note">Passwords do not match yet.</p> : null}

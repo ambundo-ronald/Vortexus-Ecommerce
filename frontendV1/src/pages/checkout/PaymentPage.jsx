@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import CheckoutErrorAlert from "../../components/checkout/CheckoutErrorAlert.jsx";
@@ -21,6 +21,8 @@ import {
 import { checkoutToastPayload } from "../../utils/checkoutErrors";
 import "./CheckoutFlow.css";
 
+const MPESA_TRANSACTION_LIMIT_KES = 150000;
+
 export default function PaymentPage() {
   const navigate = useNavigate();
   const checkoutState = useCheckout();
@@ -34,6 +36,17 @@ export default function PaymentPage() {
   const [activeMethod, setActiveMethod] = useState(null);
   const [guestEmail, setGuestEmail] = useState("");
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const exceedsPaymentLimit = Number(shipping?.totals?.base_order_total || 0) > MPESA_TRANSACTION_LIMIT_KES;
+
+  useEffect(() => {
+    if (loading || !exceedsPaymentLimit) return;
+    notify({
+      tone: "warning",
+      title: "Quotation required",
+      message: "Orders above Ksh 150,000 need a quotation before payment.",
+      icon: "request_quote"
+    });
+  }, [exceedsPaymentLimit, loading, notify]);
 
   function continueToReview(payment, method, payerEmail) {
     const reviewPayload = {
@@ -136,6 +149,7 @@ export default function PaymentPage() {
   if (loading || paymentState.loading) return <Spinner label="Loading payment" />;
   if (!loading && basket?.is_empty) return <Navigate to="/checkout/cart" replace />;
   if (!loading && shipping && !shipping.ready_for_checkout) return <Navigate to="/checkout/shipping" replace />;
+  if (!loading && exceedsPaymentLimit) return <Navigate to="/checkout/shipping" replace />;
 
   return (
     <section className="checkout-page">

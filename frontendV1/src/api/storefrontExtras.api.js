@@ -75,6 +75,8 @@ export const storefrontExtrasApi = {
     updatePreferences: (payload) =>
       apiClient.patch(ENDPOINTS.account.preferences, payload).then((response) => response.data),
     recentlyViewed: () => apiClient.get(ENDPOINTS.account.recentlyViewed).then((response) => response.data),
+    recentlyBought: (params) => apiClient.get(ENDPOINTS.account.recentlyBought, { params }).then((response) => response.data),
+    reorderRecentlyBought: (params) => apiClient.post(ENDPOINTS.account.recentlyBought, null, { params }).then((response) => response.data),
     markViewed: (productId) => apiClient.post(ENDPOINTS.catalog.productViewed(productId)).then((response) => response.data)
   },
   reviews: {
