@@ -157,7 +157,7 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 24,
 }
 
-OSCAR_SHOP_NAME = env('OSCAR_SHOP_NAME', default='Vortexus Industrial')
+OSCAR_SHOP_NAME = env('OSCAR_SHOP_NAME', default='Reesolmart')
 OSCAR_ALLOW_ANON_CHECKOUT = True
 OSCAR_DEFAULT_CURRENCY = env('OSCAR_DEFAULT_CURRENCY', default='KES')
 OSCAR_DELETE_IMAGE_FILES = env.bool('OSCAR_DELETE_IMAGE_FILES', default=False)
@@ -347,7 +347,7 @@ DISPLAY_CURRENCY_RATES = json.loads(
     )
 )
 
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@reesolmart.local')
 NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
 STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://127.0.0.1:5174').rstrip('/')
 BACKEND_PUBLIC_BASE_URL = env('BACKEND_PUBLIC_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')

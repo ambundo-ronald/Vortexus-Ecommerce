@@ -138,7 +138,7 @@ onMounted(loadBackups)
 
     <div class="mb-5 grid gap-4 md:grid-cols-4">
       <CardsKpiCard2 name="Latest success" :value="latestSuccessAge" :budget="totalItems || 1" color="#059669" icon="i-lucide-shield-check" :loading="isLoading" />
-      <CardsKpiCard2 name="Successful" :value="status?.success_count || 0" :budget="Math.max(totalItems, 1)" color="#3d7cff" icon="i-lucide-check-check" :loading="isLoading" />
+      <CardsKpiCard2 name="Successful" :value="status?.success_count || 0" :budget="Math.max(totalItems, 1)" color="#30328f" icon="i-lucide-check-check" :loading="isLoading" />
       <CardsKpiCard2 name="Failed" :value="status?.failed_count || 0" :budget="Math.max(totalItems, 1)" color="#dc2626" icon="i-lucide-circle-alert" :loading="isLoading" />
       <CardsKpiCard2 name="Running" :value="status?.running_count || 0" :budget="Math.max(totalItems, 1)" color="#f59e0b" icon="i-lucide-loader" :loading="isLoading" />
     </div>
@@ -148,7 +148,7 @@ onMounted(loadBackups)
         Loading backups...
       </div>
       <div v-else-if="!backups.length" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-archive" />
         </div>
         <h2 class="mt-3 text-base font-black text-slate-950">

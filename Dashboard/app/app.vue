@@ -37,8 +37,8 @@ async function handleLogout() {
         <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <div class="flex h-18 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <NuxtLink to="/" class="flex items-center gap-3">
-              <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
-                RM
+              <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
               </div>
               <div>
                 <p class="text-lg font-black leading-tight">

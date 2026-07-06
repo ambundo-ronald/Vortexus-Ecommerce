@@ -141,16 +141,29 @@ img {
 }
 
 .brand-mark {
-  width: 36px;
+  width: 38px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  background: var(--color-primary-700);
+  overflow: hidden;
+  background: var(--color-surface);
   color: var(--color-text-inverse);
   font-weight: 600;
   letter-spacing: 0;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.brand-mark--logo {
+  width: 42px;
+  background: #fff;
+}
+
+.brand-mark--logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-copy {

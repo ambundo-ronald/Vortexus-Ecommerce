@@ -123,10 +123,10 @@ onMounted(loadSuppressions)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-      <CardsKpiCard2 name="Total" :value="summary.total || 0" :budget="summary.total || 1" color="#3d7cff" icon="i-lucide-mail-x" :loading="isLoading" />
+      <CardsKpiCard2 name="Total" :value="summary.total || 0" :budget="summary.total || 1" color="#30328f" icon="i-lucide-mail-x" :loading="isLoading" />
       <CardsKpiCard2 name="Bounces" :value="summary.bounce || 0" :budget="summary.total || 1" color="#dc2626" icon="i-lucide-octagon-alert" :loading="isLoading" />
       <CardsKpiCard2 name="Complaints" :value="summary.complaint || 0" :budget="summary.total || 1" color="#b45309" icon="i-lucide-message-square-warning" :loading="isLoading" />
-      <CardsKpiCard2 name="Manual" :value="summary.manual || 0" :budget="summary.total || 1" color="#255be8" icon="i-lucide-user-x" :loading="isLoading" />
+      <CardsKpiCard2 name="Manual" :value="summary.manual || 0" :budget="summary.total || 1" color="#30328f" icon="i-lucide-user-x" :loading="isLoading" />
       <CardsKpiCard2 name="Unsubscribed" :value="summary.unsubscribe || 0" :budget="summary.total || 1" color="#64748b" icon="i-lucide-bell-off" :loading="isLoading" />
     </div>
 

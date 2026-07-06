@@ -229,7 +229,7 @@ onMounted(loadCategories)
     </AdminTableToolbar>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total categories" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-folder-tree" :loading="isLoading" />
+      <CardsKpiCard2 name="Total categories" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-folder-tree" :loading="isLoading" />
       <CardsKpiCard2 name="Root categories" :value="rootCount" :budget="totalItems" color="#059669" icon="i-lucide-folder" :loading="isLoading" />
       <CardsKpiCard2 name="Child categories" :value="childCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-network" :loading="isLoading" />
       <CardsKpiCard2 name="Hidden" :value="hiddenCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-eye-off" :loading="isLoading" />

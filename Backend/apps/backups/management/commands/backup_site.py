@@ -5,7 +5,7 @@ from apps.backups.services import create_backup, serialize_backup_run
 
 
 class Command(BaseCommand):
-    help = 'Create a Vortexus backup bundle.'
+    help = 'Create a Reesolmart backup bundle.'
 
     def add_arguments(self, parser):
         parser.add_argument(

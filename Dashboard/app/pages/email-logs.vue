@@ -176,7 +176,7 @@ onMounted(loadLogs)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-      <CardsKpiCard2 name="Total emails" :value="summary.total || 0" :budget="summary.total || 1" color="#3d7cff" icon="i-lucide-mails" :loading="isLoading" />
+      <CardsKpiCard2 name="Total emails" :value="summary.total || 0" :budget="summary.total || 1" color="#30328f" icon="i-lucide-mails" :loading="isLoading" />
       <CardsKpiCard2 name="Sent" :value="summary.sent || 0" :budget="summary.total || 1" color="#059669" icon="i-lucide-mail-check" :loading="isLoading" />
       <CardsKpiCard2 name="Failed" :value="summary.failed || 0" :budget="summary.total || 1" color="#dc2626" icon="i-lucide-mail-x" :loading="isLoading" />
       <CardsKpiCard2 name="Skipped" :value="summary.skipped || 0" :budget="summary.total || 1" color="#b45309" icon="i-lucide-mail-minus" :loading="isLoading" />
@@ -221,7 +221,7 @@ onMounted(loadLogs)
       </div>
 
       <div v-else-if="logs.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-mail-search" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No email logs found</h2>

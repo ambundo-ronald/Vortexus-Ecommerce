@@ -165,7 +165,7 @@ onMounted(loadStockAlerts)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total alerts" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-bell-ring" :loading="isLoading" />
+      <CardsKpiCard2 name="Total alerts" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-bell-ring" :loading="isLoading" />
       <CardsKpiCard2 name="Open" :value="openCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-bell" :loading="isLoading" />
       <CardsKpiCard2 name="Closed" :value="closedCount" :budget="totalItems" color="#64748b" icon="i-lucide-check-check" :loading="isLoading" />
       <CardsKpiCard2 name="Out of stock" :value="criticalCount" :budget="totalItems" color="#dc2626" icon="i-lucide-circle-alert" :loading="isLoading" />
@@ -188,7 +188,7 @@ onMounted(loadStockAlerts)
       </div>
 
       <div v-else-if="filteredAlerts.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-bell-ring" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No stock alerts found</h2>

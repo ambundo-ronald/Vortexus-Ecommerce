@@ -741,7 +741,7 @@ class ERPNextSyncService:
             'currency': order.currency,
             'po_no': order.number,
             'items': [],
-            'remarks': f'Vortexus web order {order.number}',
+            'remarks': f'Reesolmart web order {order.number}',
         }
         if self.connection.default_company:
             payload['company'] = self.connection.default_company
@@ -820,7 +820,7 @@ class ERPNextSyncService:
             email = (getattr(user, 'email', '') or '').strip()
             if email:
                 return email
-        return (order.guest_email or '').strip() or 'Vortexus Online Customer'
+        return (order.guest_email or '').strip() or 'Reesolmart Online Customer'
 
     def _order_payment_session(self, order):
         manager = getattr(order, 'payment_sessions', None)
@@ -1007,7 +1007,7 @@ class ERPNextSyncService:
                 'payment_reference': payment_session.external_reference or payment_session.reference,
                 'refund_reference': effective_refund_reference,
                 'refund_amount': refund_amount or str(payment_session.amount),
-                'reason': reason or 'Vortexus ecommerce refund.',
+                'reason': reason or 'Reesolmart ecommerce refund.',
                 'submit': self.connection.metadata.get('submit_credit_notes', True),
             }
             response = self.client.call_method(

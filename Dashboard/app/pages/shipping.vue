@@ -463,7 +463,7 @@ onMounted(loadMethods)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Methods" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-truck" :loading="isLoading" />
+      <CardsKpiCard2 name="Methods" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-truck" :loading="isLoading" />
       <CardsKpiCard2 name="With bands" :value="methodWithBandsCount" :budget="totalItems" color="#059669" icon="i-lucide-list-checks" :loading="isLoading" />
       <CardsKpiCard2 name="Rate bands" :value="bandCount" :budget="bandCount" color="#f59e0b" icon="i-lucide-route" :loading="isLoading" />
       <CardsKpiCard2 name="Avg default kg" :value="averageDefaultWeight" :budget="averageDefaultWeight" color="#7c3aed" icon="i-lucide-weight" :loading="isLoading" />
@@ -528,7 +528,7 @@ onMounted(loadMethods)
         </div>
 
         <div v-else-if="filteredMethods.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-truck" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No shipping methods found</h2>

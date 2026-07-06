@@ -17,8 +17,8 @@ const isLinkActive = (item: { to?: string }) => {
     class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex dark:border-slate-800 dark:bg-slate-950"
   >
     <NuxtLink to="/" class="mb-8 flex items-center gap-3">
-      <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#255be8] text-base font-black text-white">
-        RM
+      <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
       </div>
       <div>
         <p class="text-lg font-black leading-tight text-slate-950 dark:text-slate-100">
@@ -67,7 +67,7 @@ const isLinkActive = (item: { to?: string }) => {
             {{ item.label }}
             <span
               v-if="item.highlight"
-              class="ml-auto h-1.5 w-1.5 rounded-full bg-[#3d7cff]"
+              class="ml-auto h-1.5 w-1.5 rounded-full bg-[#30328f]"
             />
           </UButton>
         </NuxtLink>

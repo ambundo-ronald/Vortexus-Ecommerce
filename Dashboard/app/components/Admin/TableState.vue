@@ -37,7 +37,7 @@ const props = withDefaults(defineProps<{
   </div>
 
   <div v-else-if="props.empty" class="p-12 text-center">
-    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
       <UIcon :name="props.emptyIcon" />
     </div>
     <h2 class="mt-4 text-lg font-black text-slate-950">

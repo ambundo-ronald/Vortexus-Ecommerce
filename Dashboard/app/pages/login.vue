@@ -45,8 +45,8 @@ async function submit() {
       <div class="hidden min-h-[620px] flex-col justify-between bg-[#0f172a] p-10 text-white md:flex">
         <div>
           <div class="mb-10 flex items-center gap-3">
-            <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black">
-              RM
+            <div class="flex h-12 w-16 items-center justify-center overflow-hidden rounded-xl bg-white">
+              <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
             </div>
             <div>
               <p class="text-xl font-bold leading-tight">
@@ -96,8 +96,8 @@ async function submit() {
 
       <form class="p-6 sm:p-10 md:p-12" @submit.prevent="submit">
         <div class="mb-9 flex items-center gap-3 md:hidden">
-          <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3d7cff] text-xl font-black text-white">
-            RM
+          <div class="flex h-12 w-16 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
           </div>
           <div>
             <p class="text-xl font-bold leading-tight text-slate-950">
@@ -110,7 +110,7 @@ async function submit() {
         </div>
 
         <div>
-          <p class="text-sm font-semibold uppercase tracking-wide text-[#3d7cff]">
+          <p class="text-sm font-semibold uppercase tracking-wide text-[#30328f]">
             Secure access
           </p>
           <h2 class="mt-3 text-3xl font-black tracking-tight text-slate-950">

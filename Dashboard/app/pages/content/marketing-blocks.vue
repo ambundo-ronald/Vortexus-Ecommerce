@@ -323,7 +323,7 @@ watch(mediaSearch, () => {
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total blocks" :value="totalItems" :budget="totalItems || 1" color="#3d7cff" icon="i-lucide-panels-top-left" :loading="isLoading" />
+      <CardsKpiCard2 name="Total blocks" :value="totalItems" :budget="totalItems || 1" color="#30328f" icon="i-lucide-panels-top-left" :loading="isLoading" />
       <CardsKpiCard2 name="Active" :value="activeCount" :budget="totalItems || 1" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Current" :value="currentCount" :budget="blocks.length || 1" color="#7c3aed" icon="i-lucide-radio" :loading="isLoading" />
       <CardsKpiCard2 name="Inactive" :value="inactiveCount" :budget="totalItems || 1" color="#f59e0b" icon="i-lucide-circle-pause" :loading="isLoading" />

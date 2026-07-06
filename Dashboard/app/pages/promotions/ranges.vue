@@ -299,7 +299,7 @@ onMounted(loadRanges)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total ranges" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-layers-3" :loading="isLoading" />
+      <CardsKpiCard2 name="Total ranges" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-layers-3" :loading="isLoading" />
       <CardsKpiCard2 name="Public" :value="publicCount" :budget="totalItems" color="#059669" icon="i-lucide-eye" :loading="isLoading" />
       <CardsKpiCard2 name="All products" :value="allProductCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-infinity" :loading="isLoading" />
       <CardsKpiCard2 name="Assigned products" :value="assignedProductCount" :budget="assignedProductCount" color="#f59e0b" icon="i-lucide-package-plus" :loading="isLoading" />
@@ -321,7 +321,7 @@ onMounted(loadRanges)
         </div>
 
         <div v-else-if="filteredRanges.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-layers-3" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No ranges found</h2>

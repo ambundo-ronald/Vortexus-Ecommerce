@@ -161,8 +161,8 @@ class AdminEmailTestAPIView(APIView):
 
         try:
             message = EmailMultiAlternatives(
-                subject='Vortexus email test',
-                body='This is a test email from the Vortexus admin dashboard.',
+                subject='Reesolmart email test',
+                body='This is a test email from the Reesolmart admin dashboard.',
                 from_email=configured_from_email(),
                 to=[recipient],
                 reply_to=[configured_reply_to_email()] if configured_reply_to_email() else None,

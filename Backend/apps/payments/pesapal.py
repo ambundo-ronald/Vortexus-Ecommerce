@@ -44,7 +44,7 @@ def submit_order_request(payment_session, *, customer_name: str = '') -> dict:
         'id': payment_session.reference,
         'currency': payment_session.currency,
         'amount': float(Decimal(str(payment_session.amount)).quantize(Decimal('0.01'))),
-        'description': f'Vortexus payment {payment_session.reference}'[:100],
+        'description': f'Reesolmart payment {payment_session.reference}'[:100],
         'redirect_mode': get_payment_setting('pesapal', 'redirect_mode', settings.PESAPAL_REDIRECT_MODE),
         'callback_url': get_payment_setting('pesapal', 'callback_url', ''),
         'notification_id': get_payment_setting('pesapal', 'ipn_id', ''),
@@ -141,7 +141,7 @@ def request_refund(payment_session, *, amount, username: str, remarks: str) -> d
     payload = {
         'confirmation_code': confirmation_code,
         'amount': str(Decimal(str(amount)).quantize(Decimal('0.01'))),
-        'username': (username or '').strip() or 'Vortexus Admin',
+        'username': (username or '').strip() or 'Reesolmart Admin',
         'remarks': (remarks or '').strip() or f'Refund for {payment_session.reference}',
     }
     response_data = _post_json('/Transactions/RefundRequest', payload, token=token)

@@ -408,7 +408,7 @@ onMounted(loadConnections)
     </div>
 
     <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <CardsKpiCard2 name="Connections" :value="connections.length" :budget="connections.length" color="#3d7cff" />
+      <CardsKpiCard2 name="Connections" :value="connections.length" :budget="connections.length" color="#30328f" />
       <CardsKpiCard2 name="Active" :value="activeConnections" :budget="connections.length" color="#16a34a" />
       <CardsKpiCard2 name="Needs attention" :value="errorConnections" :budget="connections.length" color="#ef4444" />
     </div>

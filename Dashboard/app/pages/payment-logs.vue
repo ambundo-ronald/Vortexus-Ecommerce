@@ -241,7 +241,7 @@ onMounted(loadLogs)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-      <CardsKpiCard2 name="Total payments" :value="summary.total || 0" :budget="summary.total || 1" color="#3d7cff" icon="i-lucide-credit-card" :loading="isLoading" />
+      <CardsKpiCard2 name="Total payments" :value="summary.total || 0" :budget="summary.total || 1" color="#30328f" icon="i-lucide-credit-card" :loading="isLoading" />
       <CardsKpiCard2 name="Paid" :value="countForStatus('paid')" :budget="summary.total || 1" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Authorized" :value="countForStatus('authorized')" :budget="summary.total || 1" color="#0f766e" icon="i-lucide-shield-check" :loading="isLoading" />
       <CardsKpiCard2 name="Pending" :value="countForStatus('pending')" :budget="summary.total || 1" color="#b45309" icon="i-lucide-clock" :loading="isLoading" />
@@ -284,7 +284,7 @@ onMounted(loadLogs)
       </div>
 
       <div v-else-if="logs.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-credit-card" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No payment logs found</h2>
