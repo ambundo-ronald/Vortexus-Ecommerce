@@ -159,6 +159,7 @@ img {
   width: 126px;
   height: 40px;
   background: #fff;
+  box-shadow: none;
 }
 
 .brand-mark--logo img {

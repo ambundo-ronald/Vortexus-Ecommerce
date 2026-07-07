@@ -47,7 +47,7 @@
   border-radius: 8px;
   background: #fff;
   color: var(--color-primary);
-  box-shadow: 0 14px 32px color-mix(in srgb, var(--color-text) 32%, transparent);
+  box-shadow: none;
 }
 
 .store-footer__logo span:last-child {
