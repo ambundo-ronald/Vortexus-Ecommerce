@@ -50,6 +50,36 @@ services:
       timeout: 10s
       retries: 10
 
+  product-mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - product_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  product-microservice:
+    build:
+      context: ./Product_Microservice
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3029
+      DATABASE_URL_STRING: ${PRODUCT_MICROSERVICE_DATABASE_URL:-mongodb://product-mongo:27017/vortexus_products}
+    ports:
+      - "${PRODUCT_MICROSERVICE_BIND:-127.0.0.1}:${PRODUCT_MICROSERVICE_PORT:-3029}:3029"
+    depends_on:
+      product-mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3029/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   backend:
     build:
       context: ./Backend
@@ -62,6 +92,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vortexus}
       REDIS_URL: redis://redis:6379/0
       OPENSEARCH_HOST: http://opensearch:9200
+      PRODUCT_MICROSERVICE_BASE_URL: ${PRODUCT_MICROSERVICE_BASE_URL:-http://product-microservice:3029}
       MEDIA_ROOT: /app/media
     ports:
       - "0.0.0.0:8000:8000"
@@ -75,6 +106,8 @@ services:
       redis:
         condition: service_healthy
       opensearch:
+        condition: service_healthy
+      product-microservice:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health/live/ || exit 1"]
@@ -95,6 +128,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vortexus}
       REDIS_URL: redis://redis:6379/0
       OPENSEARCH_HOST: http://opensearch:9200
+      PRODUCT_MICROSERVICE_BASE_URL: ${PRODUCT_MICROSERVICE_BASE_URL:-http://product-microservice:3029}
       MEDIA_ROOT: /app/media
     volumes:
       - backend_media:/app/media
@@ -116,6 +150,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vortexus}
       REDIS_URL: redis://redis:6379/0
       OPENSEARCH_HOST: http://opensearch:9200
+      PRODUCT_MICROSERVICE_BASE_URL: ${PRODUCT_MICROSERVICE_BASE_URL:-http://product-microservice:3029}
       MEDIA_ROOT: /app/media
     volumes:
       - backend_media:/app/media
@@ -179,6 +214,7 @@ volumes:
   postgres_data:
   redis_data:
   opensearch_data:
+  product_mongo_data:
   backend_static:
   backend_media:
   backend_backups:
