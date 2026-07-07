@@ -135,6 +135,16 @@ const statusOptions = [
 ];
 const images = ref<ProductImageItem[]>([]);
 
+async function searchProductOptions(query: string) {
+  const result = await getProductOptions({
+    excludeId: route.params.id as string,
+    search: query,
+    pageSize: 20,
+    maxPages: 1,
+  })
+  return result.success ? result.data : []
+}
+
 watch(product, (value) => {
   images.value = value?.images || []
   originalImages.value = [...images.value]
@@ -169,6 +179,7 @@ watch(product, (value) => {
       :categories="categories"
       :product-options="productOptions"
       :attribute-definitions="attributeDefinitions"
+      :search-products="searchProductOptions"
       @on-submit="submit"
     >
       <template #header="{ submit }">

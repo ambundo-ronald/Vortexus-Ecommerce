@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { paymentsApi } from "../api/payments.api";
 import {
+  PAYMENT_CONFIRMATION_TIMEOUT_MS,
+  PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
   isPaymentComplete,
   isPaymentFailed
 } from "../utils/payment";
@@ -128,6 +130,7 @@ export function usePayment({ auto = true } = {}) {
     {
       maxPolls = MAX_PAYMENT_POLLS,
       delayMs = POLL_DELAY_MS,
+      timeoutMs = PAYMENT_CONFIRMATION_TIMEOUT_MS,
       onUpdate
     } = {}
   ) => {
@@ -145,7 +148,9 @@ export function usePayment({ auto = true } = {}) {
     setProcessing(true);
     clearError();
     try {
+      const startedAt = Date.now();
       for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+        if (Date.now() - startedAt >= timeoutMs) break;
         if (attempt > 0) await delay(delayMs);
         const nextPayment = await getPaymentStatus(createdPayment.reference, createdPayment.method);
         onUpdate?.(nextPayment);
@@ -155,7 +160,7 @@ export function usePayment({ auto = true } = {}) {
         }
       }
 
-      throw new Error("Payment is still pending. Confirm the prompt on your phone, then try again.");
+      throw new Error(PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE);
     } catch (error) {
       captureError(error, error?.message?.toLowerCase?.().includes("pending") ? "payment_status" : "payment");
       throw error;

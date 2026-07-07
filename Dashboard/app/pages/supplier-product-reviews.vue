@@ -169,7 +169,7 @@ onMounted(() => loadReviews())
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <CardsKpiCard2 name="Loaded reviews" :value="reviews.length" :budget="pagination.total || reviews.length" color="#3d7cff" icon="i-lucide-list-checks" :loading="isLoading" />
+      <CardsKpiCard2 name="Loaded reviews" :value="reviews.length" :budget="pagination.total || reviews.length" color="#30328f" icon="i-lucide-list-checks" :loading="isLoading" />
       <CardsKpiCard2 name="Pending" :value="pendingCount" :budget="reviews.length" color="#f59e0b" icon="i-lucide-clock" :loading="isLoading" />
       <CardsKpiCard2 name="Blocked" :value="blockedCount" :budget="reviews.length" color="#dc2626" icon="i-lucide-ban" :loading="isLoading" />
     </div>
@@ -189,7 +189,7 @@ onMounted(() => loadReviews())
         </div>
 
         <div v-else-if="filteredReviews.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-package-search" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No product reviews found</h2>

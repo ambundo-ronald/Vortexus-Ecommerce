@@ -263,7 +263,7 @@ onMounted(loadPartners)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total partners" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-handshake" :loading="isLoading" />
+      <CardsKpiCard2 name="Total partners" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-handshake" :loading="isLoading" />
       <CardsKpiCard2 name="With users" :value="linkedPartnerCount" :budget="totalItems" color="#059669" icon="i-lucide-user-check" :loading="isLoading" />
       <CardsKpiCard2 name="No users" :value="unlinkedPartnerCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-user-x" :loading="isLoading" />
       <CardsKpiCard2 name="Linked users" :value="linkedUserCount" :budget="linkedUserCount" color="#7c3aed" icon="i-lucide-users" :loading="isLoading" />
@@ -284,7 +284,7 @@ onMounted(loadPartners)
         </div>
 
         <div v-else-if="filteredPartners.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-handshake" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No partners found</h2>

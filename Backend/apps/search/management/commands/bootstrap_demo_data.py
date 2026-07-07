@@ -132,7 +132,7 @@ class Command(BaseCommand):
             image = Image.new('RGB', (1600, 1200), color=color)
             draw = ImageDraw.Draw(image)
             draw.rounded_rectangle((110, 110, 1490, 1090), radius=42, outline='white', width=8)
-            draw.text((140, 520), f'Vortexus Demo\n{label}', fill='white')
+            draw.text((140, 520), f'Reesolmart Demo\n{label}', fill='white')
             image.save(image_path, format='PNG')
 
     def _write_demo_csv(self, csv_path: Path) -> None:
@@ -148,7 +148,7 @@ class Command(BaseCommand):
                 'is_public': 'true',
                 'image_path': 'images/demo_pump.png',
                 'image_caption': 'Borehole pump',
-                'attr__brand': 'Vortexus Demo',
+                'attr__brand': 'Reesolmart Demo',
                 'attr__flow_rate': '7m3/h',
                 'attr__head': '110m',
             },
@@ -163,7 +163,7 @@ class Command(BaseCommand):
                 'is_public': 'true',
                 'image_path': 'images/demo_tank.png',
                 'image_caption': 'Pressure tank',
-                'attr__brand': 'Vortexus Demo',
+                'attr__brand': 'Reesolmart Demo',
                 'attr__capacity': '300L',
                 'attr__material': 'Powder-coated steel',
             },

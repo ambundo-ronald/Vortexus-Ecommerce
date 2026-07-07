@@ -199,7 +199,7 @@ onMounted(loadPages)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total pages" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-files" :loading="isLoading" />
+      <CardsKpiCard2 name="Total pages" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-files" :loading="isLoading" />
       <CardsKpiCard2 name="Public" :value="publicPageCount" :budget="pages.length || 1" color="#059669" icon="i-lucide-globe" :loading="isLoading" />
       <CardsKpiCard2 name="Protected" :value="protectedPageCount" :budget="pages.length || 1" color="#f59e0b" icon="i-lucide-lock" :loading="isLoading" />
       <CardsKpiCard2 name="Characters" :value="contentLength" :budget="contentLength || 1" color="#7c3aed" icon="i-lucide-type" :loading="isLoading" />
@@ -221,7 +221,7 @@ onMounted(loadPages)
         </div>
 
         <div v-else-if="filteredPages.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-files" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No pages found</h2>

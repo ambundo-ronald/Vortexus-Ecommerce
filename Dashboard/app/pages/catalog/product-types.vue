@@ -205,7 +205,7 @@ onMounted(loadProductTypes)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total types" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-boxes" :loading="isLoading" />
+      <CardsKpiCard2 name="Total types" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-boxes" :loading="isLoading" />
       <CardsKpiCard2 name="Shipping" :value="shippingCount" :budget="totalItems" color="#059669" icon="i-lucide-truck" :loading="isLoading" />
       <CardsKpiCard2 name="Stock tracked" :value="stockCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-warehouse" :loading="isLoading" />
       <CardsKpiCard2 name="Digital/service" :value="digitalCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-cloud" :loading="isLoading" />
@@ -225,7 +225,7 @@ onMounted(loadProductTypes)
       </div>
 
       <div v-else-if="filteredProductTypes.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-package-search" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No product types found</h2>

@@ -1,4 +1,6 @@
 import logging
+import hashlib
+import json
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -158,6 +160,175 @@ class NotificationService:
 
 
 notification_service = NotificationService()
+
+
+def web_push_is_configured() -> bool:
+    return bool(
+        getattr(settings, 'WEB_PUSH_VAPID_PUBLIC_KEY', '')
+        and getattr(settings, 'WEB_PUSH_VAPID_PRIVATE_KEY', '')
+        and getattr(settings, 'WEB_PUSH_VAPID_SUBJECT', '')
+    )
+
+
+def _admin_users_queryset():
+    User = get_user_model()
+    return User.objects.filter(is_active=True, is_staff=True).exclude(email='')
+
+
+def admin_notification_payload(notification) -> dict:
+    return {
+        'id': notification.id,
+        'event_type': notification.event_type,
+        'event_key': notification.event_key,
+        'title': notification.title,
+        'message': notification.message,
+        'severity': notification.severity,
+        'action_url': notification.action_url,
+        'related_object_type': notification.related_object_type,
+        'related_object_id': notification.related_object_id,
+        'metadata': notification.metadata or {},
+        'read_at': notification.read_at,
+        'created_at': notification.created_at,
+        'updated_at': notification.updated_at,
+    }
+
+
+def create_admin_notification(
+    *,
+    event_type: str,
+    title: str,
+    message: str = '',
+    severity: str = 'info',
+    action_url: str = '',
+    related_object_type: str = '',
+    related_object_id: str = '',
+    metadata: dict | None = None,
+    event_key: str = '',
+    users=None,
+    deliver_push: bool = True,
+) -> list:
+    AdminNotification = apps.get_model('notifications', 'AdminNotification')
+    recipients = users if users is not None else _admin_users_queryset()
+    notifications = []
+    defaults = {
+        'event_type': event_type,
+        'title': title,
+        'message': message,
+        'severity': severity,
+        'action_url': action_url,
+        'related_object_type': related_object_type,
+        'related_object_id': related_object_id,
+        'metadata': metadata or {},
+    }
+    for user in recipients:
+        if event_key:
+            notification, created = AdminNotification.objects.get_or_create(
+                user=user,
+                event_key=event_key,
+                defaults=defaults,
+            )
+            if not created:
+                for field, value in defaults.items():
+                    setattr(notification, field, value)
+                notification.read_at = None
+                notification.save(update_fields=[*defaults.keys(), 'read_at', 'updated_at'])
+        else:
+            notification = AdminNotification.objects.create(user=user, **defaults)
+        notifications.append(notification)
+        if deliver_push:
+            send_admin_push_notification(notification)
+    return notifications
+
+
+def _push_endpoint_hash(endpoint: str) -> str:
+    return hashlib.sha256((endpoint or '').encode('utf-8')).hexdigest()
+
+
+def send_admin_push_notification(notification) -> None:
+    PushSubscription = apps.get_model('notifications', 'PushSubscription')
+    PushDeliveryLog = apps.get_model('notifications', 'PushDeliveryLog')
+    subscriptions = PushSubscription.objects.filter(
+        user=notification.user,
+        channel=PushSubscription.CHANNEL_ADMIN,
+        is_enabled=True,
+    )
+    if not subscriptions.exists():
+        return
+
+    if not web_push_is_configured():
+        for subscription in subscriptions:
+            PushDeliveryLog.objects.create(
+                subscription=subscription,
+                notification=notification,
+                status=PushDeliveryLog.STATUS_SKIPPED,
+                endpoint_hash=_push_endpoint_hash(subscription.endpoint),
+                event_type=notification.event_type,
+                title=notification.title,
+                error_message='Web Push VAPID keys are not configured.',
+            )
+        return
+
+    try:
+        from pywebpush import WebPushException, webpush
+    except Exception as exc:  # pragma: no cover - optional dependency
+        for subscription in subscriptions:
+            PushDeliveryLog.objects.create(
+                subscription=subscription,
+                notification=notification,
+                status=PushDeliveryLog.STATUS_SKIPPED,
+                endpoint_hash=_push_endpoint_hash(subscription.endpoint),
+                event_type=notification.event_type,
+                title=notification.title,
+                error_message=f'pywebpush is not installed: {exc}',
+            )
+        return
+
+    payload = {
+        'title': notification.title,
+        'body': notification.message,
+        'icon': '/brand/reesolmart-logo.jpg',
+        'badge': '/brand/reesolmart-logo.jpg',
+        'url': notification.action_url or '/',
+        'severity': notification.severity,
+        'event_type': notification.event_type,
+        'notification_id': notification.id,
+    }
+
+    for subscription in subscriptions:
+        log = PushDeliveryLog.objects.create(
+            subscription=subscription,
+            notification=notification,
+            status=PushDeliveryLog.STATUS_PENDING,
+            endpoint_hash=_push_endpoint_hash(subscription.endpoint),
+            event_type=notification.event_type,
+            title=notification.title,
+        )
+        try:
+            webpush(
+                subscription_info={
+                    'endpoint': subscription.endpoint,
+                    'keys': {'p256dh': subscription.p256dh, 'auth': subscription.auth},
+                },
+                data=json.dumps(payload),
+                vapid_private_key=settings.WEB_PUSH_VAPID_PRIVATE_KEY,
+                vapid_claims={'sub': settings.WEB_PUSH_VAPID_SUBJECT},
+                ttl=3600,
+            )
+        except WebPushException as exc:  # pragma: no cover - external network
+            log.status = PushDeliveryLog.STATUS_FAILED
+            log.error_message = str(exc)
+            log.save(update_fields=['status', 'error_message'])
+            if getattr(getattr(exc, 'response', None), 'status_code', None) in {404, 410}:
+                subscription.is_enabled = False
+                subscription.save(update_fields=['is_enabled', 'updated_at'])
+        except Exception as exc:  # pragma: no cover - external network
+            log.status = PushDeliveryLog.STATUS_FAILED
+            log.error_message = str(exc)
+            log.save(update_fields=['status', 'error_message'])
+        else:
+            log.status = PushDeliveryLog.STATUS_SENT
+            log.sent_at = timezone.now()
+            log.save(update_fields=['status', 'sent_at'])
 
 
 def _display_name_for_user(user) -> str:

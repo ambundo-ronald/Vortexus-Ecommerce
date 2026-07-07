@@ -64,6 +64,13 @@ from .admin_extra_views import (
     AdminWeightBasedShippingCollectionAPIView,
     AdminWeightBasedShippingDetailAPIView,
 )
+from .admin_notification_views import (
+    AdminNotificationCollectionAPIView,
+    AdminNotificationDetailAPIView,
+    AdminNotificationReadAllAPIView,
+    AdminPushConfigurationAPIView,
+    AdminPushSubscriptionAPIView,
+)
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .email_config_views import (
@@ -88,6 +95,12 @@ from .integration_views import (
     IntegrationLogCollectionAPIView,
 )
 from .audit_views import AuditLogCollectionAPIView, AuditLogDetailAPIView
+from .backup_views import (
+    AdminBackupCollectionAPIView,
+    AdminBackupDetailAPIView,
+    AdminBackupDownloadAPIView,
+    AdminBackupVerifyAPIView,
+)
 from .checkout_views import (
     BasketAPIView,
     BasketItemCollectionAPIView,
@@ -291,6 +304,11 @@ urlpatterns = [
     path('admin/dashboard/summary/', AdminDashboardSummaryAPIView.as_view(), name='admin-dashboard-summary'),
     path('admin/campaigns/', AdminCampaignsAPIView.as_view(), name='admin-campaigns'),
     path('admin/support/', AdminSupportAPIView.as_view(), name='admin-support'),
+    path('admin/notifications/', AdminNotificationCollectionAPIView.as_view(), name='admin-notifications'),
+    path('admin/notifications/read-all/', AdminNotificationReadAllAPIView.as_view(), name='admin-notifications-read-all'),
+    path('admin/notifications/<int:notification_id>/', AdminNotificationDetailAPIView.as_view(), name='admin-notification-detail'),
+    path('admin/push/config/', AdminPushConfigurationAPIView.as_view(), name='admin-push-config'),
+    path('admin/push/subscription/', AdminPushSubscriptionAPIView.as_view(), name='admin-push-subscription'),
     path('admin/catalog/categories/', AdminCategoryCollectionAPIView.as_view(), name='admin-catalog-categories'),
     path('admin/catalog/categories/<int:category_id>/', AdminCategoryDetailAPIView.as_view(), name='admin-catalog-category-detail'),
     path('admin/catalog/categories/<int:category_id>/children/', AdminCategoryChildrenAPIView.as_view(), name='admin-catalog-category-children'),
@@ -341,6 +359,10 @@ urlpatterns = [
     path('admin/payments/pesapal/register-ipn/', AdminPesapalRegisterIPNAPIView.as_view(), name='admin-payment-pesapal-register-ipn'),
     path('admin/payments/logs/', AdminPaymentSessionLogCollectionAPIView.as_view(), name='admin-payment-logs'),
     path('admin/payments/<str:reference>/refund/', AdminPaymentRefundAPIView.as_view(), name='admin-payment-refund'),
+    path('admin/backups/', AdminBackupCollectionAPIView.as_view(), name='admin-backups'),
+    path('admin/backups/<int:backup_id>/', AdminBackupDetailAPIView.as_view(), name='admin-backup-detail'),
+    path('admin/backups/<int:backup_id>/verify/', AdminBackupVerifyAPIView.as_view(), name='admin-backup-verify'),
+    path('admin/backups/<int:backup_id>/download/', AdminBackupDownloadAPIView.as_view(), name='admin-backup-download'),
     path('admin/orders/', AdminOrderCollectionAPIView.as_view(), name='admin-orders'),
     path('admin/orders/statistics/', AdminOrderStatisticsAPIView.as_view(), name='admin-order-statistics'),
     path('admin/orders/<int:order_id>/', AdminOrderDetailAPIView.as_view(), name='admin-order-detail'),

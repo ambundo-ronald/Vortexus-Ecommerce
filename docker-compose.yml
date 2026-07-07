@@ -68,6 +68,7 @@ services:
     volumes:
       - backend_static:/app/staticfiles
       - backend_media:/app/media
+      - backend_backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,6 +98,7 @@ services:
       MEDIA_ROOT: /app/media
     volumes:
       - backend_media:/app/media
+      - backend_backups:/app/backups
     depends_on:
       backend:
         condition: service_started
@@ -117,6 +119,7 @@ services:
       MEDIA_ROOT: /app/media
     volumes:
       - backend_media:/app/media
+      - backend_backups:/app/backups
     depends_on:
       backend:
         condition: service_started
@@ -178,5 +181,6 @@ volumes:
   opensearch_data:
   backend_static:
   backend_media:
+  backend_backups:
   caddy_data:
   caddy_config:

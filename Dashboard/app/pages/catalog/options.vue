@@ -248,7 +248,7 @@ onMounted(loadOptions)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total options" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-settings-2" :loading="isLoading" />
+      <CardsKpiCard2 name="Total options" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-settings-2" :loading="isLoading" />
       <CardsKpiCard2 name="Required" :value="requiredCount" :budget="totalItems" color="#dc2626" icon="i-lucide-circle-alert" :loading="isLoading" />
       <CardsKpiCard2 name="Optional" :value="optionalCount" :budget="totalItems" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Help configured" :value="configuredHelpCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-message-square-text" :loading="isLoading" />
@@ -270,7 +270,7 @@ onMounted(loadOptions)
       </div>
 
       <div v-else-if="filteredOptions.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-settings-2" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No options found</h2>

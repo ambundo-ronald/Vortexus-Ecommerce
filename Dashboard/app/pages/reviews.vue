@@ -274,7 +274,7 @@ onMounted(loadReviews)
       <CardsKpiCard2 name="Needs moderation" :value="moderationCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-message-square-warning" :loading="isLoading" />
       <CardsKpiCard2 name="Approved" :value="approvedCount" :budget="totalItems" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Rejected" :value="rejectedCount" :budget="totalItems" color="#dc2626" icon="i-lucide-circle-x" :loading="isLoading" />
-      <CardsKpiCard2 name="Average rating" :value="averageRating" :budget="5" color="#3d7cff" icon="i-lucide-star" :loading="isLoading" />
+      <CardsKpiCard2 name="Average rating" :value="averageRating" :budget="5" color="#30328f" icon="i-lucide-star" :loading="isLoading" />
     </div>
 
     <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -293,7 +293,7 @@ onMounted(loadReviews)
       </div>
 
       <div v-else-if="filteredReviews.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-message-square-text" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No reviews found</h2>

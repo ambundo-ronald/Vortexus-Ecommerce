@@ -161,7 +161,7 @@ function openProduct(row: any) {
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 px-4 sm:grid-cols-2 sm:px-8 lg:grid-cols-4">
-      <CardsKpiCard2 name="Total products" :value="totalItems" :budget="totalItems" color="#3d7cff" />
+      <CardsKpiCard2 name="Total products" :value="totalItems" :budget="totalItems" color="#30328f" />
       <CardsKpiCard2 name="Visible here" :value="visibleActive" :budget="productData.length" color="#16a34a" />
       <CardsKpiCard2 name="Drafts here" :value="visibleDraft" :budget="productData.length" color="#f59e0b" />
       <CardsKpiCard2 name="Low stock here" :value="visibleLowStock" :budget="productData.length" color="#ef4444" />
@@ -176,7 +176,7 @@ function openProduct(row: any) {
         @select="openProduct"
       />
       <div v-if="!isLoading && productData.length === 0" class="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-package-search" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No products found</h2>

@@ -35,8 +35,8 @@
         </div>
       </div>
       <div
-        class="upload upload-draggable relative aspect-square cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 transition hover:border-[#3d7cff] hover:bg-blue-50"
-        :class="{ 'border-[#3d7cff] bg-blue-50': isDragging }"
+        class="upload upload-draggable relative aspect-square cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 transition hover:border-[#30328f] hover:bg-blue-50"
+        :class="{ 'border-[#30328f] bg-blue-50': isDragging }"
         @dragenter.prevent="isDragging = true"
         @dragover.prevent="isDragging = true"
         @dragleave.prevent="isDragging = false"
@@ -57,7 +57,7 @@
           </div>
           <p class="mt-2 text-center text-xs text-slate-500">
             Drop image here, or
-            <span class="font-semibold text-[#255be8]">browse</span>
+            <span class="font-semibold text-[#30328f]">browse</span>
           </p>
         </div>
       </div>

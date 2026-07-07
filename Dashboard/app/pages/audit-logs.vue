@@ -160,7 +160,7 @@ onMounted(loadAuditLogs)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total matches" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-list-checks" :loading="isLoading" />
+      <CardsKpiCard2 name="Total matches" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-list-checks" :loading="isLoading" />
       <CardsKpiCard2 name="Loaded success" :value="successCount" :budget="auditLogs.length || 1" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Loaded failure" :value="failureCount" :budget="auditLogs.length || 1" color="#dc2626" icon="i-lucide-circle-x" :loading="isLoading" />
       <CardsKpiCard2 name="Loaded actors" :value="actorCount" :budget="auditLogs.length || 1" color="#7c3aed" icon="i-lucide-users" :loading="isLoading" />
@@ -205,7 +205,7 @@ onMounted(loadAuditLogs)
       </div>
 
       <div v-else-if="auditLogs.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-list-checks" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No audit logs found</h2>

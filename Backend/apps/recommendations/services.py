@@ -2,7 +2,7 @@ from typing import Any
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Case, Count, IntegerField, Q, When
 
 from apps.common.products import serialize_product_card
 
@@ -28,6 +28,24 @@ def _product_card_queryset(queryset):
 
 
 class RecommendationService:
+    PRODUCT_CACHE_LIMITS = (4, 8, 12, 16, 24)
+
+    @staticmethod
+    def product_cache_key(product_id: int, limit: int, display_currency: str | None = None) -> str:
+        return f'recommendations:v2:product:{product_id}:{limit}:{display_currency or "default"}'
+
+    @classmethod
+    def clear_product_cache(cls, product_id: int) -> None:
+        keys = []
+        for limit in cls.PRODUCT_CACHE_LIMITS:
+            keys.append(cls.product_cache_key(product_id, limit))
+            keys.append(cls.product_cache_key(product_id, limit, 'KES'))
+            keys.append(cls.product_cache_key(product_id, limit, 'USD'))
+            keys.append(f'recommendations:product:{product_id}:{limit}:default')
+            keys.append(f'recommendations:product:{product_id}:{limit}:KES')
+            keys.append(f'recommendations:product:{product_id}:{limit}:USD')
+        cache.delete_many(keys)
+
     def recommend(
         self,
         product_id: int | None = None,
@@ -66,7 +84,7 @@ class RecommendationService:
         limit: int,
         display_currency: str | None = None,
     ) -> list[dict[str, Any]]:
-        cache_key = f'recommendations:product:{product_id}:{limit}:{display_currency or "default"}'
+        cache_key = self.product_cache_key(product_id, limit, display_currency)
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -76,17 +94,40 @@ class RecommendationService:
         if not product:
             return []
 
-        category_ids = list(product.categories.values_list('id', flat=True))
-
-        queryset = _product_card_queryset(
-            Product.objects.filter(is_public=True, categories__id__in=category_ids)
-            .exclude(id=product.id)
-        ).distinct().order_by('-date_updated')
-
+        ProductRecommendation = apps.get_model('catalogue', 'ProductRecommendation')
+        manual_ids = list(
+            ProductRecommendation.objects
+            .filter(primary=product, recommendation__is_public=True)
+            .exclude(recommendation_id=product.id)
+            .order_by('ranking', 'id')
+            .values_list('recommendation_id', flat=True)[:limit]
+        )
+        manual_order = Case(
+            *[When(id=product_id, then=position) for position, product_id in enumerate(manual_ids)],
+            default=len(manual_ids),
+            output_field=IntegerField(),
+        )
+        manual_queryset = _product_card_queryset(
+            Product.objects.filter(id__in=manual_ids, is_public=True)
+        ).distinct().order_by(manual_order, 'title')
         results = [
-            serialize_product_card(product=item, reason='similar-category', display_currency=display_currency)
-            for item in queryset[:limit]
+            serialize_product_card(product=item, reason='admin-recommended', display_currency=display_currency)
+            for item in manual_queryset[:limit]
         ]
+
+        if len(results) < limit:
+            seen_ids = {item['id'] for item in results}
+            category_ids = list(product.categories.values_list('id', flat=True))
+            queryset = _product_card_queryset(
+                Product.objects.filter(is_public=True, categories__id__in=category_ids)
+                .exclude(id__in={product.id, *seen_ids})
+            ).distinct().order_by('-date_updated')
+
+            for item in queryset[: limit - len(results)]:
+                results.append(
+                    serialize_product_card(product=item, reason='similar-category', display_currency=display_currency)
+                )
+
         cache.set(cache_key, results, timeout=60 * 30)
         return results
 

@@ -33,7 +33,7 @@ const companyLinks = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/offers", label: "Offers", icon: "sell" },
   { to: "/account/reviews", label: "Reviews", icon: "star" },
-  { href: "mailto:support@vortexus.local", label: "Email support", icon: "alternate_email" },
+  { href: "mailto:support@reesolmart.local", label: "Email support", icon: "alternate_email" },
 ];
 
 const quickActions = [
@@ -52,7 +52,9 @@ export default function Footer() {
     <footer className="store-footer app-footer">
       <div className="store-footer__inner">
         <NavLink to="/" className="store-footer__logo" aria-label="Reesolmart home">
-          <span className="brand-mark">RM</span>
+          <span className="brand-mark brand-mark--logo">
+            <img src="/brand/reesolmart-logo.jpg" alt="" />
+          </span>
           <span>
             <strong>Reesolmart</strong>
             <small>Just in time, buying</small>

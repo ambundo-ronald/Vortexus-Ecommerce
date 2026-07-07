@@ -3,6 +3,8 @@ import { PAYMENT_METHOD_CODES, PREPAYMENT_METHODS } from "../constants/paymentMe
 export const PAYMENT_COMPLETE_STATUSES = new Set(["authorized", "paid"]);
 export const PAYMENT_FAILED_STATUSES = new Set(["cancelled", "failed"]);
 export const PAYMENT_PENDING_STATUSES = new Set(["initialized", "pending"]);
+export const PAYMENT_CONFIRMATION_TIMEOUT_MS = 3 * 60 * 1000;
+export const PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE = "Payment was not confirmed within 3 minutes. Prompt your phone again or choose another method.";
 
 const METHOD_COPY = {
   [PAYMENT_METHOD_CODES.PESAPAL]: {

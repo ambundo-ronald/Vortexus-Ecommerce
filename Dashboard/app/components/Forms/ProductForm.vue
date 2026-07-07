@@ -2,6 +2,7 @@
 import * as z from "zod/v4";
 import type { FormSubmitEvent } from "@nuxt/ui";
 import type { AttributeItem } from "~/composables/useAttributes";
+import { DOMAIN_PRODUCT_CLASS_OPTIONS, STANDARD_PRODUCT_CLASS } from "~/composables/useProduct";
 
 const props = defineProps<{
   values?: Partial<ProductFormSchema>;
@@ -9,6 +10,7 @@ const props = defineProps<{
   categories: { label: string; value: string }[];
   productOptions?: { label: string; value: string }[];
   attributeDefinitions?: AttributeItem[];
+  searchProducts?: (query: string) => Promise<{ label: string; value: string }[]>;
 }>();
 
 const emit = defineEmits<{
@@ -68,6 +70,17 @@ const productSchema = z.object({
   brand: z.string().optional(),
   tags: z.string().optional(),
   attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  productClass: z.string().optional().default(STANDARD_PRODUCT_CLASS),
+  engineeringBrand: z.string().optional(),
+  packingDimensions: z.record(z.string(), z.object({
+    value: z.union([z.string(), z.number()]).optional(),
+    unit: z.string().optional(),
+  })).optional(),
+  specificationRows: z.array(z.object({
+    key: z.string().optional(),
+    value: z.union([z.string(), z.number()]).optional(),
+    unit: z.string().optional(),
+  })).optional(),
 });
 
 export type ProductFormSchema = z.infer<typeof productSchema>;
@@ -93,6 +106,16 @@ const localFormState = reactive<ProductFormSchema>({
   brand: "",
   tags: "",
   attributes: {},
+  productClass: STANDARD_PRODUCT_CLASS,
+  engineeringBrand: "",
+  packingDimensions: {
+    length: { value: "", unit: "cm" },
+    width: { value: "", unit: "cm" },
+    height: { value: "", unit: "cm" },
+    weight: { value: "", unit: "g" },
+    quantity: { value: "", unit: "pcs" },
+  },
+  specificationRows: [],
   ...props.values,
 }) as ProductFormSchema;
 
@@ -121,10 +144,24 @@ watch(
       brand: "",
       tags: "",
       attributes: {},
+      productClass: STANDARD_PRODUCT_CLASS,
+      engineeringBrand: "",
+      packingDimensions: {
+        length: { value: "", unit: "cm" },
+        width: { value: "", unit: "cm" },
+        height: { value: "", unit: "cm" },
+        weight: { value: "", unit: "g" },
+        quantity: { value: "", unit: "pcs" },
+      },
+      specificationRows: [],
       ...values,
     })
     if (!localFormState.attributes)
       localFormState.attributes = {}
+    if (!localFormState.packingDimensions)
+      localFormState.packingDimensions = {}
+    if (!localFormState.specificationRows)
+      localFormState.specificationRows = []
   },
   { immediate: true, deep: true },
 )
@@ -134,6 +171,60 @@ const categorySearch = ref("")
 const recommendedProductSearch = ref("")
 const isCategoryPickerOpen = ref(false)
 const isRecommendedPickerOpen = ref(false)
+const isSearchingRecommendedProducts = ref(false)
+const productOptionPool = ref<{ label: string; value: string }[]>([])
+let recommendedSearchTimer: ReturnType<typeof setTimeout> | null = null
+let recommendedSearchRequestId = 0
+
+function mergeProductOptions(options: { label: string; value: string }[] = []) {
+  const byId = new Map(productOptionPool.value.map(option => [String(option.value), option]))
+  for (const option of options) {
+    if (!option?.value)
+      continue
+    byId.set(String(option.value), {
+      label: option.label || `Product #${option.value}`,
+      value: String(option.value),
+    })
+  }
+  productOptionPool.value = Array.from(byId.values())
+}
+
+watch(
+  () => props.productOptions,
+  options => mergeProductOptions(options || []),
+  { immediate: true, deep: true },
+)
+
+watch(
+  recommendedProductSearch,
+  (value) => {
+    if (!props.searchProducts)
+      return
+    if (recommendedSearchTimer)
+      clearTimeout(recommendedSearchTimer)
+
+    const query = value.trim()
+    if (query.length < 2) {
+      isSearchingRecommendedProducts.value = false
+      return
+    }
+
+    const requestId = ++recommendedSearchRequestId
+    recommendedSearchTimer = setTimeout(async () => {
+      isSearchingRecommendedProducts.value = true
+      try {
+        const results = await props.searchProducts?.(query)
+        if (requestId === recommendedSearchRequestId)
+          mergeProductOptions(results || [])
+      }
+      finally {
+        if (requestId === recommendedSearchRequestId)
+          isSearchingRecommendedProducts.value = false
+      }
+    }, 250)
+  },
+)
+
 const filteredCategories = computed(() => {
   const search = categorySearch.value.trim().toLowerCase()
   const items = [{ label: 'Uncategorized', value: '__uncategorized__' }, ...props.categories]
@@ -149,7 +240,10 @@ const selectedCategoryLabel = computed(() => {
 })
 const selectedRecommendedProducts = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
-  return (props.productOptions || []).filter(option => selectedIds.has(Number(option.value)))
+  return Array.from(selectedIds).map((id) => {
+    const option = productOptionPool.value.find(item => Number(item.value) === id)
+    return option || { label: `Product #${id}`, value: String(id) }
+  })
 })
 const dynamicAttributeDefinitions = computed(() =>
   (props.attributeDefinitions || [])
@@ -162,10 +256,25 @@ const dynamicAttributeDefinitions = computed(() =>
       return a.name.localeCompare(b.name)
     }),
 )
+const domainProductClassOptions = DOMAIN_PRODUCT_CLASS_OPTIONS
+const dimensionUnitOptions = [
+  { label: 'mm', value: 'mm' },
+  { label: 'cm', value: 'cm' },
+  { label: 'm', value: 'm' },
+]
+const weightUnitOptions = [
+  { label: 'g', value: 'g' },
+  { label: 'kg', value: 'kg' },
+  { label: 'mg', value: 'mg' },
+]
+const quantityUnitOptions = [
+  { label: 'pcs', value: 'pcs' },
+  { label: 'pc', value: 'pc' },
+]
 const availableRecommendedProductOptions = computed(() => {
   const selectedIds = new Set((localFormState.recommendedProductIds || []).map(Number))
   const search = recommendedProductSearch.value.trim().toLowerCase()
-  return (props.productOptions || []).filter((option) => {
+  return productOptionPool.value.filter((option) => {
     if (selectedIds.has(Number(option.value)))
       return false
     return !search || option.label.toLowerCase().includes(search) || String(option.value).toLowerCase().includes(search)
@@ -205,6 +314,16 @@ function selectRecommendedProduct(value: string) {
 
 function removeRecommendedProduct(productId: number) {
   localFormState.recommendedProductIds = (localFormState.recommendedProductIds || []).filter(id => id !== productId)
+}
+
+function addSpecificationRow() {
+  if (!localFormState.specificationRows)
+    localFormState.specificationRows = []
+  localFormState.specificationRows.push({ key: "", value: "", unit: "" })
+}
+
+function removeSpecificationRow(index: number) {
+  localFormState.specificationRows?.splice(index, 1)
 }
 
 function emitSubmit(data: ProductFormSchema) {
@@ -324,6 +443,116 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
             <UCard class="rounded-xl">
               <template #header>
                 <h3 class="text-base font-black leading-6 text-slate-950">
+                  Engineering Specs
+                </h3>
+              </template>
+              <div class="space-y-4">
+                <UFormField label="Product class" name="productClass">
+                  <USelect
+                    v-model="localFormState.productClass"
+                    :items="domainProductClassOptions"
+                    value-attribute="value"
+                    option-attribute="label"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField label="Engineering brand">
+                  <UInput
+                    v-model="localFormState.engineeringBrand"
+                    placeholder="e.g. Grundfos, Norwa, Hidrotek"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="mb-4 flex items-center gap-2">
+                    <UIcon name="i-lucide-ruler" class="size-4 text-blue-600" />
+                    <h4 class="text-sm font-bold text-slate-950">
+                      Packing dimensions
+                    </h4>
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <UFormField label="Length">
+                      <UInput v-model="localFormState.packingDimensions.length.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.length.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Width">
+                      <UInput v-model="localFormState.packingDimensions.width.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.width.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Height">
+                      <UInput v-model="localFormState.packingDimensions.height.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.height.unit" :items="dimensionUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Weight">
+                      <UInput v-model="localFormState.packingDimensions.weight.value" type="number" step="0.01" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.weight.unit" :items="weightUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                    <UFormField label="Quantity">
+                      <UInput v-model="localFormState.packingDimensions.quantity.value" type="number" step="1" placeholder="0" size="lg">
+                        <template #trailing>
+                          <USelect v-model="localFormState.packingDimensions.quantity.unit" :items="quantityUnitOptions" value-attribute="value" option-attribute="label" variant="ghost" class="w-20" />
+                        </template>
+                      </UInput>
+                    </UFormField>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-list-plus" class="size-4 text-blue-600" />
+                      <h4 class="text-sm font-bold text-slate-950">
+                        Technical specifications
+                      </h4>
+                    </div>
+                    <UButton icon="i-lucide-plus" size="sm" variant="outline" type="button" @click="addSpecificationRow">
+                      Add spec
+                    </UButton>
+                  </div>
+                  <div v-if="localFormState.specificationRows?.length" class="space-y-3">
+                    <div
+                      v-for="(row, index) in localFormState.specificationRows"
+                      :key="index"
+                      class="grid grid-cols-1 gap-2 sm:grid-cols-[1.2fr_1fr_120px_auto]"
+                    >
+                      <UInput v-model="row.key" placeholder="Spec name e.g. max_flow_rate" size="lg" />
+                      <UInput v-model="row.value" placeholder="Value e.g. 60" size="lg" />
+                      <UInput v-model="row.unit" placeholder="Unit e.g. lpm" size="lg" />
+                      <UButton
+                        icon="i-lucide-trash-2"
+                        color="error"
+                        variant="ghost"
+                        square
+                        type="button"
+                        :aria-label="`Remove specification ${index + 1}`"
+                        @click="removeSpecificationRow(index)"
+                      />
+                    </div>
+                  </div>
+                  <p v-else class="text-sm text-slate-500">
+                    Add flow rate, pressure, voltage, material, temperature, or other product-specific specs.
+                  </p>
+                </div>
+              </div>
+            </UCard>
+            <UCard class="rounded-xl">
+              <template #header>
+                <h3 class="text-base font-black leading-6 text-slate-950">
                   Upselling
                 </h3>
               </template>
@@ -354,7 +583,7 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                           <span class="block truncate">{{ item.label }}</span>
                         </button>
                         <p v-if="availableRecommendedProductOptions.length === 0" class="px-3 py-2 text-sm text-slate-500">
-                          No matching products.
+                          {{ isSearchingRecommendedProducts ? 'Searching products...' : 'No matching products.' }}
                         </p>
                       </div>
                     </div>

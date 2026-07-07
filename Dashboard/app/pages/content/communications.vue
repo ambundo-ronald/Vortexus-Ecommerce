@@ -213,7 +213,7 @@ onMounted(loadTemplates)
         </div>
 
         <div v-else-if="filteredTemplates.length === 0" class="p-12 text-center">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
             <UIcon name="i-lucide-send" />
           </div>
           <h2 class="mt-4 text-lg font-black text-slate-950">No templates found</h2>

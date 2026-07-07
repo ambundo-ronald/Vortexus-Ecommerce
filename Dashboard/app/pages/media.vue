@@ -272,7 +272,7 @@ watch([searchQuery, productIdFilter, mediaTypeFilter, pageSize], () => {
     </div>
 
     <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <CardsKpiCard2 name="Total assets" :value="summary.total" :budget="summary.total" color="#3d7cff" icon="i-lucide-images" :loading="isLoading" />
+      <CardsKpiCard2 name="Total assets" :value="summary.total" :budget="summary.total" color="#30328f" icon="i-lucide-images" :loading="isLoading" />
       <CardsKpiCard2 name="Matching" :value="summary.matching" :budget="summary.total" color="#16a34a" icon="i-lucide-search-check" :loading="isLoading" />
       <CardsKpiCard2 name="Selected" :value="selectedItems.length" :budget="mediaItems.length" color="#f59e0b" icon="i-lucide-check-circle-2" :loading="isLoading" />
     </div>

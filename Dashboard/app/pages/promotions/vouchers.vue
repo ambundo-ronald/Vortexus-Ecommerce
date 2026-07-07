@@ -340,7 +340,7 @@ onMounted(loadVouchers)
     </AdminTableToolbar>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total vouchers" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-ticket-percent" :loading="isLoading" />
+      <CardsKpiCard2 name="Total vouchers" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-ticket-percent" :loading="isLoading" />
       <CardsKpiCard2 name="Active" :value="activeCount" :budget="totalItems" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Expired" :value="expiredCount" :budget="totalItems" color="#64748b" icon="i-lucide-clock" :loading="isLoading" />
       <CardsKpiCard2 name="Linked offers" :value="linkedOfferCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-badge-percent" :loading="isLoading" />

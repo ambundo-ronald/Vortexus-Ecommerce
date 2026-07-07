@@ -53,7 +53,7 @@ def initiate_stk_push(payment_session) -> dict:
         'PhoneNumber': phone_number,
         'CallBackURL': get_payment_setting('mpesa', 'callback_url', ''),
         'AccountReference': payment_session.reference,
-        'TransactionDesc': f'Vortexus payment {payment_session.reference}',
+        'TransactionDesc': f'Reesolmart payment {payment_session.reference}',
     }
 
     response_data = _post_json(

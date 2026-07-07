@@ -21,6 +21,7 @@ from apps.recommendations.services import RecommendationService
 
 from .serializers import ProductImageUploadSerializer, ProductListQuerySerializer, ProductWriteSerializer, QuoteRequestSerializer
 from .media_utils import delete_product_image_with_file
+from .product_services import ProductService
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
 
     options = [_serialize_product_option(option) for option in product.options.all()]
 
-    return {
+    detail = {
         **card,
         "description": product.description or "",
         "images": images,
@@ -111,6 +112,7 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
         "updated_at": product.date_updated,
         "is_public": product.is_public,
     }
+    return ProductService(serializer=None).merge_domain_payload(product, detail)
 
 
 def _serialize_product_option(option) -> dict:
@@ -257,8 +259,12 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 
         Product = apps.get_model("catalogue", "Product")
         Review = apps.get_model("reviews", "ProductReview")
+        product_queryset = Product.objects.all()
+        if not (request.user and request.user.is_staff):
+            product_queryset = product_queryset.filter(is_public=True)
+
         queryset = (
-            Product.objects.filter(is_public=True)
+            product_queryset
             .exclude(structure="parent")
             .prefetch_related("stockrecords", "images", "categories", "attribute_values__attribute")
             .annotate(

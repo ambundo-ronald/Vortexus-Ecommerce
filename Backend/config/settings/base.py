@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'apps.search',
     'apps.image_search',
     'apps.recommendations',
+    'apps.backups',
 ]
 
 MIDDLEWARE = [
@@ -151,11 +152,12 @@ REST_FRAMEWORK = {
         'recommendations': '180/hour',
         'supplier_apply': '4/day',
         'payment_init': '20/hour',
+        'admin_backup': '10/hour',
     },
     'PAGE_SIZE': 24,
 }
 
-OSCAR_SHOP_NAME = env('OSCAR_SHOP_NAME', default='Vortexus Industrial')
+OSCAR_SHOP_NAME = env('OSCAR_SHOP_NAME', default='Reesolmart')
 OSCAR_ALLOW_ANON_CHECKOUT = True
 OSCAR_DEFAULT_CURRENCY = env('OSCAR_DEFAULT_CURRENCY', default='KES')
 OSCAR_DELETE_IMAGE_FILES = env.bool('OSCAR_DELETE_IMAGE_FILES', default=False)
@@ -189,7 +191,15 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.integrations.tasks.sync_all_active_erpnext_stock',
         'schedule': crontab(minute='*/20'),
     },
+    'backup-site-every-4-hours': {
+        'task': 'apps.backups.tasks.create_scheduled_backup_task',
+        'schedule': crontab(minute=15, hour='*/4'),
+    },
 }
+
+BACKUP_ROOT = Path(env('BACKUP_ROOT', default=str(BASE_DIR / 'backups')))
+BACKUP_STORAGE_BACKEND = env('BACKUP_STORAGE_BACKEND', default='local')
+BACKUP_LOCAL_KEEP = env.int('BACKUP_LOCAL_KEEP', default=30)
 
 OPENSEARCH = {
     'HOST': env('OPENSEARCH_HOST', default='http://127.0.0.1:9200'),
@@ -215,70 +225,6 @@ HAYSTACK_CONNECTIONS = {
 HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.BaseSignalProcessor'
 
 ENABLE_ASYNC_TASKS = env.bool('ENABLE_ASYNC_TASKS', default=False)
-
-INDUSTRIAL_SHIPPING_RULES = [
-    {
-        'code': 'dispatch-hub-pickup',
-        'name': 'Dispatch Hub Pickup',
-        'description': 'Collect stocked parts and equipment from the Vortexus dispatch hub.',
-        'carrier_code': 'vortexus',
-        'service_code': 'pickup',
-        'method_type': 'pickup',
-        'countries': ['KE'],
-        'is_pickup': True,
-        'charge': '0.00',
-        'min_eta_days': 0,
-        'max_eta_days': 1,
-        'max_supplier_groups': 1,
-    },
-    {
-        'code': 'standard-freight',
-        'name': 'Standard Freight',
-        'description': 'Standard freight for stocked pumps, filters, treatment systems, and accessories.',
-        'carrier_code': 'vortexus',
-        'service_code': 'standard',
-        'method_type': 'freight',
-        'countries': ['KE', 'UG', 'TZ', 'RW', 'ET'],
-        'charge': '35.00',
-        'international_charge': '95.00',
-        'free_subtotal_threshold': '1500.00',
-        'min_eta_days': 2,
-        'max_eta_days': 5,
-        'max_weight_kg': '250.00',
-    },
-    {
-        'code': 'priority-dispatch',
-        'name': 'Priority Dispatch',
-        'description': 'Priority dispatch for urgent replacements and service-critical equipment.',
-        'carrier_code': 'vortexus',
-        'service_code': 'priority',
-        'method_type': 'express',
-        'countries': ['KE'],
-        'charge': '85.00',
-        'free_subtotal_threshold': '2500.00',
-        'min_eta_days': 1,
-        'max_eta_days': 2,
-        'max_weight_kg': '80.00',
-        'max_supplier_groups': 1,
-    },
-    {
-        'code': 'project-logistics',
-        'name': 'Project Logistics',
-        'description': 'Coordinated site delivery for larger borehole, pumping, and treatment projects.',
-        'carrier_code': 'vortexus',
-        'service_code': 'project',
-        'method_type': 'project',
-        'countries': ['KE', 'UG', 'TZ', 'RW', 'ET'],
-        'charge': '180.00',
-        'international_charge': '260.00',
-        'reduced_charge_threshold': '3000.00',
-        'reduced_charge': '120.00',
-        'reduced_international_charge': '180.00',
-        'min_eta_days': 3,
-        'max_eta_days': 10,
-        'project_only': True,
-    },
-]
 
 INDUSTRIAL_TAX_RULES = {
     'KE': {
@@ -401,8 +347,11 @@ DISPLAY_CURRENCY_RATES = json.loads(
     )
 )
 
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@vortexus.local')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@reesolmart.local')
 NOTIFICATION_REPLY_TO_EMAIL = env('NOTIFICATION_REPLY_TO_EMAIL', default='')
+WEB_PUSH_VAPID_PUBLIC_KEY = env('WEB_PUSH_VAPID_PUBLIC_KEY', default='')
+WEB_PUSH_VAPID_PRIVATE_KEY = env('WEB_PUSH_VAPID_PRIVATE_KEY', default='')
+WEB_PUSH_VAPID_SUBJECT = env('WEB_PUSH_VAPID_SUBJECT', default=f'mailto:{DEFAULT_FROM_EMAIL}')
 STOREFRONT_BASE_URL = env('STOREFRONT_BASE_URL', default='http://127.0.0.1:5174').rstrip('/')
 BACKEND_PUBLIC_BASE_URL = env('BACKEND_PUBLIC_BASE_URL', default='http://127.0.0.1:8000').rstrip('/')
 DELIVERY_GEOCODING_USER_AGENT = env('DELIVERY_GEOCODING_USER_AGENT', default='Reesolmart delivery search')
@@ -464,3 +413,5 @@ CARD_PROVIDER_NAME = env('CARD_PROVIDER_NAME', default='sandbox_card')
 ERP_SYNC_TIMEOUT_SECONDS = env.int('ERP_SYNC_TIMEOUT_SECONDS', default=30)
 ERP_SYNC_PAGE_LENGTH = env.int('ERP_SYNC_PAGE_LENGTH', default=1000)
 ERPNEXT_DEFAULT_PRICE_LIST = env('ERPNEXT_DEFAULT_PRICE_LIST', default='Standard Selling')
+PRODUCT_MICROSERVICE_BASE_URL = env('PRODUCT_MICROSERVICE_BASE_URL', default='').rstrip('/')
+PRODUCT_MICROSERVICE_TIMEOUT_SECONDS = env.int('PRODUCT_MICROSERVICE_TIMEOUT_SECONDS', default=8)

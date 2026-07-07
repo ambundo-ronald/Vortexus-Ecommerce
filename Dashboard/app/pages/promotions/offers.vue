@@ -138,6 +138,10 @@ function formatChoice(choices: { label: string, value: string }[], value?: strin
   return choices.find(choice => choice.value === value)?.label || value || 'Not set'
 }
 
+function sanitizeSelectOptions(options: { label: string, value: string }[] = []) {
+  return options.filter(option => String(option.value || '').trim())
+}
+
 function statusColor(status?: string) {
   const value = normalizeStatus(status)
   if (value === 'open')
@@ -284,10 +288,10 @@ async function loadOffers() {
   ])
 
   if (metaResult.success && metaResult.data) {
-    meta.offerTypes = metaResult.data.offer_types ?? []
-    meta.offerStatuses = metaResult.data.offer_statuses ?? []
-    meta.conditionTypes = metaResult.data.condition_types ?? []
-    meta.benefitTypes = metaResult.data.benefit_types ?? []
+    meta.offerTypes = sanitizeSelectOptions(metaResult.data.offer_types ?? [])
+    meta.offerStatuses = sanitizeSelectOptions(metaResult.data.offer_statuses ?? [])
+    meta.conditionTypes = sanitizeSelectOptions(metaResult.data.condition_types ?? [])
+    meta.benefitTypes = sanitizeSelectOptions(metaResult.data.benefit_types ?? [])
   }
 
   if (offersResult.success) {
@@ -531,7 +535,7 @@ onMounted(loadOffers)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total offers" :value="totalItems" :budget="totalItems" color="#3d7cff" icon="i-lucide-badge-percent" :loading="isLoading" />
+      <CardsKpiCard2 name="Total offers" :value="totalItems" :budget="totalItems" color="#30328f" icon="i-lucide-badge-percent" :loading="isLoading" />
       <CardsKpiCard2 name="Open" :value="openOffersCount" :budget="totalItems" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
       <CardsKpiCard2 name="Suspended" :value="suspendedOffersCount" :budget="totalItems" color="#f59e0b" icon="i-lucide-pause-circle" :loading="isLoading" />
       <CardsKpiCard2 name="Voucher linked" :value="voucherOffersCount" :budget="totalItems" color="#7c3aed" icon="i-lucide-ticket-percent" :loading="isLoading" />
@@ -574,7 +578,7 @@ onMounted(loadOffers)
       </div>
 
       <div v-else-if="filteredOffers.length === 0" class="p-12 text-center">
-        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#255be8]">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#30328f]">
           <UIcon name="i-lucide-badge-percent" />
         </div>
         <h2 class="mt-4 text-lg font-black text-slate-950">No offers found</h2>

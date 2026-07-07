@@ -12,9 +12,9 @@ html {
 }
 
 :root {
-  --color-primary: #3d7cff;
-  --color-primary-600: #2f6df6;
-  --color-primary-700: #1a56d9;
+  --color-primary: #30328f;
+  --color-primary-600: #282a80;
+  --color-primary-700: #20226e;
   --color-accent: #4f5d73;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
