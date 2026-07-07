@@ -22,6 +22,7 @@ from .supplier_order_serializers import (
     SupplierOrderLineStatusSerializer,
     SupplierOrderListSerializer,
 )
+from .order_stock import safe_cancel_line_allocation, safe_consume_line_allocation
 from .supplier_serializers import (
     SupplierAdminStatusSerializer,
     SupplierDashboardSerializer,
@@ -606,7 +607,7 @@ class SupplierOrderLineStatusAPIView(APIView):
         serializer = SupplierOrderLineStatusSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        old_line_status = line.status or ''
+        old_line_status = (line.status or '').strip().lower()
         new_line_status = serializer.validated_data['status']
         note = serializer.validated_data.get('note', '')
         tracking_reference = serializer.validated_data.get('tracking_reference', '')
@@ -615,11 +616,9 @@ class SupplierOrderLineStatusAPIView(APIView):
         line.save(update_fields=['status'])
 
         if old_line_status not in {'shipped', 'delivered'} and new_line_status in {'shipped', 'delivered'}:
-            if getattr(line, 'num_allocated', 0):
-                line.consume_allocation(line.num_allocated)
+            safe_consume_line_allocation(line)
         elif old_line_status not in {'cancelled', 'shipped', 'delivered'} and new_line_status == 'cancelled':
-            if getattr(line, 'num_allocated', 0):
-                line.cancel_allocation(line.num_allocated)
+            safe_cancel_line_allocation(line)
 
         event_type, _ = ShippingEventType.objects.get_or_create(
             code=new_line_status,

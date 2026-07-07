@@ -13,6 +13,7 @@ from apps.common.async_utils import dispatch_background_task
 from apps.integrations.tasks import sync_order_cancellation_to_erpnext
 from apps.notifications.services import queue_shipping_update_email
 
+from .order_stock import safe_cancel_line_allocation, safe_consume_line_allocation
 from .order_serializers import (
     AdminOrderStatusUpdateSerializer,
     AdminOrderDetailSerializer,
@@ -81,11 +82,9 @@ def _cascade_admin_order_status(order, new_status: str, tracking_reference: str 
                 changed_lines.append(line)
 
             if old_line_status not in {'shipped', 'delivered'} and line_status in {'shipped', 'delivered'}:
-                if getattr(line, 'num_allocated', 0):
-                    line.consume_allocation(line.num_allocated)
+                safe_consume_line_allocation(line)
             elif old_line_status not in {'cancelled', 'shipped', 'delivered'} and line_status == 'cancelled':
-                if getattr(line, 'num_allocated', 0):
-                    line.cancel_allocation(line.num_allocated)
+                safe_cancel_line_allocation(line)
 
     if group_status:
         update_fields = ['status', 'updated_at']
