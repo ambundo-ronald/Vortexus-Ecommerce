@@ -1,7 +1,7 @@
 import logging
 
 from django.apps import apps
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
 
@@ -170,7 +170,12 @@ class ProductService:
         logger.info('Synced product %s to Mongo collection %s', product.id, result.get('collection', ''))
 
     def merge_domain_payload(self, product, detail: dict) -> dict:
-        reference = getattr(product, 'mongo_reference', None)
+        try:
+            reference = getattr(product, 'mongo_reference', None)
+        except DatabaseError:
+            logger.info('Skipping Mongo payload for product %s because the reference table is unavailable', product.id)
+            return detail
+
         if not reference:
             return detail
 
@@ -184,7 +189,7 @@ class ProductService:
 
         try:
             domain['payload'] = self.router.get(reference.mongo_id).get('data', {}).get('product') or domain['payload']
-        except serializers.ValidationError:
+        except (DatabaseError, serializers.ValidationError):
             logger.info('Using cached Mongo payload for product %s', product.id)
 
         return {**detail, 'domain_product': domain}
