@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import toast from "react-hot-toast";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 
@@ -19,6 +18,10 @@ const toneConfig = {
   info: {
     icon: "info",
     title: "Notice",
+  },
+  success: {
+    icon: "success",
+    title: "Done",
   },
 };
 
@@ -42,11 +45,6 @@ export default function Alert({ tone = "danger", children }) {
     const key = `${tone}:${message}`;
     if (!message || lastMessageRef.current === key) return;
     lastMessageRef.current = key;
-
-    if (tone === "success") {
-      toast.success(message, { id: key, duration: 3200 });
-      return;
-    }
 
     const config = toneConfig[tone] || toneConfig.danger;
     void Swal.fire({
