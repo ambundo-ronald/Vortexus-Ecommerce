@@ -53,7 +53,7 @@ export default function Footer() {
       <div className="store-footer__inner">
         <NavLink to="/" className="store-footer__logo" aria-label="Reesolmart home">
           <span className="brand-mark brand-mark--logo">
-            <img src="/brand/reesolmart-logo.jpg" alt="" />
+            <img src="/Reesolmart logo.png" alt="" />
           </span>
           <span>
             <strong>Reesolmart</strong>
