@@ -55,10 +55,6 @@ export default function Footer() {
           <span className="brand-mark brand-mark--logo">
             <img src="/Reesolmart logo.png" alt="" />
           </span>
-          <span>
-            <strong>Reesolmart</strong>
-            <small>Just in time, buying</small>
-          </span>
         </NavLink>
 
         <nav className="store-footer__nav" aria-label="Footer navigation">

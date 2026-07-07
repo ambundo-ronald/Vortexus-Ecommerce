@@ -156,14 +156,15 @@ img {
 }
 
 .brand-mark--logo {
-  width: 58px;
+  width: 126px;
+  height: 40px;
   background: #fff;
 }
 
 .brand-mark--logo img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .brand-copy {

@@ -64,10 +64,6 @@ export default function Navbar() {
             <span className="brand-mark brand-mark--logo">
               <img src="/Reesolmart logo.png" alt="" />
             </span>
-            <span className="brand-copy">
-              <strong>Reesolmart</strong>
-              <span>Just in time, buying</span>
-            </span>
           </NavLink>
 
           <nav className="desktop-nav" aria-label="Primary">
