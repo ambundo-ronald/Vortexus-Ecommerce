@@ -181,7 +181,7 @@ function mapProductDetailToForm(product: any) {
     originalPrice: undefined,
     chargeTax: true,
     sku: product.sku || '',
-    stock: Number(product.stock || 0),
+    stock: Number(product.rawStock ?? product.stock ?? 0),
     weight: product.weight ?? (specificationMap.weight_grams ? Number(specificationMap.weight_grams) : null),
     dimensions: product.dimensions || specificationMap.dimensions || '',
     status: product.status || (product.isPublic ? 'active' : 'draft'),
