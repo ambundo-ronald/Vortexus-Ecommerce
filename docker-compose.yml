@@ -95,7 +95,7 @@ services:
       PRODUCT_MICROSERVICE_BASE_URL: ${PRODUCT_MICROSERVICE_BASE_URL:-http://product-microservice:3029}
       MEDIA_ROOT: /app/media
     ports:
-      - "0.0.0.0:8000:8000"
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
     volumes:
       - backend_static:/app/staticfiles
       - backend_media:/app/media
@@ -167,7 +167,7 @@ services:
         VITE_API_PREFIX: ${VITE_API_PREFIX:-/api/v1}
     restart: unless-stopped
     ports:
-      - "0.0.0.0:5174:80"
+      - "${STOREFRONT_BIND:-127.0.0.1}:${STOREFRONT_PORT:-5174}:80"
 
   dashboard:
     build:
@@ -178,7 +178,7 @@ services:
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-https://api.example.com/api/v1}
     ports:
-      - "0.0.0.0:3000:80"
+      - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-3000}:80"
 
   caddy:
     image: caddy:2.8-alpine

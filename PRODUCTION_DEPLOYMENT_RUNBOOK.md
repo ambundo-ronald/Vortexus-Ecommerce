@@ -176,7 +176,7 @@ Do not automate destructive cleanup in CI/CD. The clean-start command must remai
 ## Pre-Go-Live Audit Checklist
 
 - `DJANGO_DEBUG=False`
-- `DJANGO_ALLOWED_HOSTS` includes `api.reesolmart.cloud`, `reesolmart.cloud`, `reesolmart.com`
+- `DJANGO_ALLOWED_HOSTS` includes `api.reesolmart.cloud`, `localhost`, `127.0.0.1`, and `backend`
 - CORS allows storefront/admin domains only
 - CSRF trusted origins include all HTTPS production domains
 - Caddy routes:

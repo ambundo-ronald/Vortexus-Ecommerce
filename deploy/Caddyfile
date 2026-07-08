@@ -1,4 +1,4 @@
-{$STOREFRONT_DOMAIN} {
+{$STOREFRONT_DOMAIN}, www.{$STOREFRONT_DOMAIN} {
     encode zstd gzip
     reverse_proxy frontend:80
 }
@@ -13,7 +13,7 @@
 
     @preflight {
         method OPTIONS
-        header_regexp Origin ^https://(store|admin)\.vortexusindustrial\.com$
+        header_regexp Origin ^https://(www\.)?reesolmart\.com$|^https://reesolmart\.cloud$
     }
 
     header @preflight {
