@@ -62,11 +62,7 @@ export default function Navbar() {
         <div className="app-header__inner">
           <NavLink to="/" end className="brand-link" aria-label="Reesolmart home">
             <span className="brand-mark brand-mark--logo">
-              <img src="/brand/reesolmart-logo.jpg" alt="" />
-            </span>
-            <span className="brand-copy">
-              <strong>Reesolmart</strong>
-              <span>Just in time, buying</span>
+              <img src="/Reesolmart logo.png" alt="" />
             </span>
           </NavLink>
 
