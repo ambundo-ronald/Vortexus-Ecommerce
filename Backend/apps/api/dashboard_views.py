@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.auditlog.models import SearchAnalyticsEvent
+from apps.common.products import stockrecord_count
 
 
 def _decimal_to_float(value):
@@ -51,6 +52,12 @@ def _product_category_name(product):
         return 'Uncategorized'
     category = product.categories.order_by('depth', 'name').first()
     return category.name if category else 'Uncategorized'
+
+
+def _available_stock_for_product(product):
+    if not product:
+        return 0
+    return sum(stockrecord_count(stockrecord) for stockrecord in product.stockrecords.all())
 
 
 class AdminDashboardAPIView(APIView):
@@ -135,13 +142,7 @@ class AdminDashboardAPIView(APIView):
         popular_product_ids = [row['product_id'] for row in popular_rows]
         product_map = {
             product.id: product
-            for product in Product.objects.filter(id__in=popular_product_ids).prefetch_related('categories', 'images')
-        }
-        stock_map = {
-            row['product_id']: row['total_stock'] or 0
-            for row in StockRecord.objects.filter(product_id__in=popular_product_ids)
-            .values('product_id')
-            .annotate(total_stock=Sum('num_in_stock'))
+            for product in Product.objects.filter(id__in=popular_product_ids).prefetch_related('categories', 'images', 'stockrecords')
         }
         popular_products = []
         for row in popular_rows:
@@ -151,18 +152,15 @@ class AdminDashboardAPIView(APIView):
                     'id': row['product_id'],
                     'name': row['product__title'] or getattr(product, 'title', ''),
                     'category': _product_category_name(product),
-                    'stock': stock_map.get(row['product_id'], 0),
+                    'stock': _available_stock_for_product(product),
                     'quantity_sold': row['quantity'] or 0,
                     'image': _product_image_url(product),
                 }
             )
 
         if not popular_products:
-            for product in products.prefetch_related('categories', 'images').order_by('-date_created', '-id')[:8]:
-                stock = (
-                    StockRecord.objects.filter(product=product).aggregate(total_stock=Sum('num_in_stock'))['total_stock']
-                    or 0
-                )
+            for product in products.prefetch_related('categories', 'images', 'stockrecords').order_by('-date_created', '-id')[:8]:
+                stock = _available_stock_for_product(product)
                 popular_products.append(
                     {
                         'id': product.id,
@@ -388,18 +386,12 @@ class AdminCampaignsAPIView(APIView):
         product_ids = [row['product_id'] for row in popular_rows]
         products = {
             product.id: product
-            for product in Product.objects.filter(id__in=product_ids).prefetch_related('categories')
-        }
-        stock_map = {
-            row['product_id']: row['total_stock'] or 0
-            for row in StockRecord.objects.filter(product_id__in=product_ids)
-            .values('product_id')
-            .annotate(total_stock=Sum('num_in_stock'))
+            for product in Product.objects.filter(id__in=product_ids).prefetch_related('categories', 'stockrecords')
         }
         product_opportunities = []
         for row in popular_rows:
             product = products.get(row['product_id'])
-            stock = stock_map.get(row['product_id'], 0)
+            stock = _available_stock_for_product(product)
             product_opportunities.append(
                 {
                     'id': row['product_id'],

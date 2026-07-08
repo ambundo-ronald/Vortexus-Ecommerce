@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
-from apps.common.products import serialize_product_card
+from apps.common.products import serialize_product_card, stockrecord_count
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
@@ -166,6 +166,9 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
     card = serialize_product_card(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     category = product.categories.first()
+    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
+    available_stock = stockrecord_count(stockrecord)
     return {
         'id': product.id,
         'name': product.title,
@@ -175,7 +178,10 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
         'status': 'Active' if product.is_public else 'Draft',
         'category': category.name if category else 'Uncategorized',
         'categorySlug': category.slug if category else '',
-        'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'stock': available_stock,
+        'availableStock': available_stock,
+        'stockOnHand': stock_on_hand,
+        'stockAllocated': stock_allocated,
         'imageUrl': card.get('thumbnail', ''),
         'isPublic': product.is_public,
         'updatedAt': product.date_updated,
@@ -186,6 +192,9 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
     detail = _build_product_detail(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     attributes = _attribute_value_map(product)
+    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
+    available_stock = stockrecord_count(stockrecord)
     return {
         'id': product.id,
         'name': product.title,
@@ -193,7 +202,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'price': detail.get('price'),
         'currency': detail.get('currency'),
         'status': 'active' if product.is_public else 'draft',
-        'stock': int(getattr(stockrecord, 'num_in_stock', 0) or 0),
+        'stock': available_stock,
+        'availableStock': available_stock,
+        'stockOnHand': stock_on_hand,
+        'stockAllocated': stock_allocated,
         'slug': product.slug or '',
         'description': product.description or '',
         'metaTitle': product.meta_title or '',

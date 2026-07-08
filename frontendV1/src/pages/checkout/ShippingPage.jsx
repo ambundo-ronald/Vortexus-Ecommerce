@@ -246,6 +246,7 @@ export default function ShippingPage() {
               address={deliveryMode === "new" ? null : shipping?.address}
               countries={shipping?.countries || []}
               saving={saving}
+              autoSubmitOnLocationChange
               onSubmit={handleAddressSubmit}
             />
           ) : null}

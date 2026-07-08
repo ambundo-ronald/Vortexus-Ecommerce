@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Swal from "sweetalert2";
 
 import { checkoutApi } from "../../api/checkout.api";
@@ -34,6 +34,7 @@ export default function ShippingAddressForm({
   icon = "location_on",
   submitLabel = "Save delivery details",
   requirePhone = true,
+  autoSubmitOnLocationChange = false,
   onSubmit
 }) {
   const [form, setForm] = useState(() => ({ ...defaultAddress, ...normalizeAddress(address) }));
@@ -41,6 +42,7 @@ export default function ShippingAddressForm({
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeResults, setPlaceResults] = useState([]);
   const [placeSearching, setPlaceSearching] = useState(false);
+  const lastAutoSubmitKeyRef = useRef("");
 
   useEffect(() => {
     setForm({ ...defaultAddress, ...normalizeAddress(address) });
@@ -49,6 +51,57 @@ export default function ShippingAddressForm({
   function updateField(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  useEffect(() => {
+    if (!autoSubmitOnLocationChange || saving || !isReadyForRateCalculation(form, requirePhone)) return undefined;
+
+    const payload = buildSubmitPayload(form);
+    const autoSubmitKey = [
+      payload.latitude,
+      payload.longitude,
+      payload.line1,
+      payload.line4,
+      payload.country_code,
+      payload.phone_number
+    ].join("|");
+    if (lastAutoSubmitKeyRef.current === autoSubmitKey) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      lastAutoSubmitKeyRef.current = autoSubmitKey;
+      onSubmit?.(payload);
+    }, 700);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    autoSubmitOnLocationChange,
+    form,
+    onSubmit,
+    requirePhone,
+    saving
+  ]);
+
+  function buildSubmitPayload(currentForm) {
+    const deliveryLabel = currentForm.location_label || currentForm.location_formatted_address || placeQuery || currentForm.line3 || currentForm.line1 || "Delivery point";
+    const town = currentForm.line4 || "Nairobi";
+
+    return {
+      ...currentForm,
+      line1: currentForm.line1 || deliveryLabel,
+      line2: "",
+      line4: town,
+      state: currentForm.state || town,
+      postcode: currentForm.postcode || "00100",
+      country_code: String(currentForm.country_code || "KE").toUpperCase(),
+      latitude: currentForm.latitude === "" ? null : currentForm.latitude,
+      longitude: currentForm.longitude === "" ? null : currentForm.longitude,
+      location_label: deliveryLabel,
+      location_source: currentForm.location_source || "customer_pin",
+      location_provider: currentForm.location_provider,
+      location_place_id: currentForm.location_place_id,
+      location_formatted_address: currentForm.location_formatted_address,
+      location_confidence: normalizeConfidence(currentForm.location_confidence)
+    };
   }
 
   function handleSubmit(event) {
@@ -65,26 +118,20 @@ export default function ShippingAddressForm({
       return;
     }
 
-    const deliveryLabel = form.location_label || form.location_formatted_address || placeQuery || form.line3 || "Delivery point";
-    const town = form.line4 || "Nairobi";
+    onSubmit?.(buildSubmitPayload(form));
+  }
 
-    onSubmit?.({
-      ...form,
-      line1: form.line1 || deliveryLabel,
-      line2: "",
-      line4: town,
-      state: form.state || town,
-      postcode: form.postcode || "00100",
-      country_code: String(form.country_code || "KE").toUpperCase(),
-      latitude: form.latitude === "" ? null : form.latitude,
-      longitude: form.longitude === "" ? null : form.longitude,
-      location_label: deliveryLabel,
-      location_source: form.location_source || "customer_pin",
-      location_provider: form.location_provider,
-      location_place_id: form.location_place_id,
-      location_formatted_address: form.location_formatted_address,
-      location_confidence: normalizeConfidence(form.location_confidence)
-    });
+  function isReadyForRateCalculation(currentForm, phoneRequired) {
+    const deliveryLabel = currentForm.line1 || currentForm.line3 || currentForm.location_label || currentForm.location_formatted_address || placeQuery;
+    return Boolean(
+      currentForm.first_name?.trim()
+      && currentForm.last_name?.trim()
+      && deliveryLabel?.trim()
+      && currentForm.country_code?.trim()
+      && (!phoneRequired || currentForm.phone_number?.trim())
+      && currentForm.latitude !== ""
+      && currentForm.longitude !== ""
+    );
   }
 
   function useCurrentLocation() {
