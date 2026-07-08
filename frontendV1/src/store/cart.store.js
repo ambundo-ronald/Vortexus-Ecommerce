@@ -46,7 +46,7 @@ export const useCartStore = create((set, get) => ({
     }
   },
 
-  addItem: async (productId, quantity = 1, options = []) => {
+  addItem: async (productId, quantity = 1, options = [], analyticsMetadata = {}) => {
     set({ loading: true, error: null });
     try {
       const payload = await checkoutApi.addItem({ product_id: productId, quantity, options });
@@ -56,7 +56,7 @@ export const useCartStore = create((set, get) => ({
         message: "The product is ready in your cart.",
         icon: "add_shopping_cart"
       });
-      trackStorefrontEvent("cart_item_added", { product_id: Number(productId), quantity });
+      trackStorefrontEvent("cart_item_added", { ...analyticsMetadata, product_id: Number(productId), quantity });
       return payload;
     } catch (error) {
       const message = error.normalized?.message || error.message;

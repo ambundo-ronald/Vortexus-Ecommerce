@@ -6,8 +6,9 @@ import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
 import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
+import { rememberSearchContext, searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, analyticsContext = null }) {
   const addItem = useCartStore((state) => state.addItem);
   const loading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -41,22 +42,36 @@ export default function ProductCard({ product }) {
       return;
     }
     try {
-      await addItem(resolvedProductId);
+      await addItem(resolvedProductId, 1, [], searchAttributionMetadata({
+        product_id: Number(resolvedProductId),
+        product_title: title
+      }));
     } catch {
       // Global notification state already shows the failed action.
     }
   }
 
+  function trackProductClick() {
+    if (!resolvedProductId) return;
+    const context = analyticsContext ? rememberSearchContext(analyticsContext) : null;
+    trackStorefrontEvent("product_clicked", {
+      ...(context || searchAttributionMetadata()),
+      product_id: Number(resolvedProductId),
+      product_title: title,
+      source: context?.source || "search"
+    });
+  }
+
   return (
     <article className="product-card">
       <WishlistButton productId={resolvedProductId} productTitle={title} />
-      <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media">
+      <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media" onClick={trackProductClick}>
         {discountBadge ? <span className="product-card__sale-badge">{discountBadge}</span> : null}
         {image ? <img src={image} alt={title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(title)}</span>}
       </Link>
       <div className="product-card__body">
         <h3>
-          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>{title}</Link>
+          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} onClick={trackProductClick}>{title}</Link>
         </h3>
         {brandName ? <Link className="product-card__brand" to={`/catalog/brand/${encodeURIComponent(brandSlug)}`}>{brandName}</Link> : null}
         <span className="product-card__price">

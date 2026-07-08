@@ -20,7 +20,7 @@ import { useProductDetail } from "../../hooks/useProductDetail";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
-import { trackStorefrontEvent } from "../../utils/analytics";
+import { searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 import {
   productBrand,
   productCategory,
@@ -78,6 +78,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!resolvedProductId || !product) return;
     trackStorefrontEvent("product_view", {
+      ...searchAttributionMetadata(),
       product_id: resolvedProductId,
       product_title: resolvedTitle,
       path: `/products/${resolvedProductId}`
@@ -126,7 +127,10 @@ export default function ProductDetailPage() {
           value: selectedOptions[option.id || option.code] || ""
         }))
         .filter((option) => option.value !== "");
-      await addItem(resolvedProductId, boundedQuantity, options);
+      await addItem(resolvedProductId, boundedQuantity, options, searchAttributionMetadata({
+        product_id: Number(resolvedProductId),
+        product_title: resolvedTitle
+      }));
     } catch {
       // Global notification state already shows the failed action.
     }

@@ -24,6 +24,11 @@ export const navSections: NavSection[] = [
         icon: 'i-lucide-activity',
         to: '/analytics',
       },
+      {
+        label: 'Search Analytics',
+        icon: 'i-lucide-search-check',
+        to: '/search-analytics',
+      },
     ],
   },
   {
