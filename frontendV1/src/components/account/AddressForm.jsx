@@ -9,9 +9,9 @@ const emptyAddress = {
   line1: "",
   line2: "",
   line3: "",
-  line4: "Nairobi",
-  state: "Nairobi",
-  postcode: "00100",
+  line4: "",
+  state: "",
+  postcode: "",
   country_code: "KE",
   phone_number: "",
   notes: "",
@@ -41,8 +41,16 @@ export default function AddressForm({
 
   function submit(event) {
     event.preventDefault();
+    const companyOrSite = form.line1 || form.line3 || form.title || [form.first_name, form.last_name].filter(Boolean).join(" ");
+
     onSubmit?.({
       ...form,
+      line1: companyOrSite || "Delivery point",
+      line2: "",
+      line3: form.line3 && form.line3 !== companyOrSite ? form.line3 : "",
+      line4: "",
+      state: "",
+      postcode: "",
       country_code: String(form.country_code || "KE").toUpperCase()
     });
   }
@@ -79,45 +87,12 @@ export default function AddressForm({
       </label>
 
       <label>
-        <span>Address</span>
-        <input name="line1" value={form.line1} onChange={updateField} required placeholder="Street, building, road" autoComplete="address-line1" />
+        <span>Company / site</span>
+        <input name="line1" value={form.line1} onChange={updateField} required placeholder="Company, site, office, or pickup point" />
       </label>
 
-      <div className="form-grid two">
-        <label>
-          <span>Apartment or floor</span>
-          <input name="line2" value={form.line2} onChange={updateField} autoComplete="address-line2" />
-        </label>
-        <label>
-          <span>Company / site</span>
-          <input name="line3" value={form.line3} onChange={updateField} />
-        </label>
-      </div>
-
-      <div className="form-grid two">
-        <label>
-          <span>Town / city</span>
-          <input name="line4" value={form.line4} onChange={updateField} required autoComplete="address-level2" />
-        </label>
-        <label>
-          <span>County / state</span>
-          <input name="state" value={form.state} onChange={updateField} autoComplete="address-level1" />
-        </label>
-      </div>
-
-      <div className="form-grid two">
-        <label>
-          <span>Country</span>
-          <input name="country_code" value={form.country_code} onChange={updateField} maxLength="2" required />
-        </label>
-        <label>
-          <span>Postcode</span>
-          <input name="postcode" value={form.postcode} onChange={updateField} autoComplete="postal-code" />
-        </label>
-      </div>
-
       <label>
-        <span>Notes</span>
+        <span>Delivery note</span>
         <textarea name="notes" value={form.notes} onChange={updateField} rows="3" placeholder="Gate, landmark, receiving instructions" />
       </label>
 

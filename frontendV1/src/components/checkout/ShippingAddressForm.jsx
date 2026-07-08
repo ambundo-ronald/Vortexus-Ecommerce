@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import Swal from "sweetalert2";
 
 import { checkoutApi } from "../../api/checkout.api";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
@@ -27,7 +28,6 @@ const defaultAddress = {
 
 export default function ShippingAddressForm({
   address,
-  countries = [],
   saving = false,
   title = "Delivery details",
   description = "",
@@ -46,14 +46,6 @@ export default function ShippingAddressForm({
     setForm({ ...defaultAddress, ...normalizeAddress(address) });
   }, [address]);
 
-  const countryOptions = useMemo(() => {
-    if (!countries.length) return [{ code: "KE", name: "Kenya" }];
-    return countries.map((country) => ({
-      code: country.code || country.iso_3166_1_a2 || country.iso_code,
-      name: country.name || country.printable_name || country.code
-    }));
-  }, [countries]);
-
   function updateField(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
@@ -61,12 +53,32 @@ export default function ShippingAddressForm({
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (!form.latitude || !form.longitude) {
+      setLocationStatus("Pin the delivery location before saving.");
+      void Swal.fire({
+        icon: "warning",
+        title: "Pin delivery location",
+        text: "Please search and select the delivery location, or use your current location, before saving delivery details.",
+        confirmButtonText: "OK",
+        confirmButtonColor: "#2563eb"
+      });
+      return;
+    }
+
+    const deliveryLabel = form.location_label || form.location_formatted_address || placeQuery || form.line3 || "Delivery point";
+    const town = form.line4 || "Nairobi";
+
     onSubmit?.({
       ...form,
+      line1: form.line1 || deliveryLabel,
+      line2: "",
+      line4: town,
+      state: form.state || town,
+      postcode: form.postcode || "00100",
       country_code: String(form.country_code || "KE").toUpperCase(),
       latitude: form.latitude === "" ? null : form.latitude,
       longitude: form.longitude === "" ? null : form.longitude,
-      location_label: form.location_label || [form.line1, form.line4].filter(Boolean).join(", "),
+      location_label: deliveryLabel,
       location_source: form.location_source || "customer_pin",
       location_provider: form.location_provider,
       location_place_id: form.location_place_id,
@@ -189,46 +201,9 @@ export default function ShippingAddressForm({
       </label>
 
       <label>
-        <span>Address</span>
-        <input name="line1" value={form.line1} onChange={updateField} required placeholder="Street, building, road" autoComplete="address-line1" />
+        <span>Company / site</span>
+        <input name="line3" value={form.line3} onChange={updateField} placeholder="Company, site, office, or pickup point" />
       </label>
-
-      <div className="form-grid two">
-        <label>
-          <span>Apartment or floor</span>
-          <input name="line2" value={form.line2} onChange={updateField} autoComplete="address-line2" />
-        </label>
-        <label>
-          <span>Company / site</span>
-          <input name="line3" value={form.line3} onChange={updateField} />
-        </label>
-      </div>
-
-      <div className="form-grid two">
-        <label>
-          <span>Town / city</span>
-          <input name="line4" value={form.line4} onChange={updateField} required autoComplete="address-level2" />
-        </label>
-        <label>
-          <span>County / state</span>
-          <input name="state" value={form.state} onChange={updateField} autoComplete="address-level1" />
-        </label>
-      </div>
-
-      <div className="form-grid two">
-        <label>
-          <span>Country</span>
-          <select name="country_code" value={form.country_code} onChange={updateField} required>
-            {countryOptions.map((country) => (
-              <option key={country.code} value={country.code}>{country.name}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Postcode</span>
-          <input name="postcode" value={form.postcode} onChange={updateField} autoComplete="postal-code" />
-        </label>
-      </div>
 
       <label>
         <span>Delivery note</span>
