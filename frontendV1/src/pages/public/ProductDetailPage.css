@@ -75,7 +75,10 @@
 }
 
 .product-detail-page .product-gallery-slide {
+  position: relative;
   min-width: 100%;
+  flex: 0 0 100%;
+  overflow: hidden;
   display: grid;
   place-items: center;
 }
@@ -88,6 +91,14 @@
   max-height: 90%;
   object-fit: contain;
   padding: 0;
+}
+
+.product-detail-page .product-gallery:hover .product-gallery-slide:not(.is-active) img {
+  transform: none;
+}
+
+.product-detail-page .product-gallery:hover .product-gallery-slide.is-active img {
+  transform: scale(2.2);
 }
 
 @media (min-width: 760px) {

@@ -2884,7 +2884,8 @@ img {
   will-change: transform;
 }
 
-.product-gallery:hover img {
+.product-gallery:hover > img,
+.product-gallery:hover .product-gallery-slide.is-active img {
   transform: scale(2.2);
 }
 
