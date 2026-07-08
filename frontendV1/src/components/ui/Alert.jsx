@@ -2,6 +2,10 @@ import { useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 
+const ALERT_DEDUPE_MS = 30000;
+const shownAtByKey = new Map();
+let activeAlertKey = "";
+
 const toneConfig = {
   danger: {
     icon: "error",
@@ -42,9 +46,16 @@ export default function Alert({ tone = "danger", children }) {
       lastMessageRef.current = "";
       return;
     }
+
     const key = `${tone}:${message}`;
-    if (!message || lastMessageRef.current === key) return;
+    const now = Date.now();
+    const lastShownAt = shownAtByKey.get(key) || 0;
+    if (!message || lastMessageRef.current === key || now - lastShownAt < ALERT_DEDUPE_MS) return;
+    if (Swal.isVisible() && activeAlertKey === key) return;
+
     lastMessageRef.current = key;
+    shownAtByKey.set(key, now);
+    activeAlertKey = key;
 
     const config = toneConfig[tone] || toneConfig.danger;
     void Swal.fire({
@@ -59,6 +70,9 @@ export default function Alert({ tone = "danger", children }) {
         title: "store-swal-title",
         htmlContainer: "store-swal-text",
         confirmButton: "store-swal-confirm",
+      },
+      willClose: () => {
+        if (activeAlertKey === key) activeAlertKey = "";
       },
     });
   }, [children, message, tone]);

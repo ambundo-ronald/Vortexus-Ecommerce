@@ -113,9 +113,13 @@ export default function ReviewList({ productId }) {
       <div className="review-action-panel">
         {submitMessage ? <Alert tone="success">{submitMessage}</Alert> : null}
         {user && yourReview ? (
-          <Alert tone="warning">
-            Your review is saved as {yourReview.status_label}. It will appear on the storefront after approval.
-          </Alert>
+          <div className="review-eligibility-message">
+            <MaterialIcon name="rate_review" size={24} />
+            <div>
+              <strong>Review received</strong>
+              <p>Your review will appear after dashboard approval.</p>
+            </div>
+          </div>
         ) : user && reviewEligibility?.eligible ? (
           <ReviewForm saving={saving} onSubmit={handleCreateReview} />
         ) : user ? (
