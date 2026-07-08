@@ -2,11 +2,16 @@
 const route = useRoute()
 const auth = useAuth()
 const adminNotifications = useAdminNotifications()
+const colorMode = useColorMode()
 const searchQuery = ref('')
 const isMounted = ref(false)
+const mobileNavOpen = ref(false)
 let notificationTimer: ReturnType<typeof setInterval> | null = null
 
 const isAuthPage = computed(() => route.path === '/login')
+const isDarkMode = computed(() => colorMode.value === 'dark')
+const themeToggleIcon = computed(() => isDarkMode.value ? 'i-lucide-sun' : 'i-lucide-moon')
+const themeToggleLabel = computed(() => isDarkMode.value ? 'Switch to light mode' : 'Switch to dark mode')
 const displayName = computed(() => {
   if (!isMounted.value)
     return 'Account'
@@ -43,6 +48,14 @@ onBeforeUnmount(() => {
 
 async function handleLogout() {
   await auth.logout()
+}
+
+function closeMobileNav() {
+  mobileNavOpen.value = false
+}
+
+function toggleTheme() {
+  colorMode.preference = isDarkMode.value ? 'light' : 'dark'
 }
 
 function severityIcon(severity: string) {
@@ -99,19 +112,18 @@ async function enablePush() {
       <div class="min-h-screen lg:pl-64">
         <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <div class="flex h-18 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-            <NuxtLink to="/" class="flex items-center gap-3">
-              <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
-                <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
-              </div>
-              <div>
-                <p class="text-lg font-black leading-tight">
-                  Reesolmart
-                </p>
-                <p class="text-xs text-slate-500 dark:text-slate-400">
-                  Just in time, buying
-                </p>
-              </div>
-            </NuxtLink>
+            <button
+              type="button"
+              class="flex h-14 w-20 min-w-0 items-center overflow-hidden rounded-lg bg-white lg:hidden"
+              aria-label="Open dashboard navigation"
+              @click="mobileNavOpen = true"
+            >
+              <img
+                src="/brand/reesolmart-logo.jpg"
+                alt="Reesolmart"
+                class="h-full w-full object-cover"
+              >
+            </button>
 
             <UInput
               v-model="searchQuery"
@@ -123,7 +135,7 @@ async function enablePush() {
               placeholder="Search dashboard..."
             />
 
-            <div class="flex items-center gap-2">
+            <div class="ml-auto flex items-center gap-2">
               <UPopover>
                 <UButton icon="i-lucide-bell" color="neutral" variant="ghost" class="relative" aria-label="Admin notifications">
                   <span
@@ -196,16 +208,28 @@ async function enablePush() {
                   </div>
                 </template>
               </UPopover>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                :icon="themeToggleIcon"
+                :aria-label="themeToggleLabel"
+                :title="themeToggleLabel"
+                @click="toggleTheme"
+              />
               <UDropdownMenu
                 :items="[
                   [{ label: displayName, icon: 'i-lucide-user', disabled: true }],
                   [{ label: 'Sign out', icon: 'i-lucide-log-out', onSelect: handleLogout }],
                 ]"
               >
-                <UButton color="neutral" variant="soft" trailing-icon="i-lucide-chevron-down">
-                  <span class="hidden sm:inline">{{ displayName }}</span>
-                  <span class="sm:hidden">Account</span>
-                </UButton>
+                <UButton
+                  color="neutral"
+                  variant="soft"
+                  icon="i-lucide-user"
+                  trailing-icon="i-lucide-chevron-down"
+                  aria-label="Account menu"
+                  :title="displayName"
+                />
               </UDropdownMenu>
             </div>
           </div>
@@ -215,6 +239,29 @@ async function enablePush() {
           <NuxtPage />
         </main>
       </div>
+
+      <Teleport to="body">
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0"
+          enter-to-class="opacity-100"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
+        >
+          <div v-if="mobileNavOpen" class="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              class="absolute inset-0 bg-slate-950/50"
+              aria-label="Close dashboard navigation"
+              @click="closeMobileNav"
+            />
+            <aside class="relative h-full w-72 max-w-[86vw] shadow-2xl">
+              <LayoutSidebar mobile @navigate="closeMobileNav" />
+            </aside>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
   </UApp>
 </template>

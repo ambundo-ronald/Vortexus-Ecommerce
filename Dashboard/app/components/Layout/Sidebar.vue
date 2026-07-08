@@ -2,6 +2,14 @@
 import { navSections, supportNav } from '~/config/navigation'
 
 const route = useRoute()
+const props = withDefaults(defineProps<{
+  mobile?: boolean
+}>(), {
+  mobile: false,
+})
+const emit = defineEmits<{
+  navigate: []
+}>()
 
 const isLinkActive = (item: { to?: string }) => {
   if (!item.to)
@@ -14,10 +22,15 @@ const isLinkActive = (item: { to?: string }) => {
 
 <template>
   <div
-    class="fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 lg:flex dark:border-slate-800 dark:bg-slate-950"
+    class="border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950"
+    :class="props.mobile ? 'flex h-full w-full flex-col overflow-y-auto' : 'fixed bottom-0 left-0 top-0 hidden min-h-screen w-64 flex-col overflow-y-auto lg:flex'"
   >
-    <NuxtLink to="/" class="mb-8 flex items-center gap-3">
-      <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <NuxtLink
+      to="/"
+      class="sticky top-0 z-10 -mx-4 mb-6 flex items-center gap-3 border-b border-slate-100 bg-white px-4 pb-4 pt-1 dark:border-slate-800 dark:bg-slate-950"
+      @click="emit('navigate')"
+    >
+      <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-white">
         <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
       </div>
       <div>
@@ -36,7 +49,7 @@ const isLinkActive = (item: { to?: string }) => {
           {{ section.label }}
         </div>
         <div class="w-full space-y-1">
-          <NuxtLink v-for="item in section.items" :key="item.label" :to="item.to" block>
+          <NuxtLink v-for="item in section.items" :key="item.label" :to="item.to" block @click="emit('navigate')">
             <UButton
               color="neutral"
               variant="ghost"
@@ -57,7 +70,7 @@ const isLinkActive = (item: { to?: string }) => {
         Help
       </h3>
       <template v-for="item in supportNav" :key="item.label">
-        <NuxtLink v-if="item.to" :to="item.to">
+        <NuxtLink v-if="item.to" :to="item.to" @click="emit('navigate')">
           <UButton
             color="neutral"
             variant="ghost"
