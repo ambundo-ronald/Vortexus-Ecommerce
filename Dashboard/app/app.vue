@@ -99,20 +99,6 @@ async function enablePush() {
       <div class="min-h-screen lg:pl-64">
         <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <div class="flex h-18 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-            <NuxtLink to="/" class="flex items-center gap-3">
-              <div class="flex h-11 w-14 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-white">
-                <img src="/brand/reesolmart-logo.jpg" alt="" class="h-full w-full object-contain">
-              </div>
-              <div>
-                <p class="text-lg font-black leading-tight">
-                  Reesolmart
-                </p>
-                <p class="text-xs text-slate-500 dark:text-slate-400">
-                  Just in time, buying
-                </p>
-              </div>
-            </NuxtLink>
-
             <UInput
               v-model="searchQuery"
               class="hidden max-w-xl flex-1 md:block"
