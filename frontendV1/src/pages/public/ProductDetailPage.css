@@ -63,16 +63,19 @@
   overflow: hidden;
   display: grid;
   place-items: center;
+  aspect-ratio: 1 / 0.92;
   min-height: 280px;
   border-radius: var(--radius-sm);
   background:
     linear-gradient(180deg, var(--color-surface), var(--product-card-media-bg));
+  cursor: default;
 }
 
 .product-detail-page .product-gallery-track {
   min-width: 0;
   width: 100%;
   height: 100%;
+  max-width: 100%;
   display: flex;
   transition: transform 520ms ease;
 }
@@ -81,19 +84,22 @@
   position: relative;
   min-width: 100%;
   flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   display: grid;
   place-items: center;
   height: 100%;
+  padding: var(--space-2);
 }
 
 .product-detail-page .product-gallery-slide img {
   display: block;
-  width: 90%;
-  height: 90%;
-  max-width: 90%;
-  max-height: 90%;
-  object-fit: contain;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain !important;
   padding: 0;
   transition: transform var(--transition-base);
 }
@@ -107,9 +113,11 @@
 }
 
 @media (min-width: 760px) {
+  .product-detail-page .product-gallery {
+    aspect-ratio: 1 / 0.82;
+  }
+
   .product-detail-page .product-gallery-slide img {
-    width: 88%;
-    height: 88%;
     max-width: 88%;
     max-height: 88%;
   }
@@ -140,17 +148,23 @@
   }
 
   .product-detail-page .product-gallery {
-    aspect-ratio: 1 / 0.86;
-    max-height: min(360px, 76vw);
-    min-height: 0;
+    aspect-ratio: 1 / 1;
+    min-height: min(360px, calc(100vw - 32px));
+    max-height: none;
+    height: auto;
+    align-items: center;
+  }
+
+  .product-detail-page .product-gallery-slide {
+    padding: 10px;
   }
 
   .product-detail-page .product-gallery-slide img {
-    width: calc(100% - 16px);
-    height: calc(100% - 16px);
-    max-width: calc(100% - 16px);
-    max-height: calc(100% - 16px);
-    object-fit: contain;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain !important;
   }
 
   .product-detail-page .product-gallery:hover .product-gallery-slide.is-active img {
