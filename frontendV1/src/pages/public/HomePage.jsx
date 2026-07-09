@@ -89,7 +89,6 @@ export default function HomePage() {
           <HeroImageCarousel
             blocks={marketingByPlacement.home_hero}
             loading={marketingLoading}
-            useFallback={Boolean(marketingError)}
           />
           <section className="home-arrivals-strip" aria-label="New arrivals preview">
             <div>

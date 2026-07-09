@@ -3,18 +3,6 @@ import { Link } from "react-router-dom";
 
 import { mediaUrl } from "../../utils/media";
 
-const fallbackSlides = [
-  { image_url: "/hero%20landing%20images/agricultural.jpeg", title: "Agricultural supply", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/biomedical.jpeg", title: "Biomedical equipment", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/chemicals.jpeg", title: "Industrial chemicals", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/mining.jpeg", title: "Mining essentials", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/pumps.jpeg", title: "Pumps and parts", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/safety%20and%20protection.jpeg", title: "Safety and protection", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/smart%20automation.jpeg", title: "Smart automation", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/television%20and%20sound%20system%20.png", title: "Audio visual systems", cta_url: "/catalog" },
-  { image_url: "/hero%20landing%20images/textile.jpeg", title: "Textile supplies", cta_url: "/catalog" }
-];
-
 function heroStyle(block) {
   return {
     "--marketing-bg": block.background_color || undefined,
@@ -23,7 +11,6 @@ function heroStyle(block) {
 }
 
 function heroImageUrl(block) {
-  if (!block.id && block.image_url?.startsWith("/hero")) return block.image_url;
   return mediaUrl(block.image_url);
 }
 
@@ -46,9 +33,9 @@ function HeroSlideLink({ block, children }) {
   );
 }
 
-export default function HeroImageCarousel({ blocks = [], loading = false, useFallback = false }) {
+export default function HeroImageCarousel({ blocks = [], loading = false }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const slides = blocks.length ? blocks : useFallback ? fallbackSlides : [];
+  const slides = blocks;
 
   useEffect(() => {
     if (slides.length < 2) return undefined;
