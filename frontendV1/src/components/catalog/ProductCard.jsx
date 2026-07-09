@@ -8,7 +8,7 @@ import { productImageUrl } from "../../utils/productImages";
 import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
 import { rememberSearchContext, searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 
-export default function ProductCard({ product, analyticsContext = null }) {
+export default function ProductCard({ product, analyticsContext = null, actionVariant = "add" }) {
   const addItem = useCartStore((state) => state.addItem);
   const loading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -23,6 +23,8 @@ export default function ProductCard({ product, analyticsContext = null }) {
   const brandSlug = product.brand_slug || slugify(brandName);
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";
+  const isReorder = actionVariant === "reorder";
+  const reorderQuantity = Math.max(Number(product?.recent_order_quantity) || 1, 1);
 
   async function handleAddToCart() {
     if (!stock.isAvailable) {
@@ -42,7 +44,7 @@ export default function ProductCard({ product, analyticsContext = null }) {
       return;
     }
     try {
-      await addItem(resolvedProductId, 1, [], searchAttributionMetadata({
+      await addItem(resolvedProductId, isReorder ? reorderQuantity : 1, [], searchAttributionMetadata({
         product_id: Number(resolvedProductId),
         product_title: title
       }));
@@ -63,7 +65,7 @@ export default function ProductCard({ product, analyticsContext = null }) {
   }
 
   return (
-    <article className="product-card">
+    <article className={`product-card${isReorder ? " product-card--reorder" : ""}`}>
       <WishlistButton productId={resolvedProductId} productTitle={title} />
       <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media" onClick={trackProductClick}>
         {discountBadge ? <span className="product-card__sale-badge">{discountBadge}</span> : null}
@@ -89,13 +91,14 @@ export default function ProductCard({ product, analyticsContext = null }) {
         <span className={`stock-label stock-label--${stock.isAvailable ? "available" : "sold-out"}`}>{stock.label}</span>
         <div className="product-card__foot">
           <button
-            className={`add-cart-button add-cart-button--icon${canAdd ? "" : " add-cart-button--muted"}`}
+            className={`add-cart-button ${isReorder ? "add-cart-button--reorder" : "add-cart-button--icon"}${canAdd ? "" : " add-cart-button--muted"}`}
             type="button"
             disabled={loading || !resolvedProductId}
             onClick={() => void handleAddToCart()}
-            aria-label={canAdd ? `Add ${title} to cart` : `${title} is sold out`}
+            aria-label={canAdd ? `${isReorder ? "Reorder" : "Add"} ${title}` : `${title} is sold out`}
           >
-            <MaterialIcon name="add_shopping_cart" size={18} />
+            <MaterialIcon name={isReorder ? "refresh" : "add_shopping_cart"} size={18} />
+            {isReorder ? <span>Reorder</span> : null}
           </button>
         </div>
       </div>

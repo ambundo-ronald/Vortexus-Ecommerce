@@ -40,7 +40,8 @@ export const ENDPOINTS = {
     notificationsReadAll: "/account/notifications/read-all/",
     productAlerts: "/account/product-alerts/",
     productAlert: (alertId) => `/account/product-alerts/${alertId}/`,
-    recentlyViewed: "/account/recently-viewed/"
+    recentlyViewed: "/account/recently-viewed/",
+    recentlyBought: "/account/recently-bought/"
   },
   catalog: {
     categories: "/catalog/categories/",

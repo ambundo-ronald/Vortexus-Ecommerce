@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import Alert from "../ui/Alert.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import PasswordInput from "../ui/PasswordInput.jsx";
 
 const initialForm = {
   first_name: "",
@@ -106,11 +107,11 @@ export default function RegisterForm({ loading = false, error = "", onSubmit, on
       <div className="form-grid two">
         <label>
           <span>Password</span>
-          <input type="password" name="password" value={form.password} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="password" value={form.password} onChange={updateField} autoComplete="new-password" required />
         </label>
         <label>
           <span>Confirm password</span>
-          <input type="password" name="password_confirm" value={form.password_confirm} onChange={updateField} autoComplete="new-password" required />
+          <PasswordInput name="password_confirm" value={form.password_confirm} onChange={updateField} autoComplete="new-password" required />
         </label>
       </div>
 

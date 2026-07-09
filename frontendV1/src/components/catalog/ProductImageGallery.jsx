@@ -54,8 +54,12 @@ export default function ProductImageGallery({ product }) {
         {images.length ? (
           <div className="product-gallery-track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
             {images.map((image, index) => (
-              <div className="product-gallery-slide" key={`${image}-${index}`}>
-                <img src={image} alt={index === activeIndex ? product?.title || "Product" : ""} style={{ transformOrigin: zoomOrigin }} />
+              <div className={`product-gallery-slide${index === activeIndex ? " is-active" : ""}`} key={`${image}-${index}`}>
+                <img
+                  src={image}
+                  alt={index === activeIndex ? product?.title || "Product" : ""}
+                  style={index === activeIndex ? { transformOrigin: zoomOrigin } : undefined}
+                />
               </div>
             ))}
           </div>

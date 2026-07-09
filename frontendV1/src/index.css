@@ -1525,18 +1525,23 @@ img {
 }
 
 .section-heading a,
+.section-heading__button,
 .text-action,
 .back-link {
+  border: 0;
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
   gap: var(--space-1);
+  padding: 0;
+  background: transparent;
   color: var(--color-primary-700);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 .section-heading a:hover,
+.section-heading__button:hover,
 .text-action:hover,
 .back-link:hover {
   color: var(--color-primary-800);
@@ -2143,6 +2148,20 @@ img {
   font-weight: 600;
 }
 
+.product-card--reorder .product-card__body {
+  padding-right: 8px;
+  padding-bottom: 8px;
+}
+
+.product-card--reorder .product-card__foot {
+  right: 8px;
+  bottom: 8px;
+}
+
+.product-card--reorder .stock-label {
+  max-width: calc(100% - 112px);
+}
+
 .product-card__placeholder {
   width: 62px;
   height: 62px;
@@ -2298,6 +2317,17 @@ img {
 .add-cart-button--icon {
   width: 34px;
   padding: 0;
+}
+
+.add-cart-button--reorder {
+  min-height: 32px;
+  border-color: var(--color-primary-200);
+  border-radius: 999px;
+  gap: 5px;
+  padding: 0 11px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  box-shadow: 0 8px 18px var(--color-primary-shadow);
 }
 
 .add-cart-button--muted {
@@ -4553,6 +4583,42 @@ img {
 .auth-card select:focus {
   border-color: var(--input-border-focus);
   box-shadow: var(--shadow-focus);
+}
+
+.password-input {
+  position: relative;
+  width: 100%;
+}
+
+.password-input input {
+  padding-right: 48px;
+}
+
+.password-input__toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.password-input__toggle:hover,
+.password-input__toggle:focus-visible {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-700);
+}
+
+.password-input__toggle:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
 }
 
 .auth-submit {

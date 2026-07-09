@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import Alert from "../ui/Alert.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import PasswordInput from "../ui/PasswordInput.jsx";
 import "./LoginForm.css";
 
 export default function LoginForm({
@@ -128,7 +129,7 @@ export default function LoginForm({
               Password
               <Link to="/forgot-password">Forgot?</Link>
             </span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+            <PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
           </label>
         </>
       ) : (

@@ -13,7 +13,8 @@ export default function ProductGrid({
   emptyMessage = "",
   loading = false,
   skeletonCount = 8,
-  analyticsContext = null
+  analyticsContext = null,
+  cardActionVariant = "add"
 }) {
   const { user } = useAuth();
   const loadStatus = useWishlistStore((state) => state.loadStatus);
@@ -34,7 +35,12 @@ export default function ProductGrid({
   return (
     <div className="product-grid">
       {products.map((product) => (
-        <ProductCard key={productId(product) || productTitle(product)} product={product} analyticsContext={analyticsContext} />
+        <ProductCard
+          key={productId(product) || productTitle(product)}
+          product={product}
+          analyticsContext={analyticsContext}
+          actionVariant={cardActionVariant}
+        />
       ))}
     </div>
   );

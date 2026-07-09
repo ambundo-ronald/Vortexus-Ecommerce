@@ -133,11 +133,10 @@ async function submit() {
           </UFormField>
 
           <UFormField label="Password">
-            <UInput
+            <PasswordInput
               v-model="form.password"
               size="xl"
               icon="i-lucide-lock"
-              type="password"
               autocomplete="current-password"
               placeholder="Enter password"
             />
