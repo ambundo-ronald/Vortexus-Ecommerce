@@ -6,6 +6,7 @@ class StockReservation(models.Model):
     line = models.OneToOneField('basket.Line', on_delete=models.CASCADE, related_name='stock_reservation')
     stockrecord = models.ForeignKey('partner.StockRecord', on_delete=models.CASCADE, related_name='basket_reservations')
     quantity = models.PositiveIntegerField(default=0)
+    allocation_applied = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
