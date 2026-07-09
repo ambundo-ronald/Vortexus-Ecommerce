@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { searchApi } from "../../api/search.api";
 import { useCategories } from "../../hooks/useCategories";
-import { trackStorefrontEvent } from "../../utils/analytics";
+import { rememberSearchContext, trackStorefrontEvent } from "../../utils/analytics";
 
 export default function SearchBar({ initialValue = "", filters = {}, compact = false }) {
   const [query, setQuery] = useState(initialValue);
@@ -68,11 +68,30 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
     event.preventDefault();
     const trimmed = query.trim();
     setSuggestionsOpen(false);
-    trackStorefrontEvent("search_submitted", { search: trimmed, path: window.location.pathname });
+    const context = rememberSearchContext({
+      search: trimmed,
+      source: "text",
+      category: filters.category || "",
+      brand: filters.brand || ""
+    });
+    trackStorefrontEvent("search_submitted", { ...context, path: window.location.pathname });
     navigate(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   }
 
-  function openSuggestion(title) {
+  function openSuggestion(item) {
+    const title = item.title || "";
+    const context = rememberSearchContext({
+      search: title,
+      source: "suggestion",
+      category: filters.category || "",
+      brand: filters.brand || ""
+    });
+    trackStorefrontEvent("suggestion_clicked", {
+      ...context,
+      product_id: item.id,
+      product_title: title,
+      path: window.location.pathname
+    });
     setQuery(title);
     setSuggestionsOpen(false);
     navigate(`/search?q=${encodeURIComponent(title)}`);
@@ -92,7 +111,13 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
     const file = event.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    trackStorefrontEvent("image_search_submitted", { source: "search_bar", path: window.location.pathname });
+    const context = rememberSearchContext({
+      search: file.name,
+      source: "image",
+      category: filters.category || "",
+      brand: filters.brand || ""
+    });
+    trackStorefrontEvent("image_search_submitted", { ...context, path: window.location.pathname });
     try {
       const formData = new FormData();
       formData.append("image", file);
@@ -165,7 +190,7 @@ export default function SearchBar({ initialValue = "", filters = {}, compact = f
               type="button"
               key={`${item.type}-${item.id}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => openSuggestion(item.title)}
+              onClick={() => openSuggestion(item)}
               role="option"
             >
               <MaterialIcon name="search" size={18} />

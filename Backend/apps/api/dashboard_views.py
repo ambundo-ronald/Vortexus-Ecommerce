@@ -3,13 +3,16 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q, Sum
+from django.db.models import Avg, Count, Max, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from oscar.core.loading import get_model
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.auditlog.models import SearchAnalyticsEvent
+from apps.common.products import stockrecord_count
 
 
 def _decimal_to_float(value):
@@ -49,6 +52,12 @@ def _product_category_name(product):
         return 'Uncategorized'
     category = product.categories.order_by('depth', 'name').first()
     return category.name if category else 'Uncategorized'
+
+
+def _available_stock_for_product(product):
+    if not product:
+        return 0
+    return sum(stockrecord_count(stockrecord) for stockrecord in product.stockrecords.all())
 
 
 class AdminDashboardAPIView(APIView):
@@ -133,13 +142,7 @@ class AdminDashboardAPIView(APIView):
         popular_product_ids = [row['product_id'] for row in popular_rows]
         product_map = {
             product.id: product
-            for product in Product.objects.filter(id__in=popular_product_ids).prefetch_related('categories', 'images')
-        }
-        stock_map = {
-            row['product_id']: row['total_stock'] or 0
-            for row in StockRecord.objects.filter(product_id__in=popular_product_ids)
-            .values('product_id')
-            .annotate(total_stock=Sum('num_in_stock'))
+            for product in Product.objects.filter(id__in=popular_product_ids).prefetch_related('categories', 'images', 'stockrecords')
         }
         popular_products = []
         for row in popular_rows:
@@ -149,18 +152,15 @@ class AdminDashboardAPIView(APIView):
                     'id': row['product_id'],
                     'name': row['product__title'] or getattr(product, 'title', ''),
                     'category': _product_category_name(product),
-                    'stock': stock_map.get(row['product_id'], 0),
+                    'stock': _available_stock_for_product(product),
                     'quantity_sold': row['quantity'] or 0,
                     'image': _product_image_url(product),
                 }
             )
 
         if not popular_products:
-            for product in products.prefetch_related('categories', 'images').order_by('-date_created', '-id')[:8]:
-                stock = (
-                    StockRecord.objects.filter(product=product).aggregate(total_stock=Sum('num_in_stock'))['total_stock']
-                    or 0
-                )
+            for product in products.prefetch_related('categories', 'images', 'stockrecords').order_by('-date_created', '-id')[:8]:
+                stock = _available_stock_for_product(product)
                 popular_products.append(
                     {
                         'id': product.id,
@@ -218,6 +218,131 @@ class AdminDashboardAPIView(APIView):
         )
 
 
+class AdminSearchAnalyticsAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        now = timezone.now()
+        days = min(max(int(request.query_params.get('days', 30) or 30), 1), 365)
+        start = now - timedelta(days=days - 1)
+        events = SearchAnalyticsEvent.objects.filter(created_at__date__gte=start.date())
+        search_events = events.filter(
+            event_type__in=[
+                SearchAnalyticsEvent.EVENT_SEARCH_SUBMITTED,
+                SearchAnalyticsEvent.EVENT_RESULTS_VIEWED,
+                SearchAnalyticsEvent.EVENT_NO_RESULTS,
+                SearchAnalyticsEvent.EVENT_IMAGE_SEARCH_SUBMITTED,
+            ]
+        )
+        contexts = search_events.exclude(search_context_id='').values_list('search_context_id', flat=True).distinct()
+        context_count = contexts.count()
+        cart_contexts = (
+            events.filter(event_type=SearchAnalyticsEvent.EVENT_CART_ADDED, search_context_id__in=contexts)
+            .exclude(search_context_id='')
+            .values_list('search_context_id', flat=True)
+            .distinct()
+            .count()
+        )
+        order_contexts = (
+            events.filter(event_type=SearchAnalyticsEvent.EVENT_ORDER_CONVERTED, search_context_id__in=contexts)
+            .exclude(search_context_id='')
+            .values_list('search_context_id', flat=True)
+            .distinct()
+            .count()
+        )
+
+        top_terms = [
+            {
+                'query': row['query'],
+                'count': row['count'],
+                'avg_results': round(float(row['avg_results'] or 0), 1),
+                'last_seen': row['last_seen'],
+            }
+            for row in events.exclude(query='')
+            .filter(event_type__in=[SearchAnalyticsEvent.EVENT_SEARCH_SUBMITTED, SearchAnalyticsEvent.EVENT_RESULTS_VIEWED])
+            .values('query')
+            .annotate(count=Count('id'), avg_results=Avg('result_count'), last_seen=Max('created_at'))
+            .order_by('-count', 'query')[:20]
+        ]
+        zero_result_terms = [
+            {
+                'query': row['query'] or '(empty)',
+                'count': row['count'],
+                'last_seen': row['last_seen'],
+            }
+            for row in events.filter(event_type=SearchAnalyticsEvent.EVENT_NO_RESULTS)
+            .values('query')
+            .annotate(count=Count('id'), last_seen=Max('created_at'))
+            .order_by('-count', 'query')[:20]
+        ]
+        clicked_products = [
+            {
+                'product_id': row['product_id'],
+                'product_title': row['product_title'] or f"Product #{row['product_id']}",
+                'clicks': row['clicks'],
+                'last_seen': row['last_seen'],
+            }
+            for row in events.filter(event_type=SearchAnalyticsEvent.EVENT_PRODUCT_CLICKED)
+            .exclude(product_id=None)
+            .values('product_id', 'product_title')
+            .annotate(clicks=Count('id'), last_seen=Max('created_at'))
+            .order_by('-clicks', 'product_title')[:20]
+        ]
+        user_searches = [
+            {
+                'user_email': row['user_email'] or 'Anonymous',
+                'anonymous_id': row['anonymous_id'],
+                'searches': row['searches'],
+                'last_seen': row['last_seen'],
+            }
+            for row in search_events.values('user_email', 'anonymous_id')
+            .annotate(searches=Count('id'), last_seen=Max('created_at'))
+            .order_by('-searches', '-last_seen')[:20]
+        ]
+        recent_events = [
+            {
+                'id': event.id,
+                'event_type': event.event_type,
+                'source': event.source,
+                'query': event.query,
+                'result_count': event.result_count,
+                'product_id': event.product_id,
+                'product_title': event.product_title,
+                'order_number': event.order_number,
+                'user_email': event.user_email or 'Anonymous',
+                'category': event.category,
+                'brand': event.brand,
+                'created_at': event.created_at,
+            }
+            for event in events.order_by('-created_at', '-id')[:50]
+        ]
+
+        def rate(value):
+            return round((value / context_count) * 100, 1) if context_count else 0
+
+        return Response(
+            {
+                'range': {'days': days, 'start': start.date().isoformat(), 'end': now.date().isoformat()},
+                'kpis': {
+                    'total_searches': search_events.count(),
+                    'image_searches': events.filter(event_type=SearchAnalyticsEvent.EVENT_IMAGE_SEARCH_SUBMITTED).count(),
+                    'zero_result_searches': events.filter(event_type=SearchAnalyticsEvent.EVENT_NO_RESULTS).count(),
+                    'product_clicks': events.filter(event_type=SearchAnalyticsEvent.EVENT_PRODUCT_CLICKED).count(),
+                    'search_contexts': context_count,
+                    'cart_conversions': cart_contexts,
+                    'order_conversions': order_contexts,
+                    'search_to_cart_rate': rate(cart_contexts),
+                    'search_to_order_rate': rate(order_contexts),
+                },
+                'top_terms': top_terms,
+                'zero_result_terms': zero_result_terms,
+                'clicked_products': clicked_products,
+                'user_searches': user_searches,
+                'recent_events': recent_events,
+            }
+        )
+
+
 class AdminCampaignsAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -261,18 +386,12 @@ class AdminCampaignsAPIView(APIView):
         product_ids = [row['product_id'] for row in popular_rows]
         products = {
             product.id: product
-            for product in Product.objects.filter(id__in=product_ids).prefetch_related('categories')
-        }
-        stock_map = {
-            row['product_id']: row['total_stock'] or 0
-            for row in StockRecord.objects.filter(product_id__in=product_ids)
-            .values('product_id')
-            .annotate(total_stock=Sum('num_in_stock'))
+            for product in Product.objects.filter(id__in=product_ids).prefetch_related('categories', 'stockrecords')
         }
         product_opportunities = []
         for row in popular_rows:
             product = products.get(row['product_id'])
-            stock = stock_map.get(row['product_id'], 0)
+            stock = _available_stock_for_product(product)
             product_opportunities.append(
                 {
                     'id': row['product_id'],

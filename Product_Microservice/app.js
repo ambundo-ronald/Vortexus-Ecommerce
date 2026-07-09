@@ -7,5 +7,8 @@ app.use(express.static(`${__dirname}/public`))
 
 app.use('/api/v1/product', productRoute);
 app.use('/api/v1/products', productRoute);
+app.get('/health/live', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
 
 module.exports = app;

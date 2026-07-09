@@ -71,7 +71,7 @@ from .admin_notification_views import (
     AdminPushConfigurationAPIView,
     AdminPushSubscriptionAPIView,
 )
-from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSupportAPIView
+from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSearchAnalyticsAPIView, AdminSupportAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .email_config_views import (
     AdminEmailConfigurationAPIView,
@@ -302,6 +302,7 @@ urlpatterns = [
     path('admin/audit-logs/<int:audit_log_id>/', AuditLogDetailAPIView.as_view(), name='admin-audit-log-detail'),
     path('admin/dashboard/', AdminDashboardAPIView.as_view(), name='admin-dashboard'),
     path('admin/dashboard/summary/', AdminDashboardSummaryAPIView.as_view(), name='admin-dashboard-summary'),
+    path('admin/search-analytics/', AdminSearchAnalyticsAPIView.as_view(), name='admin-search-analytics'),
     path('admin/campaigns/', AdminCampaignsAPIView.as_view(), name='admin-campaigns'),
     path('admin/support/', AdminSupportAPIView.as_view(), name='admin-support'),
     path('admin/notifications/', AdminNotificationCollectionAPIView.as_view(), name='admin-notifications'),

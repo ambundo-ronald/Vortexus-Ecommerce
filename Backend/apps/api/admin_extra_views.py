@@ -13,6 +13,8 @@ from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.products import stockrecord_count
+
 from .checkout_utils import serialize_shipping_address
 from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer, _order_note_payload
 from apps.accounts.delivery_locations import clean_location_payload, upsert_shipping_address_location
@@ -1589,7 +1591,9 @@ class AdminReportAPIView(APIView):
                             'upc': product.upc,
                             'is_public': product.is_public,
                             'category': product.categories.first().name if product.categories.exists() else '',
-                            'stock': sum((row.num_in_stock or 0) for row in product.stockrecords.all()),
+                            'stock': sum(stockrecord_count(row) for row in product.stockrecords.all()),
+                            'stock_on_hand': sum((row.num_in_stock or 0) for row in product.stockrecords.all()),
+                            'stock_allocated': sum((row.num_allocated or 0) for row in product.stockrecords.all()),
                             'date_updated': product.date_updated,
                         },
                     ),

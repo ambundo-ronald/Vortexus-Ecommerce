@@ -151,9 +151,6 @@ export default function ShippingPage() {
     }
   }
 
-  if (loading) return <Spinner label="Loading checkout" />;
-  if (!loading && basket?.is_empty) return <Navigate to="/checkout/cart" replace />;
-
   function handleContinueToPayment() {
     if (exceedsMpesaLimit) {
       setQuotePromptOpen(true);
@@ -186,6 +183,8 @@ export default function ShippingPage() {
     }
   }
 
+  if (loading) return <Spinner label="Loading checkout" />;
+  if (!loading && basket?.is_empty) return <Navigate to="/checkout/cart" replace />;
   return (
     <section className="checkout-page">
       <CheckoutStepper
@@ -245,6 +244,7 @@ export default function ShippingPage() {
               address={deliveryMode === "new" ? null : shipping?.address}
               countries={shipping?.countries || []}
               saving={saving}
+              autoSubmitOnLocationChange
               onSubmit={handleAddressSubmit}
             />
           ) : null}
@@ -390,12 +390,6 @@ function addressOptionLabel(address) {
   const title = addressTitle(address);
   const city = [address.line4, address.state].filter(Boolean).join(", ");
   return city ? `${title} - ${city}` : title;
-}
-
-function hasAddressContent(address) {
-  if (!address) return false;
-  return ["first_name", "last_name", "line1", "line2", "line3", "line4", "state", "postcode", "country_code", "phone_number"]
-    .some((key) => Boolean(address[key]));
 }
 
 function findMatchingSavedAddress(address, savedAddresses) {

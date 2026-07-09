@@ -121,6 +121,8 @@ ALLOWED_IMAGE_EXTENSIONS = tuple(
 )
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+SESSION_COOKIE_SAMESITE = env('DJANGO_SESSION_COOKIE_SAMESITE', default='Lax')
+CSRF_COOKIE_SAMESITE = env('DJANGO_CSRF_COOKIE_SAMESITE', default='Lax')
 
 REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],

@@ -81,7 +81,7 @@ exports.getProducts = async (req, res) => {
     try {
         const products = await Product.find({});
         if (products.length < 1) {
-            res.status(200).json({
+            return res.status(200).json({
                 status: "success",
                 message: "No products added yet",
             })
@@ -142,9 +142,9 @@ exports.createProduct = async (req, res) => {
             }
         })
     } catch (err) {
-        res.status(500).json({
+        res.status(400).json({
             status: "fail",
-            message: `There was an error with your request ${err}`
+            message: err.message || "Invalid product payload"
         })
     }
 }
@@ -162,7 +162,7 @@ exports.updateProduct = async (req, res) => {
 
         const Model = productModelForCategory(req.body.category || existingProduct.category || existingProduct.__t);
         const product = await Model.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
+            returnDocument: 'after',
             runValidators: true
         });
 
@@ -173,9 +173,9 @@ exports.updateProduct = async (req, res) => {
             }
         })
     } catch (err) {
-        res.status(500).json({
+        res.status(400).json({
             status: "fail",
-            message: `There was an error with your request ${err}`
+            message: err.message || "Invalid product payload"
         })
     }
 }

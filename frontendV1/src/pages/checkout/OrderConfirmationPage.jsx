@@ -7,7 +7,7 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
-import { trackStorefrontEvent } from "../../utils/analytics";
+import { searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
 import {
   paymentStatusView,
@@ -66,6 +66,7 @@ export default function OrderConfirmationPage() {
   useEffect(() => {
     if (!order) return;
     trackStorefrontEvent("order_confirmation_viewed", {
+      ...searchAttributionMetadata(),
       order_number: order.number || order.order_number,
       currency: order.currency || "KES",
       total: order.totals?.total_incl_tax || order.total_incl_tax || order.total || order.order_total

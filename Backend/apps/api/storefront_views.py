@@ -17,7 +17,7 @@ from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.auditlog.services import record_audit_event
+from apps.auditlog.services import record_audit_event, record_search_analytics_event
 from apps.common.catalog import brand_slug
 from apps.common.currency import (
     currency_for_country,
@@ -54,6 +54,10 @@ ALLOWED_STOREFRONT_ANALYTICS_EVENTS = {
     'storefront.page_view',
     'storefront.product_view',
     'storefront.search_submitted',
+    'storefront.search_results_viewed',
+    'storefront.search_no_results',
+    'storefront.suggestion_clicked',
+    'storefront.product_clicked',
     'storefront.image_search_submitted',
     'storefront.cart_item_added',
     'storefront.cart_line_updated',
@@ -1096,6 +1100,7 @@ class StorefrontAnalyticsEventAPIView(APIView):
             message='Storefront analytics event.',
             metadata=metadata,
         )
+        record_search_analytics_event(event_type=event_type, request=request, metadata=metadata)
         return Response({'detail': 'Event recorded.'}, status=status.HTTP_201_CREATED)
 
 
@@ -1105,6 +1110,7 @@ def _analytics_metadata(metadata: dict) -> dict:
         'title',
         'referrer',
         'search',
+        'query',
         'product_id',
         'product_title',
         'quantity',
@@ -1116,6 +1122,11 @@ def _analytics_metadata(metadata: dict) -> dict:
         'currency',
         'total',
         'source',
+        'result_count',
+        'category',
+        'brand',
+        'search_context_id',
+        'anonymous_id',
     }
     clean = {}
     for key, value in metadata.items():

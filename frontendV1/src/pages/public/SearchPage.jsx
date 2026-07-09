@@ -10,6 +10,7 @@ import Pagination from "../../components/ui/Pagination.jsx";
 import { useCategories } from "../../hooks/useCategories";
 import { useSearch } from "../../hooks/useSearch";
 import { useSearchFacets } from "../../hooks/useSearchFacets";
+import { rememberSearchContext, trackStorefrontEvent } from "../../utils/analytics";
 
 export default function SearchPage() {
   const location = useLocation();
@@ -105,6 +106,21 @@ export default function SearchPage() {
   }
 
   const total = pagination?.total || results.length || 0;
+  const searchContext = useMemo(() => ({
+    search: query,
+    source: imageMode ? "image" : "text",
+    category: params.category,
+    brand: params.brand,
+    result_count: total
+  }), [imageMode, params.brand, params.category, query, total]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!query.trim() && !imageMode) return;
+    const context = rememberSearchContext(searchContext);
+    const eventName = total > 0 ? "search_results_viewed" : "search_no_results";
+    trackStorefrontEvent(eventName, { ...context, result_count: total });
+  }, [imageMode, loading, query, searchContext, total]);
 
   return (
     <>
@@ -150,7 +166,7 @@ export default function SearchPage() {
         {loading ? (
           <ProductGrid products={[]} loading skeletonCount={12} />
         ) : (
-          <ProductGrid products={results} emptyTitle="No search results" emptyMessage="Try another search." />
+          <ProductGrid products={results} emptyTitle="No search results" emptyMessage="Try another search." analyticsContext={searchContext} />
         )}
         {!imageMode ? (
           <Pagination

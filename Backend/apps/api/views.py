@@ -166,8 +166,8 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
     card = serialize_product_card(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     category = product.categories.first()
-    raw_stock = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
-    allocated_stock = int(getattr(stockrecord, 'num_allocated', 0) or 0)
+    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
     available_stock = stockrecord_count(stockrecord)
     return {
         'id': product.id,
@@ -180,8 +180,10 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
         'categorySlug': category.slug if category else '',
         'stock': available_stock,
         'availableStock': available_stock,
-        'rawStock': raw_stock,
-        'allocatedStock': allocated_stock,
+        'rawStock': stock_on_hand,
+        'allocatedStock': stock_allocated,
+        'stockOnHand': stock_on_hand,
+        'stockAllocated': stock_allocated,
         'imageUrl': card.get('thumbnail', ''),
         'isPublic': product.is_public,
         'updatedAt': product.date_updated,
@@ -192,8 +194,8 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
     detail = _build_product_detail(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     attributes = _attribute_value_map(product)
-    raw_stock = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
-    allocated_stock = int(getattr(stockrecord, 'num_allocated', 0) or 0)
+    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
+    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
     available_stock = stockrecord_count(stockrecord)
     return {
         'id': product.id,
@@ -204,8 +206,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'status': 'active' if product.is_public else 'draft',
         'stock': available_stock,
         'availableStock': available_stock,
-        'rawStock': raw_stock,
-        'allocatedStock': allocated_stock,
+        'rawStock': stock_on_hand,
+        'allocatedStock': stock_allocated,
+        'stockOnHand': stock_on_hand,
+        'stockAllocated': stock_allocated,
         'slug': product.slug or '',
         'description': product.description or '',
         'metaTitle': product.meta_title or '',
