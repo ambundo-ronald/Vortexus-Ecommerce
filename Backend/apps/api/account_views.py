@@ -253,9 +253,14 @@ class AccountLogoutAPIView(APIView):
 
 
 class AccountProfileAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated()]
 
     def get(self, request):
+        if not request.user.is_authenticated:
+            return Response({'user': None})
         return Response({'user': AccountSummarySerializer(request.user).data})
 
     def patch(self, request):
