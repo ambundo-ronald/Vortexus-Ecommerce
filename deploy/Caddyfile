@@ -5,7 +5,19 @@
         reverse_proxy backend:8000
     }
 
-    reverse_proxy frontend:80
+    handle_path /static/* {
+        root * /srv/backend/static
+        file_server
+    }
+
+    handle_path /media/* {
+        root * /srv/backend/media
+        file_server
+    }
+
+    handle {
+        reverse_proxy frontend:80
+    }
 }
 
 {$DASHBOARD_DOMAIN} {
