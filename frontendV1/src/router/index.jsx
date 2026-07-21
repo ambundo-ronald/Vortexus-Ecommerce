@@ -1,105 +1,118 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import PageWrapper from "../components/layout/PageWrapper.jsx";
+import Spinner from "../components/ui/Spinner.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import SupplierRoute from "./SupplierRoute.jsx";
-import AccountDashboardPage from "../pages/account/AccountDashboardPage.jsx";
-import AccountDeletePage from "../pages/account/AccountDeletePage.jsx";
-import AddressesPage from "../pages/account/AddressesPage.jsx";
-import MessageDetailPage from "../pages/account/MessageDetailPage.jsx";
-import MessagesPage from "../pages/account/MessagesPage.jsx";
-import NotificationDetailPage from "../pages/account/NotificationDetailPage.jsx";
-import NotificationsPage from "../pages/account/NotificationsPage.jsx";
-import OrderDetailPage from "../pages/account/OrderDetailPage.jsx";
-import OrdersPage from "../pages/account/OrdersPage.jsx";
-import PreferencesPage from "../pages/account/PreferencesPage.jsx";
-import ProfilePage from "../pages/account/ProfilePage.jsx";
-import ProductAlertsPage from "../pages/account/ProductAlertsPage.jsx";
-import RecentlyViewedPage from "../pages/account/RecentlyViewedPage.jsx";
-import ReviewsPage from "../pages/account/ReviewsPage.jsx";
-import WishlistPage from "../pages/account/WishlistPage.jsx";
-import CartPage from "../pages/checkout/CartPage.jsx";
-import CheckoutReviewPage from "../pages/checkout/CheckoutReviewPage.jsx";
-import OrderConfirmationPage from "../pages/checkout/OrderConfirmationPage.jsx";
-import PaymentPage from "../pages/checkout/PaymentPage.jsx";
-import ShippingPage from "../pages/checkout/ShippingPage.jsx";
-import NotFoundPage from "../pages/errors/NotFoundPage.jsx";
-import UnauthorizedPage from "../pages/errors/UnauthorizedPage.jsx";
-import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage.jsx";
-import LoginPage from "../pages/auth/LoginPage.jsx";
-import RegisterPage from "../pages/auth/RegisterPage.jsx";
-import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
-import VerifyEmailPage from "../pages/auth/VerifyEmailPage.jsx";
-import CategoryPage from "../pages/public/CategoryPage.jsx";
-import BrandPage from "../pages/public/BrandPage.jsx";
-import GuestOrderDetailPage from "../pages/public/GuestOrderDetailPage.jsx";
-import GuestOrderLookupPage from "../pages/public/GuestOrderLookupPage.jsx";
-import HomePage from "../pages/public/HomePage.jsx";
-import OfferDetailPage from "../pages/public/OfferDetailPage.jsx";
-import OffersPage from "../pages/public/OffersPage.jsx";
-import ProductAlertActionPage from "../pages/public/ProductAlertActionPage.jsx";
-import ProductDetailPage from "../pages/public/ProductDetailPage.jsx";
-import ProductListPage from "../pages/public/ProductListPage.jsx";
-import RangeDetailPage from "../pages/public/RangeDetailPage.jsx";
-import QuoteRequestPage from "../pages/public/QuoteRequestPage.jsx";
-import SearchPage from "../pages/public/SearchPage.jsx";
-import SharedWishlistPage from "../pages/public/SharedWishlistPage.jsx";
-import SupplierDashboardPage from "../pages/supplier/SupplierDashboardPage.jsx";
-import SupplierApplyPage from "../pages/supplier/SupplierApplyPage.jsx";
-import SupplierOrderDetailPage from "../pages/supplier/SupplierOrderDetailPage.jsx";
-import SupplierOrdersPage from "../pages/supplier/SupplierOrdersPage.jsx";
-import SupplierProductsPage from "../pages/supplier/SupplierProductsPage.jsx";
+
+const AccountDashboardPage = lazy(() => import("../pages/account/AccountDashboardPage.jsx"));
+const AccountDeletePage = lazy(() => import("../pages/account/AccountDeletePage.jsx"));
+const AddressesPage = lazy(() => import("../pages/account/AddressesPage.jsx"));
+const MessageDetailPage = lazy(() => import("../pages/account/MessageDetailPage.jsx"));
+const MessagesPage = lazy(() => import("../pages/account/MessagesPage.jsx"));
+const NotificationDetailPage = lazy(() => import("../pages/account/NotificationDetailPage.jsx"));
+const NotificationsPage = lazy(() => import("../pages/account/NotificationsPage.jsx"));
+const OrderDetailPage = lazy(() => import("../pages/account/OrderDetailPage.jsx"));
+const OrdersPage = lazy(() => import("../pages/account/OrdersPage.jsx"));
+const PreferencesPage = lazy(() => import("../pages/account/PreferencesPage.jsx"));
+const ProfilePage = lazy(() => import("../pages/account/ProfilePage.jsx"));
+const ProductAlertsPage = lazy(() => import("../pages/account/ProductAlertsPage.jsx"));
+const RecentlyViewedPage = lazy(() => import("../pages/account/RecentlyViewedPage.jsx"));
+const ReviewsPage = lazy(() => import("../pages/account/ReviewsPage.jsx"));
+const WishlistPage = lazy(() => import("../pages/account/WishlistPage.jsx"));
+const CartPage = lazy(() => import("../pages/checkout/CartPage.jsx"));
+const CheckoutReviewPage = lazy(() => import("../pages/checkout/CheckoutReviewPage.jsx"));
+const OrderConfirmationPage = lazy(() => import("../pages/checkout/OrderConfirmationPage.jsx"));
+const PaymentPage = lazy(() => import("../pages/checkout/PaymentPage.jsx"));
+const ShippingPage = lazy(() => import("../pages/checkout/ShippingPage.jsx"));
+const NotFoundPage = lazy(() => import("../pages/errors/NotFoundPage.jsx"));
+const UnauthorizedPage = lazy(() => import("../pages/errors/UnauthorizedPage.jsx"));
+const ForgotPasswordPage = lazy(() => import("../pages/auth/ForgotPasswordPage.jsx"));
+const LoginPage = lazy(() => import("../pages/auth/LoginPage.jsx"));
+const RegisterPage = lazy(() => import("../pages/auth/RegisterPage.jsx"));
+const ResetPasswordPage = lazy(() => import("../pages/auth/ResetPasswordPage.jsx"));
+const VerifyEmailPage = lazy(() => import("../pages/auth/VerifyEmailPage.jsx"));
+const CategoryPage = lazy(() => import("../pages/public/CategoryPage.jsx"));
+const BrandPage = lazy(() => import("../pages/public/BrandPage.jsx"));
+const GuestOrderDetailPage = lazy(() => import("../pages/public/GuestOrderDetailPage.jsx"));
+const GuestOrderLookupPage = lazy(() => import("../pages/public/GuestOrderLookupPage.jsx"));
+const HomePage = lazy(() => import("../pages/public/HomePage.jsx"));
+const OfferDetailPage = lazy(() => import("../pages/public/OfferDetailPage.jsx"));
+const OffersPage = lazy(() => import("../pages/public/OffersPage.jsx"));
+const ProductAlertActionPage = lazy(() => import("../pages/public/ProductAlertActionPage.jsx"));
+const ProductDetailPage = lazy(() => import("../pages/public/ProductDetailPage.jsx"));
+const ProductListPage = lazy(() => import("../pages/public/ProductListPage.jsx"));
+const RangeDetailPage = lazy(() => import("../pages/public/RangeDetailPage.jsx"));
+const QuoteRequestPage = lazy(() => import("../pages/public/QuoteRequestPage.jsx"));
+const SearchPage = lazy(() => import("../pages/public/SearchPage.jsx"));
+const SharedWishlistPage = lazy(() => import("../pages/public/SharedWishlistPage.jsx"));
+const SupplierDashboardPage = lazy(() => import("../pages/supplier/SupplierDashboardPage.jsx"));
+const SupplierApplyPage = lazy(() => import("../pages/supplier/SupplierApplyPage.jsx"));
+const SupplierOrderDetailPage = lazy(() => import("../pages/supplier/SupplierOrderDetailPage.jsx"));
+const SupplierOrdersPage = lazy(() => import("../pages/supplier/SupplierOrdersPage.jsx"));
+const SupplierProductsPage = lazy(() => import("../pages/supplier/SupplierProductsPage.jsx"));
 
 export default function AppRouter() {
   return (
-    <Routes>
-      <Route path="/" element={<PageWrapper><HomePage /></PageWrapper>} />
-      <Route path="/catalog" element={<PageWrapper><ProductListPage /></PageWrapper>} />
-      <Route path="/catalog/brand/:brandSlug" element={<PageWrapper><BrandPage /></PageWrapper>} />
-      <Route path="/catalog/category/:categorySlug" element={<PageWrapper><CategoryPage /></PageWrapper>} />
-      <Route path="/products/:productId" element={<PageWrapper><ProductDetailPage /></PageWrapper>} />
-      <Route path="/quote" element={<PageWrapper><ProtectedRoute><QuoteRequestPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/offers" element={<PageWrapper><OffersPage /></PageWrapper>} />
-      <Route path="/offers/:offerSlug" element={<PageWrapper><OfferDetailPage /></PageWrapper>} />
-      <Route path="/catalog/ranges/:rangeSlug" element={<PageWrapper><RangeDetailPage /></PageWrapper>} />
-      <Route path="/search" element={<PageWrapper><SearchPage /></PageWrapper>} />
-      <Route path="/orders/track" element={<PageWrapper><GuestOrderLookupPage /></PageWrapper>} />
-      <Route path="/orders/track/:orderNumber/:hash" element={<PageWrapper><GuestOrderDetailPage /></PageWrapper>} />
-      <Route path="/product-alerts/confirm/:key" element={<PageWrapper><ProductAlertActionPage action="confirm" /></PageWrapper>} />
-      <Route path="/product-alerts/cancel/:key" element={<PageWrapper><ProductAlertActionPage action="cancel" /></PageWrapper>} />
-      <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
-      <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
-      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><ShippingPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><PaymentPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><CheckoutReviewPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/confirmation" element={<PageWrapper><ProtectedRoute><OrderConfirmationPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/login" element={<PageWrapper><LoginPage /></PageWrapper>} />
-      <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />
-      <Route path="/forgot-password" element={<PageWrapper><ForgotPasswordPage /></PageWrapper>} />
-      <Route path="/reset-password" element={<PageWrapper><ResetPasswordPage /></PageWrapper>} />
-      <Route path="/account/verify-email" element={<PageWrapper><VerifyEmailPage /></PageWrapper>} />
-      <Route path="/unauthorized" element={<PageWrapper><UnauthorizedPage /></PageWrapper>} />
-      <Route path="/account" element={<PageWrapper><ProtectedRoute><AccountDashboardPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/delete" element={<PageWrapper><ProtectedRoute><AccountDeletePage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/addresses" element={<PageWrapper><ProtectedRoute><AddressesPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/profile" element={<PageWrapper><ProtectedRoute><ProfilePage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/messages" element={<PageWrapper><ProtectedRoute><MessagesPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/messages/:messageId" element={<PageWrapper><ProtectedRoute><MessageDetailPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/notifications" element={<PageWrapper><ProtectedRoute><NotificationsPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/notifications/:notificationId" element={<PageWrapper><ProtectedRoute><NotificationDetailPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/orders" element={<PageWrapper><ProtectedRoute><OrdersPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/orders/:orderNumber" element={<PageWrapper><ProtectedRoute><OrderDetailPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/preferences" element={<PageWrapper><ProtectedRoute><PreferencesPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/product-alerts" element={<PageWrapper><ProtectedRoute><ProductAlertsPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/recently-viewed" element={<PageWrapper><RecentlyViewedPage /></PageWrapper>} />
-      <Route path="/account/wishlist" element={<PageWrapper><ProtectedRoute><WishlistPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/account/reviews" element={<PageWrapper><ProtectedRoute><ReviewsPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/supplier/apply" element={<PageWrapper><ProtectedRoute><SupplierApplyPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/supplier" element={<PageWrapper><SupplierRoute><SupplierDashboardPage /></SupplierRoute></PageWrapper>} />
-      <Route path="/supplier/products" element={<PageWrapper><SupplierRoute requireApproved><SupplierProductsPage /></SupplierRoute></PageWrapper>} />
-      <Route path="/supplier/orders" element={<PageWrapper><SupplierRoute requireApproved><SupplierOrdersPage /></SupplierRoute></PageWrapper>} />
-      <Route path="/supplier/orders/:orderNumber" element={<PageWrapper><SupplierRoute requireApproved><SupplierOrderDetailPage /></SupplierRoute></PageWrapper>} />
-      <Route path="*" element={<PageWrapper><NotFoundPage /></PageWrapper>} />
-    </Routes>
+    <Suspense fallback={<RouteLoader />}>
+      <Routes>
+        <Route path="/" element={withShell(<HomePage />)} />
+        <Route path="/catalog" element={withShell(<ProductListPage />)} />
+        <Route path="/catalog/brand/:brandSlug" element={withShell(<BrandPage />)} />
+        <Route path="/catalog/category/:categorySlug" element={withShell(<CategoryPage />)} />
+        <Route path="/products/*" element={withShell(<ProductDetailPage />)} />
+        <Route path="/quote" element={withShell(<ProtectedRoute><QuoteRequestPage /></ProtectedRoute>)} />
+        <Route path="/offers" element={withShell(<OffersPage />)} />
+        <Route path="/offers/:offerSlug" element={withShell(<OfferDetailPage />)} />
+        <Route path="/catalog/ranges/:rangeSlug" element={withShell(<RangeDetailPage />)} />
+        <Route path="/search" element={withShell(<SearchPage />)} />
+        <Route path="/orders/track" element={withShell(<GuestOrderLookupPage />)} />
+        <Route path="/orders/track/:orderNumber/:hash" element={withShell(<GuestOrderDetailPage />)} />
+        <Route path="/product-alerts/confirm/:key" element={withShell(<ProductAlertActionPage action="confirm" />)} />
+        <Route path="/product-alerts/cancel/:key" element={withShell(<ProductAlertActionPage action="cancel" />)} />
+        <Route path="/wishlists/shared/:key" element={withShell(<SharedWishlistPage />)} />
+        <Route path="/checkout/cart" element={withShell(<CartPage />)} />
+        <Route path="/checkout/shipping" element={withShell(<ProtectedRoute><ShippingPage /></ProtectedRoute>)} />
+        <Route path="/checkout/payment" element={withShell(<ProtectedRoute><PaymentPage /></ProtectedRoute>)} />
+        <Route path="/checkout/review" element={withShell(<ProtectedRoute><CheckoutReviewPage /></ProtectedRoute>)} />
+        <Route path="/checkout/confirmation" element={withShell(<ProtectedRoute><OrderConfirmationPage /></ProtectedRoute>)} />
+        <Route path="/login" element={withShell(<LoginPage />)} />
+        <Route path="/register" element={withShell(<RegisterPage />)} />
+        <Route path="/forgot-password" element={withShell(<ForgotPasswordPage />)} />
+        <Route path="/reset-password" element={withShell(<ResetPasswordPage />)} />
+        <Route path="/account/verify-email" element={withShell(<VerifyEmailPage />)} />
+        <Route path="/unauthorized" element={withShell(<UnauthorizedPage />)} />
+        <Route path="/account" element={withShell(<ProtectedRoute><AccountDashboardPage /></ProtectedRoute>)} />
+        <Route path="/account/delete" element={withShell(<ProtectedRoute><AccountDeletePage /></ProtectedRoute>)} />
+        <Route path="/account/addresses" element={withShell(<ProtectedRoute><AddressesPage /></ProtectedRoute>)} />
+        <Route path="/account/profile" element={withShell(<ProtectedRoute><ProfilePage /></ProtectedRoute>)} />
+        <Route path="/account/messages" element={withShell(<ProtectedRoute><MessagesPage /></ProtectedRoute>)} />
+        <Route path="/account/messages/:messageId" element={withShell(<ProtectedRoute><MessageDetailPage /></ProtectedRoute>)} />
+        <Route path="/account/notifications" element={withShell(<ProtectedRoute><NotificationsPage /></ProtectedRoute>)} />
+        <Route path="/account/notifications/:notificationId" element={withShell(<ProtectedRoute><NotificationDetailPage /></ProtectedRoute>)} />
+        <Route path="/account/orders" element={withShell(<ProtectedRoute><OrdersPage /></ProtectedRoute>)} />
+        <Route path="/account/orders/:orderNumber" element={withShell(<ProtectedRoute><OrderDetailPage /></ProtectedRoute>)} />
+        <Route path="/account/preferences" element={withShell(<ProtectedRoute><PreferencesPage /></ProtectedRoute>)} />
+        <Route path="/account/product-alerts" element={withShell(<ProtectedRoute><ProductAlertsPage /></ProtectedRoute>)} />
+        <Route path="/account/recently-viewed" element={withShell(<RecentlyViewedPage />)} />
+        <Route path="/account/wishlist" element={withShell(<ProtectedRoute><WishlistPage /></ProtectedRoute>)} />
+        <Route path="/account/reviews" element={withShell(<ProtectedRoute><ReviewsPage /></ProtectedRoute>)} />
+        <Route path="/supplier/apply" element={withShell(<ProtectedRoute><SupplierApplyPage /></ProtectedRoute>)} />
+        <Route path="/supplier" element={withShell(<SupplierRoute><SupplierDashboardPage /></SupplierRoute>)} />
+        <Route path="/supplier/products" element={withShell(<SupplierRoute requireApproved><SupplierProductsPage /></SupplierRoute>)} />
+        <Route path="/supplier/orders" element={withShell(<SupplierRoute requireApproved><SupplierOrdersPage /></SupplierRoute>)} />
+        <Route path="/supplier/orders/:orderNumber" element={withShell(<SupplierRoute requireApproved><SupplierOrderDetailPage /></SupplierRoute>)} />
+        <Route path="*" element={withShell(<NotFoundPage />)} />
+      </Routes>
+    </Suspense>
   );
+}
+
+function withShell(children) {
+  return <PageWrapper>{children}</PageWrapper>;
+}
+
+function RouteLoader() {
+  return <Spinner label="Loading page" />;
 }

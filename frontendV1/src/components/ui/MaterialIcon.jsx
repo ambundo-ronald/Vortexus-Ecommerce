@@ -113,7 +113,7 @@ const iconMap = {
   bookmark_remove: BookmarkX,
   campaign: Megaphone,
   cancel: CircleOff,
-  category: PanelTop,
+  category: CategorySearchIcon,
   chat: MessageCircle,
   check: Check,
   check_circle: CheckCircle2,
@@ -242,6 +242,35 @@ const iconMap = {
   warehouse: Warehouse,
   warning: AlertCircle
 };
+
+function CategorySearchIcon({ size = 22, strokeWidth = 2, className = "", ...props }) {
+  const squareSize = 6.1;
+  const gap = 2.4;
+  const start = 2.2;
+  const second = start + squareSize + gap;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+      {...props}
+    >
+      <rect x={start} y={start} width={squareSize} height={squareSize} rx="1.2" />
+      <rect x={second} y={start} width={squareSize} height={squareSize} rx="1.2" />
+      <rect x={start} y={second} width={squareSize} height={squareSize} rx="1.2" />
+      <circle cx="16.6" cy="16.6" r="3.5" />
+      <path d="m19.2 19.2 2.5 2.5" />
+    </svg>
+  );
+}
 
 const filledIcons = new Set([
   "favorite",

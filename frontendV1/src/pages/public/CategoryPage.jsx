@@ -3,11 +3,14 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import ProductSortBar from "../../components/catalog/ProductSortBar.jsx";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import { useCategories } from "../../hooks/useCategories";
 import { useProducts } from "../../hooks/useProducts";
+import { productTitle, productUrl } from "../../utils/productDisplay";
 
 export default function CategoryPage() {
   const { categorySlug = "" } = useParams();
@@ -29,6 +32,9 @@ export default function CategoryPage() {
     () => categories.find((item) => item.slug === categorySlug),
     [categories, categorySlug]
   );
+  const categoryTitle = category?.name || titleFromSlug(categorySlug);
+  const categoryDescription = category?.description || `Shop ${categoryTitle} products from Reesolmart. Compare stock availability, prices, specifications, and delivery options.`;
+  const canonicalPath = `/catalog/category/${categorySlug}`;
 
   useEffect(() => {
     void fetchProducts(params);
@@ -53,14 +59,30 @@ export default function CategoryPage() {
 
   return (
     <section className="category-page">
+      <Seo
+        title={`${categoryTitle} | Reesolmart`}
+        description={categoryDescription}
+        canonicalPath={canonicalPath}
+        jsonLd={[
+          buildBreadcrumbSchema(categoryTitle, canonicalPath),
+          buildItemListSchema(products, canonicalPath)
+        ]}
+      />
       <Link className="back-link" to="/catalog">
         <MaterialIcon name="arrow_back" size={18} />
         All products
       </Link>
+      <BreadcrumbNav
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Shop", href: "/catalog" },
+          { label: categoryTitle }
+        ]}
+      />
 
       <div className="category-page__head surface-panel">
         <div>
-          <h1>{category?.name || titleFromSlug(categorySlug)}</h1>
+          <h1>{categoryTitle}</h1>
           <p>{pagination?.total || 0} product{pagination?.total === 1 ? "" : "s"}</p>
         </div>
         {products.length ? (
@@ -92,6 +114,32 @@ export default function CategoryPage() {
       />
     </section>
   );
+}
+
+function buildBreadcrumbSchema(categoryTitle, canonicalPath) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: absoluteUrl("/") },
+      { "@type": "ListItem", position: 2, name: "Shop", item: absoluteUrl("/catalog") },
+      { "@type": "ListItem", position: 3, name: categoryTitle, item: absoluteUrl(canonicalPath) }
+    ]
+  };
+}
+
+function buildItemListSchema(products = [], canonicalPath = "/catalog") {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    url: absoluteUrl(canonicalPath),
+    itemListElement: products.slice(0, 24).map((product, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      url: absoluteUrl(productUrl(product)),
+      name: productTitle(product)
+    }))
+  };
 }
 
 function titleFromSlug(slug) {

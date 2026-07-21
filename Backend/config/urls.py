@@ -4,12 +4,17 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.static import serve
+from apps.api.seo_views import ProductCanonicalRedirectView, RobotsTxtView, StorefrontSitemapView
 from apps.common.views import IndustrialHomeView
 
 oscar_urlpatterns, _, _ = apps.get_app_config('oscar').urls
 
 urlpatterns = [
     path('', IndustrialHomeView.as_view(), name='industrial-home'),
+    path('robots.txt', RobotsTxtView.as_view(), name='robots-txt'),
+    path('sitemap.xml', StorefrontSitemapView.as_view(), name='storefront-sitemap'),
+    path('products/<int:product_id>', ProductCanonicalRedirectView.as_view(), name='product-canonical-redirect'),
+    path('products/<int:product_id>/', ProductCanonicalRedirectView.as_view(), name='product-canonical-redirect-slash'),
     path('admin/', admin.site.urls),
     path('api/v1/', include('apps.api.urls')),
 ]

@@ -47,7 +47,7 @@ export const ENDPOINTS = {
     categories: "/catalog/categories/",
     range: (slug) => `/catalog/ranges/${slug}/`,
     products: "/catalog/products/",
-    product: (productId) => `/catalog/products/${productId}/`,
+    product: (productRef) => `/catalog/products/${encodeURIComponent(productRef)}/`,
     productReviews: (productId) => `/catalog/products/${productId}/reviews/`,
     productReview: (productId, reviewId) => `/catalog/products/${productId}/reviews/${reviewId}/`,
     productReviewVote: (productId, reviewId) => `/catalog/products/${productId}/reviews/${reviewId}/vote/`,

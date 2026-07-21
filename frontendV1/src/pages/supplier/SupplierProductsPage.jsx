@@ -291,7 +291,14 @@ export default function SupplierProductsPage() {
               <div className="supplier-existing-images">
                 {existingImages.map((image) => (
                   <div className="supplier-existing-image" key={image.id || image.src}>
-                    <img src={mediaUrl(image.src)} alt={image.alt || form.title} />
+                    <img
+                      src={mediaUrl(image.src)}
+                      alt={image.alt || form.title}
+                      loading="lazy"
+                      decoding="async"
+                      width="96"
+                      height="96"
+                    />
                     <button
                       className="danger-link"
                       type="button"

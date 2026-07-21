@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node scripts/prerenderSeo.mjs",
+    "prerender:seo": "node scripts/prerenderSeo.mjs",
     "preview": "vite preview",
     "test": "jest --passWithNoTests"
   },

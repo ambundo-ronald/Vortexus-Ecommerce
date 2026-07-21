@@ -6,8 +6,8 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
-import { productImageUrl } from "../../utils/productImages";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 import "./CartDrawer.css";
 
 const emptyCartImage = "/404 images/you cart is empty.png";
@@ -108,9 +108,10 @@ function DrawerCartItem({ line, loading = false, onClick, onRemove, onUpdateQuan
   const product = line.product || {};
   const title = productTitle({ ...line, product });
   const image = productImageUrl({ ...line, ...product, product });
+  const imageAlt = productImageAlt({ ...line, ...product, product }, title);
   const resolvedProductId = productId({ ...line, product });
   const quantity = Math.max(1, Number(line.quantity || 1));
-  const productPath = resolvedProductId ? `/products/${resolvedProductId}` : "/catalog";
+  const productPath = resolvedProductId ? productUrl({ ...line, product }) : "/catalog";
 
   async function handleQuantityChange(nextQuantity) {
     try {
@@ -132,7 +133,16 @@ function DrawerCartItem({ line, loading = false, onClick, onRemove, onUpdateQuan
     <article className="cart-drawer-item">
       <Link className="cart-drawer-item__product" to={productPath} onClick={onClick}>
         <span className="cart-drawer-item__media">
-          {image ? <img src={image} alt={title} /> : <em>{productInitials(title)}</em>}
+          {image ? (
+            <img
+              src={image}
+              alt={imageAlt}
+              loading="lazy"
+              decoding="async"
+              width="96"
+              height="96"
+            />
+          ) : <em>{productInitials(title)}</em>}
         </span>
         <span className="cart-drawer-item__body">
           <strong>{title}</strong>

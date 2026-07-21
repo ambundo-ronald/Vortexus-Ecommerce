@@ -22,6 +22,10 @@ const productSchema = z.object({
     .string({ error: "Product name is required" })
     .min(1, "Product name cannot be empty"),
   description: z.string().optional(),
+  highlightRows: z.array(z.object({
+    type: z.enum(["bullet", "number"]).default("bullet"),
+    text: z.string().optional(),
+  })).optional(),
   slug: z.string().optional(),
   metaTitle: z.string().optional(),
   metaDescription: z.string().optional(),
@@ -88,6 +92,7 @@ export type ProductFormSchema = z.infer<typeof productSchema>;
 const localFormState = reactive<ProductFormSchema>({
   name: "",
   description: "",
+  highlightRows: [],
   slug: "",
   metaTitle: "",
   metaDescription: "",
@@ -126,6 +131,7 @@ watch(
     Object.assign(localFormState, {
       name: "",
       description: "",
+      highlightRows: [],
       slug: "",
       metaTitle: "",
       metaDescription: "",
@@ -158,6 +164,8 @@ watch(
     })
     if (!localFormState.attributes)
       localFormState.attributes = {}
+    if (!localFormState.highlightRows)
+      localFormState.highlightRows = []
     if (!localFormState.packingDimensions)
       localFormState.packingDimensions = {}
     if (!localFormState.specificationRows)
@@ -316,6 +324,16 @@ function removeRecommendedProduct(productId: number) {
   localFormState.recommendedProductIds = (localFormState.recommendedProductIds || []).filter(id => id !== productId)
 }
 
+function addHighlightRow(type: 'bullet' | 'number' = 'bullet') {
+  if (!localFormState.highlightRows)
+    localFormState.highlightRows = []
+  localFormState.highlightRows.push({ type, text: "" })
+}
+
+function removeHighlightRow(index: number) {
+  localFormState.highlightRows?.splice(index, 1)
+}
+
 function addSpecificationRow() {
   if (!localFormState.specificationRows)
     localFormState.specificationRows = []
@@ -378,6 +396,55 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                     class="w-full"
                   />
                 </UFormField>
+                <div class="rounded-lg border border-slate-200 p-4">
+                  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="flex items-center gap-2">
+                      <UIcon name="i-lucide-list-checks" class="size-4 text-blue-600" />
+                      <h4 class="text-sm font-bold text-slate-950">
+                        Product highlights
+                      </h4>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <UButton icon="i-lucide-list" size="sm" variant="outline" type="button" @click="addHighlightRow('bullet')">
+                        Bullet
+                      </UButton>
+                      <UButton icon="i-lucide-list-ordered" size="sm" variant="outline" type="button" @click="addHighlightRow('number')">
+                        Number
+                      </UButton>
+                    </div>
+                  </div>
+                  <div v-if="localFormState.highlightRows?.length" class="space-y-3">
+                    <div
+                      v-for="(row, index) in localFormState.highlightRows"
+                      :key="index"
+                      class="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr_auto]"
+                    >
+                      <USelect
+                        v-model="row.type"
+                        :items="[
+                          { label: 'Bullet', value: 'bullet' },
+                          { label: 'Number', value: 'number' },
+                        ]"
+                        value-attribute="value"
+                        option-attribute="label"
+                        size="lg"
+                      />
+                      <UInput v-model="row.text" placeholder="Short customer-facing highlight" size="lg" />
+                      <UButton
+                        icon="i-lucide-trash-2"
+                        color="error"
+                        variant="ghost"
+                        square
+                        type="button"
+                        :aria-label="`Remove highlight ${index + 1}`"
+                        @click="removeHighlightRow(index)"
+                      />
+                    </div>
+                  </div>
+                  <p v-else class="text-sm text-slate-500">
+                    Add short selling points, feature notes, or numbered package contents.
+                  </p>
+                </div>
               </div>
             </UCard>
             <UCard class="rounded-xl">

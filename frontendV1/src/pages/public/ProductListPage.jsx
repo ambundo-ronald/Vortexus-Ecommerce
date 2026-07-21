@@ -4,12 +4,14 @@ import { useSearchParams } from "react-router-dom";
 import ProductFilters from "../../components/catalog/ProductFilters.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import ProductSortBar from "../../components/catalog/ProductSortBar.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import { useCategories } from "../../hooks/useCategories";
 import { useProducts } from "../../hooks/useProducts";
 import { useSearchFacets } from "../../hooks/useSearchFacets";
+import { productTitle, productUrl } from "../../utils/productDisplay";
 
 export default function ProductListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,6 +50,11 @@ export default function ProductListPage() {
     if (!params.brand) return null;
     return facets.brands.find((brand) => (brand.slug || brand.name) === params.brand) || null;
   }, [facets.brands, params.brand]);
+  const pageTitle = activeBrand?.name || activeCategory?.name || "Shop products";
+  const pageDescription = params.q
+    ? `Search Reesolmart for ${params.q}. Compare products, prices, stock availability, and delivery options.`
+    : `Shop pumps, filters, tanks, water treatment systems, spares, and industrial supplies from Reesolmart.`;
+  const canonicalPath = buildCatalogCanonicalPath(params);
 
   useEffect(() => {
     void fetchProducts(params);
@@ -84,6 +91,15 @@ export default function ProductListPage() {
   return (
     <>
       <section className="catalog-page">
+        <Seo
+          title={`${pageTitle} | Reesolmart`}
+          description={pageDescription}
+          canonicalPath={canonicalPath}
+          jsonLd={[
+            buildCatalogBreadcrumbSchema(pageTitle, canonicalPath),
+            buildItemListSchema(products, canonicalPath)
+          ]}
+        />
         <Alert>{categoriesError || facetsError || error}</Alert>
 
         <div className="catalog-layout">
@@ -143,4 +159,39 @@ export default function ProductListPage() {
       </div>
     </>
   );
+}
+
+function buildCatalogCanonicalPath(params) {
+  const next = new URLSearchParams();
+  ["q", "category", "brand", "sort_by", "page"].forEach((key) => {
+    if (params[key] && !(key === "sort_by" && params[key] === "relevance") && !(key === "page" && Number(params[key]) === 1)) {
+      next.set(key, String(params[key]));
+    }
+  });
+  return next.toString() ? `/catalog?${next.toString()}` : "/catalog";
+}
+
+function buildCatalogBreadcrumbSchema(pageTitle, canonicalPath) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: absoluteUrl("/") },
+      { "@type": "ListItem", position: 2, name: "Shop", item: absoluteUrl(canonicalPath || "/catalog") }
+    ].concat(pageTitle && pageTitle !== "Shop products" ? [{ "@type": "ListItem", position: 3, name: pageTitle, item: absoluteUrl(canonicalPath) }] : [])
+  };
+}
+
+function buildItemListSchema(products = [], canonicalPath = "/catalog") {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    url: absoluteUrl(canonicalPath),
+    itemListElement: products.slice(0, 24).map((product, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      url: absoluteUrl(productUrl(product)),
+      name: productTitle(product)
+    }))
+  };
 }

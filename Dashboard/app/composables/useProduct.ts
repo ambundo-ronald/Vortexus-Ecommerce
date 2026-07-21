@@ -160,6 +160,42 @@ function flattenCategories(results: any[] = []) {
   return flattened
 }
 
+function parseProductHighlights(value: any): { type: 'bullet' | 'number', text: string }[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const source = item && typeof item === 'object' ? item : { text: item }
+        const text = String(source.text || source.value || '').trim()
+        const type = ['number', 'numbered', 'ordered'].includes(String(source.type || '').toLowerCase()) ? 'number' : 'bullet'
+        return text ? { type, text } : null
+      })
+      .filter(Boolean) as { type: 'bullet' | 'number', text: string }[]
+  }
+
+  const text = String(value || '').trim()
+  if (!text)
+    return []
+
+  try {
+    return parseProductHighlights(JSON.parse(text))
+  }
+  catch {
+    return text
+      .split(/\r?\n/)
+      .map((line) => {
+        const clean = line.trim()
+        if (!clean)
+          return null
+        const isNumbered = /^\d+\./.test(clean)
+        return {
+          type: isNumbered ? 'number' : 'bullet',
+          text: clean.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, '').trim(),
+        }
+      })
+      .filter((item): item is { type: 'bullet' | 'number', text: string } => Boolean(item?.text))
+  }
+}
+
 function mapProductDetailToForm(product: any) {
   const firstCategoryId = product.categoryIds?.[0] ? String(product.categoryIds[0]) : ''
   const specificationMap = Object.fromEntries((product.specifications || []).map((item: any) => [item.code, item.value]))
@@ -172,6 +208,7 @@ function mapProductDetailToForm(product: any) {
     id: product.id,
     name: product.name,
     description: product.description || '',
+    highlightRows: parseProductHighlights(product.highlights || specificationMap.product_highlights || ''),
     slug: product.slug || '',
     metaTitle: product.metaTitle || '',
     metaDescription: product.metaDescription || '',
@@ -238,6 +275,12 @@ function mapFormToPayload(data: Record<string, any>) {
     num_in_stock: Number(data.stock || 0),
     attributes: {
       ...dynamicAttributes,
+      product_highlights: JSON.stringify((data.highlightRows || [])
+        .map((row: any) => ({
+          type: row?.type === 'number' ? 'number' : 'bullet',
+          text: String(row?.text || '').trim(),
+        }))
+        .filter((row: any) => row.text)),
       weight_grams: data.weight ?? '',
       dimensions: data.dimensions || '',
       brand: data.brand || '',

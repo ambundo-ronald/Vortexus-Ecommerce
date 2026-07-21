@@ -10,7 +10,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useUiStore } from "../../store/ui.store";
 import { formatDate } from "../../utils/formatDate";
 import { normalizeApiError } from "../../utils/errorHandler";
-import { productImageUrl } from "../../utils/productImages";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 import { productId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
 
 export default function ProductAlertsPage() {
@@ -100,6 +100,7 @@ function ProductAlertCard({ alert, saving, onRemove }) {
   const imageUrl = productImageUrl(product);
   const price = productPrice(product);
   const title = productTitle(product, `Product #${alert.product_id}`);
+  const imageAlt = productImageAlt(product, title);
   const status = alert.status || "Pending";
   const statusKey = String(status).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const dateLabel = alert.date_cancelled
@@ -111,7 +112,16 @@ function ProductAlertCard({ alert, saving, onRemove }) {
   return (
     <article className="product-alert-card">
       <Link className="product-alert-card__media" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
-        {imageUrl ? <img src={imageUrl} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={imageAlt}
+            loading="lazy"
+            decoding="async"
+            width="160"
+            height="160"
+          />
+        ) : <span>{productInitials(title)}</span>}
       </Link>
       <div className="product-alert-card__body">
         <strong>{title}</strong>

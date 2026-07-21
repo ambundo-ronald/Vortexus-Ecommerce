@@ -8,7 +8,9 @@ import ProductImageGallery from "../../components/catalog/ProductImageGallery.js
 import ProductAlertForm from "../../components/catalog/ProductAlertForm.jsx";
 import ProductSpecifications from "../../components/catalog/ProductSpecifications.jsx";
 import RelatedProducts from "../../components/catalog/RelatedProducts.jsx";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
 import ReviewList from "../../components/reviews/ReviewList.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import StarRating from "../../components/reviews/StarRating.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -24,18 +26,21 @@ import { searchAttributionMetadata, trackStorefrontEvent } from "../../utils/ana
 import {
   productBrand,
   productCategory,
+  productCategoryPath,
   productId as resolveProductId,
   productPrice,
   productRating,
   productSku,
   productTitle,
+  productUrl,
   stockTone
 } from "../../utils/productDisplay";
 import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
-  const { productId: routeProductId } = useParams();
-  const { product, related, loading, error } = useProductDetail(routeProductId);
+  const { "*": routeProductPath = "" } = useParams();
+  const routeProductRef = lastPathSegment(routeProductPath);
+  const { product, related, loading, error } = useProductDetail(routeProductRef);
   const addItem = useCartStore((state) => state.addItem);
   const cartLoading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -51,23 +56,66 @@ export default function ProductDetailPage() {
     () => productOptions.filter((option) => option.required && !selectedOptions[option.id || option.code]),
     [productOptions, selectedOptions]
   );
-  const category = useMemo(() => product?.categories?.[0] || null, [product]);
+  const breadcrumbCategories = useMemo(() => productCategoryPath(product || {}), [product]);
+  const category = useMemo(() => breadcrumbCategories[breadcrumbCategories.length - 1] || product?.categories?.[0] || null, [breadcrumbCategories, product]);
   const categoryLabel = productCategory(product || {}, "Uncategorized");
   const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
   const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
-  const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
-  const resolvedProductId = resolveProductId(product || {}) || routeProductId;
+  const overviewText = useMemo(() => cleanOverview(product?.description), [product?.description]);
+  const productHighlights = useMemo(() => normalizeProductHighlights(product?.highlights), [product?.highlights]);
+  const resolvedProductId = resolveProductId(product || {}) || routeProductRef;
   const resolvedTitle = productTitle(product || {});
   const resolvedSku = productSku(product || {}, "Pending");
   const shareUrl = useMemo(() => {
-    const path = `/products/${resolvedProductId || routeProductId}`;
+    const path = product ? productUrl(product) : `/products/${resolvedProductId || routeProductRef}`;
     if (typeof window === "undefined") return path;
     return new URL(path, window.location.origin).toString();
-  }, [resolvedProductId, routeProductId]);
+  }, [product, resolvedProductId, routeProductRef]);
+  const breadcrumbItems = useMemo(() => {
+    const categoryItems = breadcrumbCategories.length
+      ? breadcrumbCategories.map((item) => ({
+          label: item.name || item.title || categoryLabel,
+          href: item.slug ? `/catalog/category/${item.slug}` : categoryHref
+        }))
+      : [{ label: categoryLabel, href: categoryHref }];
+
+    return [
+      { label: "Home", href: "/" },
+      { label: "Shop", href: "/catalog" },
+      ...categoryItems,
+      { label: resolvedTitle }
+    ];
+  }, [breadcrumbCategories, categoryHref, categoryLabel, resolvedTitle]);
 
   useEffect(() => {
     if (user && resolvedProductId) void loadStatus([resolvedProductId]);
   }, [loadStatus, resolvedProductId, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const body = document.body;
+    const mediaQuery = window.matchMedia("(max-width: 759px)");
+
+    function syncChrome() {
+      if (!mediaQuery.matches) {
+        body.classList.remove("product-detail-mobile-top", "product-detail-mobile-scrolled");
+        return;
+      }
+      const isScrolled = window.scrollY > 24;
+      body.classList.toggle("product-detail-mobile-top", !isScrolled);
+      body.classList.toggle("product-detail-mobile-scrolled", isScrolled);
+    }
+
+    syncChrome();
+    window.addEventListener("scroll", syncChrome, { passive: true });
+    mediaQuery.addEventListener?.("change", syncChrome);
+
+    return () => {
+      window.removeEventListener("scroll", syncChrome);
+      mediaQuery.removeEventListener?.("change", syncChrome);
+      body.classList.remove("product-detail-mobile-top", "product-detail-mobile-scrolled");
+    };
+  }, []);
 
   useEffect(() => {
     setQuantity(1);
@@ -81,7 +129,7 @@ export default function ProductDetailPage() {
       ...searchAttributionMetadata(),
       product_id: resolvedProductId,
       product_title: resolvedTitle,
-      path: `/products/${resolvedProductId}`
+      path: productUrl(product)
     });
   }, [product, resolvedProductId, resolvedTitle]);
 
@@ -96,6 +144,23 @@ export default function ProductDetailPage() {
   const brandLabel = productBrand(product, "Not specified");
   const maxQuantity = stock.count > 0 ? stock.count : 99;
   const boundedQuantity = Math.max(1, Math.min(quantity, maxQuantity || 1));
+  const canonicalPath = productUrl(product);
+  const seoDescription = buildProductSeoDescription(product, resolvedTitle, brandLabel, categoryLabel);
+  const seoImage = product.primary_image || product.thumbnail || product.images?.[0] || "";
+  const seoSchemas = buildProductSeoSchemas({
+    product,
+    title: resolvedTitle,
+    description: seoDescription,
+    canonicalPath,
+    image: seoImage,
+    price,
+    stock,
+    rating,
+    reviewCount,
+    brand: brandLabel,
+    sku: resolvedSku,
+    breadcrumbs: breadcrumbCategories
+  });
 
   async function handleAddToCart() {
     if (!stock.isAvailable) {
@@ -193,15 +258,15 @@ export default function ProductDetailPage() {
 
   return (
     <div className="product-detail-page">
-      <nav className="product-breadcrumbs" aria-label="Breadcrumb">
-        <Link to="/">Home</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <Link to="/catalog">Shop</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <Link to={categoryHref}>{categoryLabel}</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <span>{resolvedTitle}</span>
-      </nav>
+      <Seo
+        title={`${resolvedTitle} | Reesolmart`}
+        description={seoDescription}
+        canonicalPath={canonicalPath}
+        image={seoImage}
+        type="product"
+        jsonLd={seoSchemas}
+      />
+      <BreadcrumbNav items={breadcrumbItems} />
 
       <section className="product-detail">
         <div className="product-detail__media-panel">
@@ -212,6 +277,16 @@ export default function ProductDetailPage() {
           <div className="product-detail__topline">
             <div>
               <h1>{resolvedTitle}</h1>
+              <dl className="product-detail__identity product-detail__identity--inline">
+                <div>
+                  <dt>Brand</dt>
+                  <dd>{brandLabel}</dd>
+                </div>
+                <div>
+                  <dt>SKU</dt>
+                  <dd>{resolvedSku}</dd>
+                </div>
+              </dl>
               <div className="product-detail__rating">
                 <StarRating value={rating || 0} size={17} />
                 <span>{rating ? rating.toFixed(1) : "0.0"}</span>
@@ -221,16 +296,6 @@ export default function ProductDetailPage() {
                 {!reviewCount ? <a href="#reviews">Be the first to review</a> : null}
               </div>
             </div>
-            <dl className="product-detail__identity">
-              <div>
-                <dt>SKU</dt>
-                <dd>{resolvedSku}</dd>
-              </div>
-              <div>
-                <dt>Brand</dt>
-                <dd>{brandLabel}</dd>
-              </div>
-            </dl>
           </div>
 
           <div className="product-price-block">
@@ -243,7 +308,7 @@ export default function ProductDetailPage() {
             ) : price.sublabel ? <span>{price.sublabel}</span> : null}
           </div>
 
-          <dl className="product-quick-facts">
+          <dl className="product-quick-facts" aria-label="Product facts">
             <div>
               <dt>Category</dt>
               <dd>{categoryLabel}</dd>
@@ -254,9 +319,22 @@ export default function ProductDetailPage() {
             </div>
           </dl>
 
-          <section className="product-overview" aria-label="Quick overview">
-            <p>{overviewText}</p>
-          </section>
+          {productHighlights.length ? (
+            <section className="product-overview" aria-label="Product highlights">
+              <div className="product-overview__head">
+                <MaterialIcon name="checklist" size={18} />
+                <h2>Product highlights</h2>
+              </div>
+              <ul>
+                {productHighlights.map((item, index) => (
+                  <li className={item.type === "number" ? "is-numbered" : ""} key={`${item.type}-${item.text}-${index}`}>
+                    <span>{item.type === "number" ? index + 1 : ""}</span>
+                    {item.text}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {productOptions.length ? (
             <div className="product-options">
@@ -273,24 +351,25 @@ export default function ProductDetailPage() {
             </div>
           ) : null}
 
-          <div className="product-actions">
-            <QuantityStepper
-              value={boundedQuantity}
-              max={maxQuantity}
-              disabled={!canAddToCart || cartLoading}
-              onChange={setQuantity}
-            />
+          <div className="product-purchase-panel">
+            <div className="product-actions">
+              <QuantityStepper
+                value={boundedQuantity}
+                max={maxQuantity}
+                disabled={!canAddToCart || cartLoading}
+                onChange={setQuantity}
+              />
+              <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
+              {!stock.isAvailable ? (
+                <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
+                  Request quote
+                </Link>
+              ) : null}
+            </div>
             <button className={`primary-button${canAddToCart ? "" : " primary-button--muted"}`} type="button" disabled={cartLoading} onClick={() => void handleAddToCart()}>
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
             </button>
-            <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
-            {!stock.isAvailable ? (
-              <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
-                <MaterialIcon name="request_quote" size={19} />
-                Request quotation
-              </Link>
-            ) : null}
           </div>
 
           {!stock.isAvailable ? (
@@ -301,17 +380,23 @@ export default function ProductDetailPage() {
             />
           ) : null}
         </div>
+
+        <ProductSharePanel
+          product={product}
+          shareUrl={shareUrl}
+          copied={copiedShare}
+          onCopy={() => void handleCopyShare()}
+          onNativeShare={() => void handleNativeShare()}
+        />
       </section>
 
-      <ProductSharePanel
-        product={product}
-        shareUrl={shareUrl}
-        copied={copiedShare}
-        onCopy={() => void handleCopyShare()}
-        onNativeShare={() => void handleNativeShare()}
-      />
-
       <section className="product-info-grid product-info-grid--single">
+        {overviewText ? (
+          <article className="product-info-card">
+            <h2>Description</h2>
+            <p>{overviewText}</p>
+          </article>
+        ) : null}
         <article className="product-info-card">
           <h2>Technical specifications</h2>
           <ProductSpecifications specifications={detailSpecs} />
@@ -351,6 +436,22 @@ function cleanOverview(value = "") {
     .trim();
 }
 
+function normalizeProductHighlights(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const source = item && typeof item === "object" ? item : { text: item };
+      const text = cleanOverview(source.text || source.value || "");
+      if (!text) return null;
+      return {
+        type: ["number", "numbered", "ordered"].includes(String(source.type || "").toLowerCase()) ? "number" : "bullet",
+        text
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 function buildProductSpecs(product) {
   if (!product) return [];
 
@@ -373,6 +474,88 @@ function buildProductSpecs(product) {
   addSpec("Dimensions", product.dimensions, "dimensions");
 
   return specs;
+}
+
+function buildProductSeoDescription(product, title, brand, category) {
+  const overview = cleanOverview(product?.description || "");
+  if (overview) return truncateText(overview, 155);
+  return truncateText(`Buy ${title}${brand && brand !== "Not specified" ? ` by ${brand}` : ""} from Reesolmart. View price, stock availability, specifications, and delivery options${category ? ` for ${category}` : ""}.`, 155);
+}
+
+function buildProductSeoSchemas({ product, title, description, canonicalPath, image, price, stock, rating, reviewCount, brand, sku, breadcrumbs }) {
+  const canonicalUrl = absoluteUrl(canonicalPath);
+  const imageUrl = image ? absoluteUrl(image) : undefined;
+  const breadcrumbItems = [
+    { name: "Home", url: absoluteUrl("/") },
+    { name: "Shop", url: absoluteUrl("/catalog") },
+    ...breadcrumbs.map((category) => ({
+      name: category.name || category.title || "Category",
+      url: absoluteUrl(category.slug ? `/catalog/category/${category.slug}` : "/catalog")
+    })),
+    { name: title, url: canonicalUrl }
+  ];
+
+  const productSchema = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: title,
+    description,
+    sku: sku || undefined,
+    image: imageUrl ? [imageUrl] : undefined,
+    brand: brand && brand !== "Not specified" ? { "@type": "Brand", name: brand } : undefined,
+    category: productCategory(product, ""),
+    url: canonicalUrl,
+    offers: price?.isQuote
+      ? undefined
+      : {
+          "@type": "Offer",
+          url: canonicalUrl,
+          priceCurrency: price.currency || product.currency || "KES",
+          price: price.value,
+          availability: stock.isAvailable ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          itemCondition: "https://schema.org/NewCondition"
+        },
+    aggregateRating: reviewCount > 0 && rating > 0
+      ? {
+          "@type": "AggregateRating",
+          ratingValue: Number(rating.toFixed(1)),
+          reviewCount
+        }
+      : undefined
+  };
+
+  return [
+    removeEmptySchemaValues(productSchema),
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: breadcrumbItems.map((item, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.name,
+        item: item.url
+      }))
+    }
+  ];
+}
+
+function lastPathSegment(path = "") {
+  return String(path || "")
+    .split("/")
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function truncateText(value = "", maxLength = 155) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength - 1).trim()}…`;
+}
+
+function removeEmptySchemaValues(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== "")
+  );
 }
 
 function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare }) {
@@ -424,11 +607,9 @@ function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare })
         </a>
         <div className="product-share-actions">
           <button className="secondary-button product-share-native" type="button" onClick={onNativeShare}>
-            <MaterialIcon name="ios_share" size={18} />
             Share product
           </button>
           <button className="secondary-button product-share-native" type="button" onClick={onCopy}>
-            <MaterialIcon name={copied ? "check" : "content_copy"} size={18} />
             {copied ? "Copied" : "Copy link"}
           </button>
           <div className="social-share-list">

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
-import { productImageUrl } from "../../utils/productImages";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 
 export default function SupplierProductTable({ products = [], loading = false, onEdit, onDelete, deletingId = null }) {
   if (loading) {
@@ -31,17 +31,28 @@ export default function SupplierProductTable({ products = [], loading = false, o
         <span>Status</span>
         <span>Actions</span>
       </div>
-      {products.map((product) => (
-        <div className="supplier-table__row" key={product.id}>
-          <div className="supplier-product-cell">
-            <div className="supplier-product-cell__image">
-              {productImageUrl(product) ? <img src={productImageUrl(product)} alt="" /> : <MaterialIcon name="inventory_2" size={22} />}
+      {products.map((product) => {
+        const imageUrl = productImageUrl(product);
+        return (
+          <div className="supplier-table__row" key={product.id}>
+            <div className="supplier-product-cell">
+              <div className="supplier-product-cell__image">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={productImageAlt(product, product.title)}
+                    loading="lazy"
+                    decoding="async"
+                    width="64"
+                    height="64"
+                  />
+                ) : <MaterialIcon name="inventory_2" size={22} />}
+              </div>
+              <div>
+                <strong>{product.title}</strong>
+                <span>{product.upc || product.sku || "No SKU"}</span>
+              </div>
             </div>
-            <div>
-              <strong>{product.title}</strong>
-              <span>{product.upc || product.sku || "No SKU"}</span>
-            </div>
-          </div>
           <div>
             <strong>{money(product.offer?.price, product.offer?.currency || product.currency)}</strong>
             <span>{Number(product.offer?.num_in_stock || 0).toLocaleString()} in stock</span>
@@ -70,8 +81,9 @@ export default function SupplierProductTable({ products = [], loading = false, o
               <MaterialIcon name={deletingId === product.id ? "hourglass_top" : "delete"} size={18} />
             </button>
           </div>
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

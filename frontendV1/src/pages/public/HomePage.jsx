@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import HeroImageCarousel from "../../components/home/HeroImageCarousel.jsx";
 import { AnnouncementStrip, BrandStrip, FeaturedMarketingBlocks, TopCategoryStrip } from "../../components/home/MarketingBlocks.jsx";
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import { useMarketingBlocks } from "../../hooks/useMarketingBlocks";
@@ -14,8 +15,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { mediaUrl } from "../../utils/media";
-import { productImageUrl } from "../../utils/productImages";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
 import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
 
@@ -82,6 +83,33 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
+      <Seo
+        title="Reesolmart | Just in time, buying"
+        description="Shop pumps, filters, tanks, water treatment systems, spares, and industrial supplies from Reesolmart."
+        canonicalPath="/"
+        jsonLd={[
+          {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: "Reesolmart",
+            url: absoluteUrl("/"),
+            logo: absoluteUrl("/Reesolmart logo.png"),
+            email: "support@reesolmart.local",
+            slogan: "Just in time, buying"
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "Reesolmart",
+            url: absoluteUrl("/"),
+            potentialAction: {
+              "@type": "SearchAction",
+              target: `${absoluteUrl("/search")}?q={search_term_string}`,
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]}
+      />
       <AnnouncementStrip blocks={marketingByPlacement.announcement} />
 
       <section className="home-showcase" aria-label="Store highlights">
@@ -252,10 +280,20 @@ function ProductThumb({ product }) {
   const id = productId(product);
   const title = productTitle(product);
   const image = productImageUrl(product);
+  const imageAlt = productImageAlt(product, title);
 
   return (
-    <Link className="home-product-thumb" to={id ? `/products/${id}` : "/catalog"} title={title}>
-      {image ? <img src={image} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
+    <Link className="home-product-thumb" to={id ? productUrl(product) : "/catalog"} title={title}>
+      {image ? (
+        <img
+          src={image}
+          alt={imageAlt}
+          loading="lazy"
+          decoding="async"
+          width="220"
+          height="160"
+        />
+      ) : <span>{productInitials(title)}</span>}
     </Link>
   );
 }

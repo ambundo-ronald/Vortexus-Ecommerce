@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
@@ -34,6 +36,24 @@ export default function OffersPage() {
 
   return (
     <section className="offers-page">
+      <Seo
+        title="Offers | Reesolmart"
+        description="Shop current Reesolmart offers, discounts, and product range deals for industrial and water treatment supplies."
+        canonicalPath="/offers"
+        jsonLd={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Offers", path: "/offers" }
+          ]),
+          offersItemListSchema(offers)
+        ]}
+      />
+      <BreadcrumbNav
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Offers" }
+        ]}
+      />
       <div className="offers-hero">
         <div>
           <h1>Offers</h1>
@@ -60,6 +80,33 @@ export default function OffersPage() {
       ) : null}
     </section>
   );
+}
+
+function breadcrumbSchema(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: absoluteUrl(item.path)
+    }))
+  };
+}
+
+function offersItemListSchema(offers = []) {
+  if (!offers.length) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    itemListElement: offers.slice(0, 24).map((offer, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: offer.name,
+      url: absoluteUrl(`/offers/${offer.slug}`)
+    }))
+  };
 }
 
 function OfferCard({ offer }) {

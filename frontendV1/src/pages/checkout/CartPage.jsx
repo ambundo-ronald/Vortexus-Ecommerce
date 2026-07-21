@@ -10,7 +10,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useCartStore } from "../../store/cart.store";
 import { productInitials, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
-import { productImageUrl } from "../../utils/productImages";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 import "./CartPage.css";
 
 export default function CartPage() {
@@ -135,6 +135,7 @@ function SavedCartItem({ item, disabled, onMove, onRemove }) {
   const options = item.options || item.wishlist_item?.options || [];
   const image = productImageUrl({ ...item, ...product, product });
   const title = productTitle({ ...item, product }, "Saved product");
+  const imageAlt = productImageAlt({ ...item, ...product, product }, title);
   const sku = productSku({ ...item, product }, product.slug || "Saved product");
   const price = productPrice(product);
   const stock = stockTone(product);
@@ -142,7 +143,16 @@ function SavedCartItem({ item, disabled, onMove, onRemove }) {
   return (
     <article className="saved-cart-item">
       <div className="saved-cart-item__media">
-        {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
+        {image ? (
+          <img
+            src={image}
+            alt={imageAlt}
+            loading="lazy"
+            decoding="async"
+            width="160"
+            height="160"
+          />
+        ) : <span>{productInitials(title)}</span>}
       </div>
       <div className="saved-cart-item__body">
         <strong>{title}</strong>

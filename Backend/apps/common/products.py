@@ -86,6 +86,7 @@ def serialize_product_card(
     brand = product_brand(product)
     categories = list(product.categories.all()) if hasattr(product, 'categories') else []
     primary_category = categories[0] if categories else None
+    primary_category_path = _category_path(primary_category) if primary_category else []
 
     image_url = ''
     try:
@@ -98,6 +99,7 @@ def serialize_product_card(
     payload: dict[str, Any] = {
         'id': product.id,
         'title': product.title,
+        'slug': product.slug,
         'sku': product.upc,
         'price': base_price,
         'currency': base_currency,
@@ -112,11 +114,13 @@ def serialize_product_card(
         'brand_slug': brand_slug(brand),
         'category': getattr(primary_category, 'name', '') if primary_category else '',
         'category_slug': getattr(primary_category, 'slug', '') if primary_category else '',
+        'category_path': primary_category_path,
         'categories': [
             {
                 'id': category.id,
                 'name': category.name,
                 'slug': category.slug,
+                'path': _category_path(category),
             }
             for category in categories
         ],
@@ -134,6 +138,29 @@ def serialize_product_card(
         payload['reason'] = reason
 
     return convert_product_payload(payload, display_currency)
+
+
+def _category_path(category: Any) -> list[dict[str, Any]]:
+    if not category:
+        return []
+
+    ancestors = []
+    get_ancestors = getattr(category, 'get_ancestors', None)
+    if callable(get_ancestors):
+        try:
+            ancestors = list(get_ancestors())
+        except Exception:
+            ancestors = []
+
+    return [
+        {
+            'id': item.id,
+            'name': item.name,
+            'slug': item.slug,
+        }
+        for item in [*ancestors, category]
+        if getattr(item, 'slug', '')
+    ]
 
 
 def _product_rating(product: Any) -> float | None:

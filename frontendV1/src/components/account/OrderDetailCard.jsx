@@ -4,8 +4,8 @@ import EmailTouchpointCard from "./EmailTouchpointCard.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
 import { formatDate } from "../../utils/formatDate";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
-import { productImageUrl } from "../../utils/productImages";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 
 export default function OrderDetailCard({ order, saving = false, onReorder }) {
   if (!order) return null;
@@ -118,10 +118,19 @@ export default function OrderDetailCard({ order, saving = false, onReorder }) {
             const resolvedProductId = productId({ ...line, product: line.product || {} });
             const imageUrl = productImageUrl({ ...line, product: line.product || {} });
             const title = productTitle({ ...line, product: line.product || {} });
+            const imageAlt = productImageAlt({ ...line, product: line.product || {} }, title);
+            const detailUrl = resolvedProductId ? productUrl({ ...line, product: line.product || {} }) : "/catalog";
             return (
-              <Link className="order-line-card" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} key={line.id || index}>
+              <Link className="order-line-card" to={detailUrl} key={line.id || index}>
                 {imageUrl ? (
-                  <img src={imageUrl} alt={title} />
+                  <img
+                    src={imageUrl}
+                    alt={imageAlt}
+                    loading="lazy"
+                    decoding="async"
+                    width="96"
+                    height="96"
+                  />
                 ) : (
                   <span className="order-line-card__image-fallback">{productInitials(title)}</span>
                 )}

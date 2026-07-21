@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { formatCurrency } from "../../utils/currency";
-import { productId, productInitials, productSku, productTitle, stockTone } from "../../utils/productDisplay";
-import { productImageUrl } from "../../utils/productImages";
+import { productId, productInitials, productSku, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 
 export default function CartItem({ line }) {
   const updateLine = useCartStore((state) => state.updateLine);
@@ -15,6 +15,7 @@ export default function CartItem({ line }) {
   const title = productTitle({ ...line, product });
   const sku = productSku({ ...line, product }, "Product line");
   const image = productImageUrl({ ...line, ...product, product });
+  const imageAlt = productImageAlt({ ...line, ...product, product }, title);
   const resolvedProductId = productId({ ...line, product });
   const options = line.options || [];
   const quantity = Math.max(1, Number(line.quantity || 1));
@@ -27,7 +28,7 @@ export default function CartItem({ line }) {
     product.price ??
     (Number(line.line_total || 0) / quantity || 0);
   const stock = stockTone({ ...line, product });
-  const productPath = resolvedProductId ? `/products/${resolvedProductId}` : "/catalog";
+  const productPath = resolvedProductId ? productUrl({ ...line, product }) : "/catalog";
 
   async function handleQuantityChange(quantity) {
     try {
@@ -57,7 +58,16 @@ export default function CartItem({ line }) {
     <article className="cart-item">
       <div className="cart-item__product">
         <Link className="cart-item__media" to={productPath}>
-          {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
+          {image ? (
+            <img
+              src={image}
+              alt={imageAlt}
+              loading="lazy"
+              decoding="async"
+              width="160"
+              height="160"
+            />
+          ) : <span>{productInitials(title)}</span>}
         </Link>
         <div className="cart-item__body">
           <h3>

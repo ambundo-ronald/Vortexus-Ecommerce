@@ -7,8 +7,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { useWishlistStore } from "../../store/wishlist.store";
-import { productImageUrl } from "../../utils/productImages";
-import { productId, productPrice, productTitle, stockTone } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
+import { productId, productPrice, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
 
 const fallbackSlides = [
   { title: "Borehole pumps", tone: "blue" },
@@ -91,18 +91,30 @@ export default function ProductCarousel({ products = [], loading = false }) {
           const title = productTitle(product);
           const hasProduct = Boolean(resolvedProductId);
           const image = hasProduct ? productImageUrl(product) : "";
+          const imageAlt = hasProduct ? productImageAlt(product, title) : title;
           const price = hasProduct ? productPrice(product) : null;
           const stock = hasProduct ? stockTone(product) : null;
           const canAdd = hasProduct && stock.isAvailable && !price.isQuote;
+          const detailUrl = hasProduct ? productUrl(product) : "/catalog";
 
           return (
             <article className={`promo-slide promo-slide--${product.tone || "blue"}`} key={resolvedProductId || title}>
               {hasProduct ? <WishlistButton productId={resolvedProductId} productTitle={title} /> : null}
-              <Link className="promo-slide__media" to={hasProduct ? `/products/${resolvedProductId}` : "/catalog"}>
-                {image ? <img src={image} alt={title} loading={index === 0 ? "eager" : "lazy"} /> : <span>{title}</span>}
+              <Link className="promo-slide__media" to={detailUrl}>
+                {image ? (
+                  <img
+                    src={image}
+                    alt={imageAlt}
+                    loading={index === 0 ? "eager" : "lazy"}
+                    fetchPriority={index === 0 ? "high" : undefined}
+                    decoding="async"
+                    width="420"
+                    height="320"
+                  />
+                ) : <span>{title}</span>}
               </Link>
               <div className="promo-slide__content">
-                <Link to={hasProduct ? `/products/${resolvedProductId}` : "/catalog"}>
+                <Link to={detailUrl}>
                   <strong>{title}</strong>
                 </Link>
                 {hasProduct ? (

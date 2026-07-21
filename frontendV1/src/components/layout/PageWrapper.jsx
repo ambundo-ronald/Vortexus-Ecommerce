@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Footer from "./Footer.jsx";
 import Navbar from "./Navbar.jsx";
 import CartDrawer from "../cart/CartDrawer.jsx";
+import RouteRobotsPolicy from "../seo/RouteRobotsPolicy.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import ToastViewport from "../ui/Toast.jsx";
 import WishlistDrawer from "../wishlist/WishlistDrawer.jsx";
@@ -17,7 +18,7 @@ export default function PageWrapper({ children }) {
   const bottomItems = [
     { to: "/", label: "Home", icon: "home" },
     { to: "/catalog", label: "Shop", icon: "shopping_bag" },
-    { to: "/search", label: "Search", icon: "travel_explore" },
+    { to: "/catalog", label: "Categories", icon: "category" },
     { to: "/checkout/cart", label: "Cart", icon: "shopping_cart" },
     { to: user ? "/account" : "/login", label: user ? "Account" : "Sign in", icon: "person" }
   ];
@@ -28,6 +29,7 @@ export default function PageWrapper({ children }) {
 
   return (
     <div className="app-shell">
+      <RouteRobotsPolicy />
       <Navbar />
       <main className="app-main">{children}</main>
       <Footer />

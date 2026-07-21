@@ -1,5 +1,12 @@
 http://{$STOREFRONT_DOMAIN} {
     encode zstd gzip
+
+    @seoFiles path /robots.txt /sitemap.xml
+    reverse_proxy @seoFiles backend:8000
+
+    @legacyProduct path_regexp legacyProduct ^/products/[0-9]+/?$
+    reverse_proxy @legacyProduct backend:8000
+
     reverse_proxy frontend:80
 }
 

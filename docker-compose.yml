@@ -165,6 +165,9 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://api.example.com}
         VITE_API_PREFIX: ${VITE_API_PREFIX:-/api/v1}
+        VITE_STOREFRONT_ORIGIN: ${VITE_STOREFRONT_ORIGIN:-https://example.com}
+        VITE_SEO_SITEMAP_URL: ${VITE_SEO_SITEMAP_URL:-}
+        VITE_SEO_API_BASE_URL: ${VITE_SEO_API_BASE_URL:-}
     restart: unless-stopped
     ports:
       - "${STOREFRONT_BIND:-127.0.0.1}:${STOREFRONT_PORT:-5174}:80"

@@ -4,8 +4,8 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
-import { productImageUrl } from "../../utils/productImages";
-import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
+import { productBrand, productId, productInitials, productPrice, productRating, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
 import { rememberSearchContext, searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 
 export default function ProductCard({ product, actionVariant = "add", analyticsContext = null }) {
@@ -19,8 +19,10 @@ export default function ProductCard({ product, actionVariant = "add", analyticsC
   const { rating, reviewCount, hasRating } = productRating(product);
   const ratingText = hasRating ? rating.toFixed(1) : "New";
   const image = productImageUrl(product);
+  const imageAlt = productImageAlt(product, title);
   const brandName = productBrand(product);
   const brandSlug = product.brand_slug || slugify(brandName);
+  const detailUrl = productUrl(product);
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";
   const isReorder = actionVariant === "reorder";
@@ -67,13 +69,22 @@ export default function ProductCard({ product, actionVariant = "add", analyticsC
   return (
     <article className={`product-card${isReorder ? " product-card--reorder" : ""}`}>
       <WishlistButton productId={resolvedProductId} productTitle={title} />
-      <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media" onClick={trackProductClick}>
+      <Link to={resolvedProductId ? detailUrl : "/catalog"} className="product-card__media" onClick={trackProductClick}>
         {discountBadge ? <span className="product-card__sale-badge">{discountBadge}</span> : null}
-        {image ? <img src={image} alt={title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(title)}</span>}
+        {image ? (
+          <img
+            src={image}
+            alt={imageAlt}
+            loading="lazy"
+            decoding="async"
+            width="420"
+            height="320"
+          />
+        ) : <span className="product-card__placeholder">{productInitials(title)}</span>}
       </Link>
       <div className="product-card__body">
         <h3>
-          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} onClick={trackProductClick}>{title}</Link>
+          <Link to={resolvedProductId ? detailUrl : "/catalog"} onClick={trackProductClick}>{title}</Link>
         </h3>
         {brandName ? <Link className="product-card__brand" to={`/catalog/brand/${encodeURIComponent(brandSlug)}`}>{brandName}</Link> : null}
         <span className="product-card__price">

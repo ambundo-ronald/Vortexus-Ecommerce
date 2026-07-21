@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
@@ -17,6 +19,10 @@ export default function OfferDetailPage() {
   const [error, setError] = useState("");
 
   const range = useMemo(() => offer?.benefit?.range || offer?.condition?.range || null, [offer]);
+  const title = offer?.name || readable(offerSlug);
+  const canonicalPath = `/offers/${offerSlug}`;
+  const description = cleanText(offer?.description || offer?.benefit?.description || offer?.condition?.description) ||
+    `View the ${title} offer on Reesolmart and shop eligible industrial products.`;
 
   const loadOffer = useCallback(async () => {
     setLoading(true);
@@ -37,9 +43,29 @@ export default function OfferDetailPage() {
 
   return (
     <section className="offers-page">
+      <Seo
+        title={`${title} offer | Reesolmart`}
+        description={description}
+        canonicalPath={canonicalPath}
+        jsonLd={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Offers", path: "/offers" },
+            { name: title, path: canonicalPath }
+          ]),
+          offerSchema(offer, canonicalPath, title, description)
+        ]}
+      />
       <Link className="back-link" to="/offers">
         <MaterialIcon name="arrow_back" size={18} /> Offers
       </Link>
+      <BreadcrumbNav
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Offers", href: "/offers" },
+          { label: title }
+        ]}
+      />
 
       <Alert tone="warning">{error}</Alert>
       {loading ? <Spinner label="Loading offer" /> : null}
@@ -120,4 +146,34 @@ function SummaryRow({ label, value }) {
 
 function readable(value = "") {
   return String(value || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function breadcrumbSchema(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: absoluteUrl(item.path)
+    }))
+  };
+}
+
+function offerSchema(offer, canonicalPath, title, description) {
+  if (!offer) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "Offer",
+    name: title,
+    description,
+    url: absoluteUrl(canonicalPath),
+    availabilityStarts: offer.start_datetime || undefined,
+    availabilityEnds: offer.end_datetime || undefined
+  };
+}
+
+function cleanText(value = "") {
+  return String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }

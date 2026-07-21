@@ -1,7 +1,9 @@
 import logging
+import json
 
 from django.apps import apps
 from django.core.files.base import ContentFile
+from django.http import Http404
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, F, Min, Q
 from django.shortcuts import get_object_or_404
@@ -27,12 +29,54 @@ logger = logging.getLogger(__name__)
 
 
 def _serialize_category(category) -> dict:
+    path = _category_path(category)
     return {
         "id": category.id,
         "name": category.name,
         "slug": category.slug,
         "url": category.get_absolute_url(),
+        "path": path,
     }
+
+
+def _category_path(category) -> list[dict]:
+    if not category:
+        return []
+
+    ancestors = []
+    get_ancestors = getattr(category, "get_ancestors", None)
+    if callable(get_ancestors):
+        try:
+            ancestors = list(get_ancestors())
+        except Exception:
+            ancestors = []
+
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "slug": item.slug,
+        }
+        for item in [*ancestors, category]
+        if getattr(item, "slug", "")
+    ]
+
+
+def _get_product_by_reference(reference: int | str, include_hidden: bool = False):
+    queryset = _product_queryset(include_hidden=include_hidden)
+    reference_text = str(reference or "").strip()
+    if reference_text.isdigit():
+        return get_object_or_404(queryset, id=int(reference_text))
+
+    product = queryset.filter(slug=reference_text).first()
+    if product:
+        return product
+
+    for candidate in queryset:
+        if slugify(candidate.title or "") == reference_text:
+            return candidate
+
+    raise Http404("No Product matches the given query.")
 
 
 def _get_primary_image_url(product) -> str:
@@ -46,6 +90,60 @@ def _get_primary_image_url(product) -> str:
     if primary and getattr(primary, "original", None):
         return primary.original.url or ""
     return ""
+
+
+def _parse_product_highlights(value) -> list[dict]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        payload = None
+
+    if isinstance(payload, list):
+        highlights = []
+        for item in payload:
+            if isinstance(item, dict):
+                item_text = str(item.get("text") or item.get("value") or "").strip()
+                item_type = str(item.get("type") or "bullet").strip().lower()
+            else:
+                item_text = str(item or "").strip()
+                item_type = "bullet"
+            if item_text:
+                highlights.append({
+                    "type": "number" if item_type in {"number", "numbered", "ordered"} else "bullet",
+                    "text": item_text,
+                })
+        return highlights
+
+    highlights = []
+    for line in text.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        item_type = "number" if clean[:2].rstrip(".").isdigit() else "bullet"
+        clean = clean.lstrip("-*• ").strip()
+        if item_type == "number":
+            clean = clean.split(".", 1)[-1].strip()
+        if clean:
+            highlights.append({"type": item_type, "text": clean})
+    return highlights
+
+
+def _product_highlights(product) -> list[dict]:
+    for attribute_value in product.attribute_values.all():
+        attribute = getattr(attribute_value, "attribute", None)
+        if not attribute:
+            continue
+        if attribute.code not in {"product_highlights", "highlights", "key_highlights"}:
+            continue
+        raw_value = getattr(attribute_value, "value", None)
+        if raw_value in (None, ""):
+            raw_value = str(attribute_value)
+        return _parse_product_highlights(raw_value)
+    return []
 
 
 def _product_queryset(include_hidden: bool = False):
@@ -101,6 +199,7 @@ def _build_product_detail(product, display_currency: str | None = None) -> dict:
     detail = {
         **card,
         "description": product.description or "",
+        "highlights": _product_highlights(product),
         "images": images,
         "primary_image": _get_primary_image_url(product),
         "categories": [_serialize_category(category) for category in product.categories.all()],
@@ -221,6 +320,7 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'categories': detail.get('categories', []),
         'brand': attributes.get('brand', ''),
         'tags': attributes.get('tags', ''),
+        'highlights': detail.get('highlights', []),
         'dimensions': attributes.get('dimensions', ''),
         'weight': float(attributes['weight_grams']) if attributes.get('weight_grams') not in (None, '') and str(attributes.get('weight_grams')).replace('.', '', 1).isdigit() else None,
         'chargeTax': True,
@@ -385,10 +485,10 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
 class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
     recommendation_service = RecommendationService()
 
-    def get(self, request, product_id: int):
+    def get(self, request, product_id: int | None = None, product_ref: str | None = None):
         include_hidden = bool(request.user and request.user.is_staff)
         display_currency = resolve_display_currency(request)
-        product = get_object_or_404(_product_queryset(include_hidden=include_hidden), id=product_id)
+        product = _get_product_by_reference(product_id or product_ref, include_hidden=include_hidden)
         detail = _build_product_detail(product, display_currency=display_currency)
         related = self.recommendation_service.recommend_for_product(
             product_id=product.id,

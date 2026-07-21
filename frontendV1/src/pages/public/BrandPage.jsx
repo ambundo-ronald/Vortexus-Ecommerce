@@ -3,11 +3,14 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import ProductGrid from "../../components/catalog/ProductGrid.jsx";
 import ProductSortBar from "../../components/catalog/ProductSortBar.jsx";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import { useProducts } from "../../hooks/useProducts";
 import { useSearchFacets } from "../../hooks/useSearchFacets";
+import { productTitle, productUrl } from "../../utils/productDisplay";
 
 export default function BrandPage() {
   const { brandSlug = "" } = useParams();
@@ -19,6 +22,9 @@ export default function BrandPage() {
     () => facets.brands.find((item) => (item.slug || item.name) === brandSlug),
     [brandSlug, facets.brands]
   );
+  const brandName = brand?.name || titleFromSlug(brandSlug);
+  const canonicalPath = `/catalog/brand/${brandSlug}`;
+  const seoDescription = `Shop ${brandName} products, spares, and industrial supplies available from Reesolmart.`;
 
   const params = useMemo(() => ({
     brand: brandSlug,
@@ -54,14 +60,34 @@ export default function BrandPage() {
 
   return (
     <section className="category-page">
+      <Seo
+        title={`${brandName} products | Reesolmart`}
+        description={seoDescription}
+        canonicalPath={canonicalPath}
+        jsonLd={[
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Shop", path: "/catalog" },
+            { name: brandName, path: canonicalPath }
+          ]),
+          itemListSchema(products)
+        ]}
+      />
       <Link className="back-link" to="/catalog">
         <MaterialIcon name="arrow_back" size={18} />
         All products
       </Link>
+      <BreadcrumbNav
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Shop", href: "/catalog" },
+          { label: brandName }
+        ]}
+      />
 
       <div className="category-page__head surface-panel">
         <span>Brand</span>
-        <h1>{brand?.name || titleFromSlug(brandSlug)}</h1>
+        <h1>{brandName}</h1>
         <p>{pagination?.total || 0} product{pagination?.total === 1 ? "" : "s"}</p>
       </div>
 
@@ -82,6 +108,33 @@ export default function BrandPage() {
       />
     </section>
   );
+}
+
+function breadcrumbSchema(items) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: absoluteUrl(item.path)
+    }))
+  };
+}
+
+function itemListSchema(products = []) {
+  if (!products.length) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    itemListElement: products.slice(0, 24).map((product, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: productTitle(product),
+      url: absoluteUrl(productUrl(product))
+    }))
+  };
 }
 
 function titleFromSlug(slug) {

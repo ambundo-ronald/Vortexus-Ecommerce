@@ -471,6 +471,7 @@ urlpatterns = [
     path('catalog/ranges/<slug:slug>/', CatalogRangeDetailAPIView.as_view(), name='catalog-range-detail'),
     path('catalog/products/', ProductListAPIView.as_view(), name='catalog-products'),
     path('catalog/products/<int:product_id>/', ProductDetailAPIView.as_view(), name='catalog-product-detail'),
+    path('catalog/products/<slug:product_ref>/', ProductDetailAPIView.as_view(), name='catalog-product-detail-by-slug'),
     path('catalog/products/<int:product_id>/reviews/', ProductReviewCollectionAPIView.as_view(), name='catalog-product-reviews'),
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/vote/', ProductReviewVoteAPIView.as_view(), name='catalog-product-review-vote'),
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/', ProductReviewDetailAPIView.as_view(), name='catalog-product-review-detail'),

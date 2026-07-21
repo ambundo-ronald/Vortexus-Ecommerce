@@ -2100,6 +2100,7 @@ img {
   height: 100%;
   object-fit: contain;
   padding: 9px;
+  box-sizing: border-box;
 }
 
 .product-card__body {
@@ -2880,6 +2881,7 @@ img {
   height: 100%;
   object-fit: contain;
   padding: var(--space-3);
+  box-sizing: border-box;
   transition: transform 120ms ease-out;
   will-change: transform;
 }
@@ -2945,6 +2947,7 @@ img {
   height: 100%;
   object-fit: contain;
   padding: var(--space-1);
+  box-sizing: border-box;
 }
 
 .product-detail__body {

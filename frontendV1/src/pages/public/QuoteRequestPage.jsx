@@ -9,7 +9,7 @@ import { catalogApi } from "../../api/catalog.api";
 import { quotesApi } from "../../api/quotes.api";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiStore } from "../../store/ui.store";
-import { productImageUrl } from "../../utils/productImages";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 import { productId as resolveProductId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
 
 export default function QuoteRequestPage() {
@@ -45,9 +45,10 @@ export default function QuoteRequestPage() {
   }, [productId]);
 
   const price = useMemo(() => (product ? productPrice(product) : null), [product]);
-  const productImage = useMemo(() => (product ? productImageUrl(product) : ""), [product]);
   const resolvedProductId = product ? resolveProductId(product) : "";
   const resolvedTitle = product ? productTitle(product) : "";
+  const productImage = useMemo(() => (product ? productImageUrl(product) : ""), [product]);
+  const productImageAltText = useMemo(() => (product ? productImageAlt(product, resolvedTitle) : resolvedTitle), [product, resolvedTitle]);
 
   async function submitQuote(payload) {
     setSaving(true);
@@ -83,7 +84,16 @@ export default function QuoteRequestPage() {
             <Spinner label="Loading product" />
           ) : product ? (
             <>
-              {productImage ? <img src={productImage} alt={resolvedTitle} /> : <span className="quote-product__image-fallback">{productInitials(resolvedTitle)}</span>}
+              {productImage ? (
+                <img
+                  src={productImage}
+                  alt={productImageAltText}
+                  loading="lazy"
+                  decoding="async"
+                  width="360"
+                  height="280"
+                />
+              ) : <span className="quote-product__image-fallback">{productInitials(resolvedTitle)}</span>}
               <div>
                 <span>Selected product</span>
                 <h1>{resolvedTitle}</h1>
