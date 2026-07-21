@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { navSections, supportNav } from '~/config/navigation'
+import { navSections, supplierNavSections, supportNav } from '~/config/navigation'
 
 const route = useRoute()
+const auth = useAuth()
 const props = withDefaults(defineProps<{
   mobile?: boolean
 }>(), {
@@ -18,6 +19,8 @@ const isLinkActive = (item: { to?: string }) => {
     return route.path === '/'
   return route.path.startsWith(item.to)
 }
+
+const visibleNavSections = computed(() => auth.isAdmin.value ? navSections : supplierNavSections)
 </script>
 
 <template>
@@ -44,7 +47,7 @@ const isLinkActive = (item: { to?: string }) => {
     </NuxtLink>
 
     <nav class="space-y-6">
-      <section v-for="section in navSections" :key="section.label" class="space-y-2">
+      <section v-for="section in visibleNavSections" :key="section.label" class="space-y-2">
         <div class="text-xs font-bold uppercase tracking-wide text-slate-400">
           {{ section.label }}
         </div>

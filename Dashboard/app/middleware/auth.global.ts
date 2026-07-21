@@ -6,6 +6,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
 
   const publicRoutes = new Set(['/login'])
+  const supplierRoutes = new Set(['/supplier-dashboard'])
   const auth = useAuth()
 
   if (!auth.hasCheckedSession.value)
@@ -14,9 +15,17 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (publicRoutes.has(to.path)) {
     if (auth.isAdmin.value)
       return navigateTo('/')
+    if (auth.isSupplier.value)
+      return navigateTo('/supplier-dashboard')
     return
   }
 
-  if (!auth.isAdmin.value)
+  if (!auth.hasDashboardAccess.value)
     return navigateTo('/login')
+
+  if (supplierRoutes.has(to.path) && !auth.isSupplier.value)
+    return navigateTo('/')
+
+  if (auth.isSupplier.value && !auth.isAdmin.value && !supplierRoutes.has(to.path))
+    return navigateTo('/supplier-dashboard')
 })

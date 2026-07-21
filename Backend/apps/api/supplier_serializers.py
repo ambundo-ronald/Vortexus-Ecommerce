@@ -171,12 +171,20 @@ class SupplierDashboardSerializer(serializers.Serializer):
     def to_representation(self, supplier_profile):
         Product = apps.get_model('catalogue', 'Product')
         StockRecord = apps.get_model('partner', 'StockRecord')
+        SupplierOrderGroup = apps.get_model('marketplace', 'SupplierOrderGroup')
+        PaymentSession = apps.get_model('payments', 'PaymentSession')
         partner = supplier_profile.partner
 
         stockrecords = StockRecord.objects.filter(partner=partner).select_related('product')
         product_ids = stockrecords.values_list('product_id', flat=True)
         products = Product.objects.filter(id__in=product_ids).exclude(structure='parent').distinct()
         SupplierProductSubmission = apps.get_model('marketplace', 'SupplierProductSubmission')
+        supplier_orders = SupplierOrderGroup.objects.filter(partner=partner)
+        paid_order_ids = PaymentSession.objects.filter(
+            order__supplier_groups__partner=partner,
+            status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID],
+        ).values_list('order_id', flat=True)
+        paid_supplier_orders = supplier_orders.filter(order_id__in=paid_order_ids)
 
         return {
             'supplier': SupplierProfileSerializer(supplier_profile).data,
@@ -190,6 +198,20 @@ class SupplierDashboardSerializer(serializers.Serializer):
                 ).count(),
                 'low_stock_count': stockrecords.filter(num_in_stock__lte=5).count(),
                 'inventory_units': stockrecords.aggregate(total=Sum('num_in_stock')).get('total') or 0,
+                'order_count': supplier_orders.count(),
+                'open_order_count': supplier_orders.exclude(status__in=['delivered', 'cancelled']).count(),
+                'delivered_order_count': supplier_orders.filter(status='delivered').count(),
+                'cancelled_order_count': supplier_orders.filter(status='cancelled').count(),
+                'gross_sales_total': supplier_orders.aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+                'confirmed_payment_total': paid_supplier_orders.aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+                'pending_payment_total': supplier_orders.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+            },
+            'payments': {
+                'basis': 'confirmed_customer_payment',
+                'status': 'settlement_pending',
+                'confirmed_total': paid_supplier_orders.aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+                'pending_total': supplier_orders.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+                'paid_out_total': 0,
             },
         }
 

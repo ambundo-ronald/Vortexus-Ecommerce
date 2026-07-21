@@ -210,6 +210,21 @@ export const navSections: NavSection[] = [
 
 export const mainNav = navSections.flatMap(section => section.items)
 
+export const supplierNavSections: NavSection[] = [
+  {
+    label: 'Supplier',
+    items: [
+      {
+        label: 'Workspace',
+        icon: 'i-lucide-layout-dashboard',
+        to: '/supplier-dashboard',
+      },
+    ],
+  },
+]
+
+export const supplierNav = supplierNavSections.flatMap(section => section.items)
+
 export const supportNav = [
   {
     label: "Support",

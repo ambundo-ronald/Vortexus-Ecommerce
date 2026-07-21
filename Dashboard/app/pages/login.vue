@@ -117,7 +117,7 @@ async function submit() {
             Sign in
           </h2>
           <p class="mt-3 text-sm leading-6 text-slate-500">
-            Use a staff account with dashboard permissions.
+            Use a staff account or approved supplier account with dashboard access.
           </p>
         </div>
 

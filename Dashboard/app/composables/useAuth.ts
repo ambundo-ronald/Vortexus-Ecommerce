@@ -36,6 +36,9 @@ export function useAuth() {
 
   const isAuthenticated = computed(() => Boolean(user.value))
   const isAdmin = computed(() => Boolean(user.value?.is_staff))
+  const isSupplier = computed(() => Boolean(user.value?.supplier?.is_supplier))
+  const isApprovedSupplier = computed(() => user.value?.supplier?.status === 'approved')
+  const hasDashboardAccess = computed(() => isAdmin.value || isSupplier.value)
 
   async function refreshSession() {
     isLoading.value = true
@@ -45,7 +48,7 @@ export function useAuth() {
       const response = await request<{ user: AdminSessionUser }>('/account/me/', {
         redirectOnAuthError: false,
       })
-      user.value = response.user?.is_staff ? response.user : null
+      user.value = response.user?.is_staff || response.user?.supplier?.is_supplier ? response.user : null
       return user.value
     }
     catch (err: any) {
@@ -69,9 +72,9 @@ export function useAuth() {
         body: payload,
       })
 
-      if (!response.user?.is_staff) {
+      if (!response.user?.is_staff && !response.user?.supplier?.is_supplier) {
         await logout({ redirect: false })
-        throw new Error('This account does not have dashboard access.')
+        throw new Error('This account does not have dashboard or supplier access.')
       }
 
       user.value = response.user
@@ -127,6 +130,9 @@ export function useAuth() {
     error,
     isAuthenticated,
     isAdmin,
+    isSupplier,
+    isApprovedSupplier,
+    hasDashboardAccess,
     refreshSession,
     login,
     logout,
