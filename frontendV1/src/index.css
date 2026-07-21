@@ -752,6 +752,36 @@ img {
   object-fit: cover;
 }
 
+.language-selector {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-inline: 7px 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.language-selector select {
+  min-width: 0;
+  max-width: 92px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+[dir="rtl"] .language-selector {
+  margin-left: 0;
+  margin-right: auto;
+}
+
 .hero-image-slide__copy {
   position: absolute;
   left: var(--space-4);
