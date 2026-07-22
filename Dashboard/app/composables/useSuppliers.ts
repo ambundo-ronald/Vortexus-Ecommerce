@@ -42,6 +42,14 @@ export interface SupplierPayload {
   account_manager_id?: number | null
 }
 
+export interface SupplierCreatePayload extends SupplierPayload {
+  email: string
+  password?: string
+  first_name?: string
+  last_name?: string
+  partner_code?: string
+}
+
 function readApiError(err: any) {
   const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
   const errors = err?.data?.error?.errors || err?.data
@@ -124,9 +132,30 @@ export function useSuppliers() {
     }
   }
 
+  async function createSupplier(payload: SupplierCreatePayload) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ supplier: SupplierItem }>('/admin/suppliers/', {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.supplier }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
+    createSupplier,
     getSupplier,
     getSuppliers,
     updateSupplier,

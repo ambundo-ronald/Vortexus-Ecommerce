@@ -27,7 +27,12 @@ async function submit() {
       description: 'Dashboard session is ready.',
       color: 'success',
     })
-    await navigateTo('/')
+    if (result.user?.supplier?.is_supplier && !result.user?.is_staff)
+      await navigateTo('/supplier-dashboard')
+    else if (result.user?.is_staff && !result.user?.is_superuser)
+      await navigateTo('/suppliers')
+    else
+      await navigateTo('/')
     return
   }
 

@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 from apps.common.products import stockrecord_count
 
 from .checkout_utils import serialize_shipping_address
+from .account_manager_scope import can_access_all_admin_data, scope_orders_queryset
 from .order_serializers import AdminOrderDetailSerializer, OrderLineSerializer, _order_note_payload
 from apps.accounts.delivery_locations import clean_location_payload, upsert_shipping_address_location
 
@@ -1085,12 +1086,13 @@ class AdminOrderStatisticsAPIView(APIView):
 
     def get(self, request):
         Order = get_model('order', 'Order')
+        queryset = scope_orders_queryset(Order.objects.all(), request.user)
         return Response(
             {
                 'statistics': {
-                    'orders': Order.objects.count(),
-                    'revenue': _decimal(Order.objects.aggregate(total=Sum('total_incl_tax'))['total']),
-                    'by_status': list(Order.objects.values('status').annotate(count=Count('id')).order_by('status')),
+                    'orders': queryset.count(),
+                    'revenue': _decimal(queryset.aggregate(total=Sum('total_incl_tax'))['total']),
+                    'by_status': list(queryset.values('status').annotate(count=Count('id')).order_by('status')),
                 }
             }
         )
@@ -1101,7 +1103,8 @@ class AdminOrderLineDetailAPIView(APIView):
 
     def get(self, request, order_number: str, line_id: int):
         Line = get_model('order', 'Line')
-        line = get_object_or_404(Line.objects.select_related('order', 'product'), id=line_id, order__number=order_number)
+        order = get_object_or_404(scope_orders_queryset(get_model('order', 'Order').objects.all(), request.user), number=order_number)
+        line = get_object_or_404(Line.objects.select_related('order', 'product'), id=line_id, order=order)
         return Response({'line': OrderLineSerializer(line).data})
 
 
@@ -1109,6 +1112,8 @@ class AdminOrderShippingAddressAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def patch(self, request, order_number: str):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can edit delivery details.'}, status=status.HTTP_403_FORBIDDEN)
         order = get_object_or_404(get_model('order', 'Order'), number=order_number)
         address = order.shipping_address
         location = clean_location_payload({
@@ -1185,11 +1190,11 @@ class AdminOrderNoteAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, order_number: str):
-        order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        order = get_object_or_404(scope_orders_queryset(get_model('order', 'Order').objects.all(), request.user), number=order_number)
         return Response({'results': [_order_note_payload(note) for note in order.notes.select_related('user').all()]})
 
     def post(self, request, order_number: str):
-        order = get_object_or_404(get_model('order', 'Order'), number=order_number)
+        order = get_object_or_404(scope_orders_queryset(get_model('order', 'Order').objects.all(), request.user), number=order_number)
         message = str(request.data.get('message', '') or '').strip()
         if not message:
             return Response({'error': {'detail': 'Message is required.', 'errors': {'message': ['This field is required.']}}}, status=status.HTTP_400_BAD_REQUEST)

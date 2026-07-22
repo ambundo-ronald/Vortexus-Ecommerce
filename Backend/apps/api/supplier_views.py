@@ -18,17 +18,25 @@ from apps.notifications.services import (
     queue_supplier_status_changed_email,
 )
 
+from .account_manager_scope import assigned_supplier_queryset, can_access_all_admin_data, is_account_manager
 from .supplier_order_serializers import (
     SupplierOrderDetailSerializer,
     SupplierOrderLineStatusSerializer,
     SupplierOrderListSerializer,
 )
 from .supplier_serializers import (
+    SupplierAdminCreateSerializer,
     SupplierAdminStatusSerializer,
     SupplierDashboardSerializer,
+    SupplierProductOfferListSerializer,
+    SupplierProductOfferModerationSerializer,
+    SupplierProductOfferWriteSerializer,
     SupplierProductModerationListSerializer,
     SupplierProductModerationSerializer,
     SupplierProductListSerializer,
+    SupplierProductRequestListSerializer,
+    SupplierProductRequestModerationSerializer,
+    SupplierProductRequestWriteSerializer,
     SupplierProductWriteSerializer,
     SupplierProfileSerializer,
     SupplierProfileWriteSerializer,
@@ -64,6 +72,26 @@ def _supplier_product_queryset(supplier_profile):
         .select_related('supplier_submission__reviewed_by')
         .prefetch_related('stockrecords', 'categories', 'attribute_values__attribute', 'images')
         .distinct()
+    )
+
+
+def _supplier_offer_queryset(supplier_profile):
+    SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
+    return (
+        SupplierProductOffer.objects.filter(supplier=supplier_profile)
+        .select_related('supplier', 'supplier__user', 'supplier__partner', 'product', 'stockrecord', 'reviewed_by')
+        .prefetch_related('product__stockrecords', 'product__categories', 'product__images')
+        .order_by('-updated_at', '-id')
+    )
+
+
+def _supplier_product_request_queryset(supplier_profile):
+    SupplierProductRequest = apps.get_model('marketplace', 'SupplierProductRequest')
+    return (
+        SupplierProductRequest.objects.filter(supplier=supplier_profile)
+        .select_related('supplier', 'supplier__user', 'supplier__partner', 'linked_product', 'reviewed_by')
+        .prefetch_related('linked_product__stockrecords', 'linked_product__categories', 'linked_product__images')
+        .order_by('-updated_at', '-id')
     )
 
 
@@ -231,6 +259,136 @@ class SupplierDashboardAPIView(APIView):
             'open_count': supplier_orders.exclude(status__in=['delivered', 'cancelled']).count(),
         }
         return Response(data)
+
+
+class SupplierProductOfferCollectionAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+
+    def get(self, request):
+        supplier_profile = request.user.supplier_profile
+        queryset = _supplier_offer_queryset(supplier_profile)
+        status_filter = (request.query_params.get('status') or '').strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 20) or 20), 1), 100)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Page and page_size must be integers.'}, status=status.HTTP_400_BAD_REQUEST)
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProductOfferListSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+    def post(self, request):
+        supplier_profile = request.user.supplier_profile
+        serializer = SupplierProductOfferWriteSerializer(
+            data=request.data,
+            context={'request': request, 'supplier_profile': supplier_profile},
+        )
+        serializer.is_valid(raise_exception=True)
+        offer = serializer.save()
+        record_audit_event(
+            event_type='supplier.offer_submitted',
+            request=request,
+            actor=request.user,
+            target=offer.product,
+            message='Supplier submitted a product offer.',
+            metadata={'offer_id': offer.id, 'supplier_id': supplier_profile.id, 'product_id': offer.product_id},
+        )
+        return Response({'offer': SupplierProductOfferListSerializer(offer).data}, status=status.HTTP_201_CREATED)
+
+
+class SupplierProductOfferDetailAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+
+    def patch(self, request, offer_id: int):
+        supplier_profile = request.user.supplier_profile
+        offer = get_object_or_404(_supplier_offer_queryset(supplier_profile), id=offer_id)
+        data = request.data.copy()
+        data['product_id'] = offer.product_id
+        serializer = SupplierProductOfferWriteSerializer(
+            instance=offer,
+            data=data,
+            partial=True,
+            context={'request': request, 'supplier_profile': supplier_profile},
+        )
+        serializer.is_valid(raise_exception=True)
+        offer = serializer.save()
+        record_audit_event(
+            event_type='supplier.offer_updated',
+            request=request,
+            actor=request.user,
+            target=offer.product,
+            message='Supplier updated a product offer.',
+            metadata={'offer_id': offer.id, 'supplier_id': supplier_profile.id, 'product_id': offer.product_id},
+        )
+        return Response({'offer': SupplierProductOfferListSerializer(offer).data})
+
+    def delete(self, request, offer_id: int):
+        supplier_profile = request.user.supplier_profile
+        offer = get_object_or_404(_supplier_offer_queryset(supplier_profile), id=offer_id)
+        if offer.stockrecord_id:
+            offer.stockrecord.num_in_stock = 0
+            offer.stockrecord.save(update_fields=['num_in_stock'])
+        offer.status = offer.STATUS_SUSPENDED
+        offer.save(update_fields=['status', 'updated_at'])
+        return Response({'detail': 'Supplier offer suspended.'})
+
+
+class SupplierProductRequestCollectionAPIView(APIView):
+    permission_classes = [ApprovedSupplierWritePermission]
+
+    def get(self, request):
+        supplier_profile = request.user.supplier_profile
+        queryset = _supplier_product_request_queryset(supplier_profile)
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 20) or 20), 1), 100)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Page and page_size must be integers.'}, status=status.HTTP_400_BAD_REQUEST)
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProductRequestListSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+    def post(self, request):
+        supplier_profile = request.user.supplier_profile
+        serializer = SupplierProductRequestWriteSerializer(
+            data=request.data,
+            context={'request': request, 'supplier_profile': supplier_profile},
+        )
+        serializer.is_valid(raise_exception=True)
+        product_request = serializer.save()
+        record_audit_event(
+            event_type='supplier.product_request_submitted',
+            request=request,
+            actor=request.user,
+            target=product_request,
+            message='Supplier requested a new catalogue product.',
+            metadata={'request_id': product_request.id, 'supplier_id': supplier_profile.id},
+        )
+        return Response({'request': SupplierProductRequestListSerializer(product_request).data}, status=status.HTTP_201_CREATED)
 
 
 class SupplierProductCollectionAPIView(APIView):
@@ -448,11 +606,167 @@ def _supplier_product_submission_queryset():
     )
 
 
+def _admin_supplier_offer_queryset(user):
+    SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
+    queryset = (
+        SupplierProductOffer.objects.select_related(
+            'supplier',
+            'supplier__user',
+            'supplier__partner',
+            'product',
+            'stockrecord',
+            'reviewed_by',
+        )
+        .prefetch_related('product__stockrecords', 'product__categories', 'product__images')
+        .order_by('-updated_at', '-id')
+    )
+    if is_account_manager(user):
+        queryset = queryset.filter(supplier__account_manager=user)
+    return queryset
+
+
+def _admin_supplier_product_request_queryset(user):
+    SupplierProductRequest = apps.get_model('marketplace', 'SupplierProductRequest')
+    queryset = (
+        SupplierProductRequest.objects.select_related(
+            'supplier',
+            'supplier__user',
+            'supplier__partner',
+            'linked_product',
+            'reviewed_by',
+        )
+        .prefetch_related('linked_product__stockrecords', 'linked_product__categories', 'linked_product__images')
+        .order_by('-updated_at', '-id')
+    )
+    if is_account_manager(user):
+        queryset = queryset.filter(supplier__account_manager=user)
+    return queryset
+
+
+class SupplierOfferModerationCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        queryset = _admin_supplier_offer_queryset(request.user)
+        status_filter = (request.query_params.get('status') or '').strip()
+        supplier_id = (request.query_params.get('supplier_id') or '').strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if supplier_id:
+            queryset = queryset.filter(supplier_id=supplier_id)
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 24) or 24), 1), 100)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Page and page_size must be integers.'}, status=status.HTTP_400_BAD_REQUEST)
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProductOfferListSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+
+class SupplierOfferModerationDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, offer_id: int):
+        offer = get_object_or_404(_admin_supplier_offer_queryset(request.user), id=offer_id)
+        previous_status = offer.status
+        serializer = SupplierProductOfferModerationSerializer(instance=offer, data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        offer = serializer.save()
+        record_audit_event(
+            event_type='supplier.offer_moderation_changed',
+            request=request,
+            actor=request.user,
+            target=offer.product,
+            message='Supplier product offer moderation status updated.',
+            metadata={
+                'offer_id': offer.id,
+                'supplier_id': offer.supplier_id,
+                'product_id': offer.product_id,
+                'previous_status': previous_status,
+                'current_status': offer.status,
+                'stockrecord_id': offer.stockrecord_id,
+            },
+        )
+        return Response({'offer': SupplierProductOfferListSerializer(offer).data})
+
+
+class SupplierProductRequestModerationCollectionAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        queryset = _admin_supplier_product_request_queryset(request.user)
+        status_filter = (request.query_params.get('status') or '').strip()
+        supplier_id = (request.query_params.get('supplier_id') or '').strip()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if supplier_id:
+            queryset = queryset.filter(supplier_id=supplier_id)
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 24) or 24), 1), 100)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Page and page_size must be integers.'}, status=status.HTTP_400_BAD_REQUEST)
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProductRequestListSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+            }
+        )
+
+
+class SupplierProductRequestModerationDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, request_id: int):
+        product_request = get_object_or_404(_admin_supplier_product_request_queryset(request.user), id=request_id)
+        previous_status = product_request.status
+        serializer = SupplierProductRequestModerationSerializer(instance=product_request, data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        product_request = serializer.save()
+        record_audit_event(
+            event_type='supplier.product_request_moderation_changed',
+            request=request,
+            actor=request.user,
+            target=product_request,
+            message='Supplier product request moderation status updated.',
+            metadata={
+                'request_id': product_request.id,
+                'supplier_id': product_request.supplier_id,
+                'linked_product_id': product_request.linked_product_id,
+                'previous_status': previous_status,
+                'current_status': product_request.status,
+            },
+        )
+        return Response({'request': SupplierProductRequestListSerializer(product_request).data})
+
+
 class SupplierProductModerationCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
         queryset = _supplier_product_submission_queryset()
+        if is_account_manager(request.user):
+            queryset = queryset.filter(supplier__account_manager=request.user)
         status_filter = (request.query_params.get('status') or '').strip()
         supplier_id = (request.query_params.get('supplier_id') or '').strip()
         if status_filter:
@@ -495,11 +809,17 @@ class SupplierProductModerationDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, submission_id: int):
-        submission = get_object_or_404(_supplier_product_submission_queryset(), id=submission_id)
+        queryset = _supplier_product_submission_queryset()
+        if is_account_manager(request.user):
+            queryset = queryset.filter(supplier__account_manager=request.user)
+        submission = get_object_or_404(queryset, id=submission_id)
         return Response({'submission': SupplierProductModerationListSerializer(submission).data})
 
     def patch(self, request, submission_id: int):
-        submission = get_object_or_404(_supplier_product_submission_queryset(), id=submission_id)
+        queryset = _supplier_product_submission_queryset()
+        if is_account_manager(request.user):
+            queryset = queryset.filter(supplier__account_manager=request.user)
+        submission = get_object_or_404(queryset, id=submission_id)
         previous_status = submission.status
         serializer = SupplierProductModerationSerializer(instance=submission, data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -526,27 +846,58 @@ class SupplierAdminCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
-        queryset = SupplierProfile.objects.select_related('user', 'partner').order_by('company_name', 'id')
+        queryset = assigned_supplier_queryset(request.user).order_by('company_name', 'id')
         status_filter = (request.query_params.get('status') or '').strip()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         return Response({'results': SupplierProfileSerializer(queryset, many=True).data})
+
+    def post(self, request):
+        if not can_access_all_admin_data(request.user):
+            return Response(
+                {
+                    'error': {
+                        'code': 'platform_admin_required',
+                        'detail': 'Only a platform admin can create supplier accounts.',
+                        'status': 403,
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = SupplierAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        supplier_profile = serializer.save()
+        record_audit_event(
+            event_type='supplier.admin_created',
+            request=request,
+            actor=request.user,
+            target=supplier_profile,
+            message='Admin created a supplier profile.',
+            metadata={
+                'supplier_id': supplier_profile.id,
+                'company_name': supplier_profile.company_name,
+                'email': supplier_profile.user.email,
+                'status': supplier_profile.status,
+            },
+        )
+        queue_supplier_status_changed_email(supplier_profile)
+        return Response({'supplier': SupplierProfileSerializer(supplier_profile).data}, status=status.HTTP_201_CREATED)
 
 
 class SupplierAdminDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, supplier_id: int):
-        SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
-        supplier_profile = get_object_or_404(SupplierProfile.objects.select_related('user', 'partner'), id=supplier_id)
+        supplier_profile = get_object_or_404(assigned_supplier_queryset(request.user), id=supplier_id)
         return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
 
     def patch(self, request, supplier_id: int):
-        SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
-        supplier_profile = get_object_or_404(SupplierProfile.objects.select_related('user', 'partner'), id=supplier_id)
+        supplier_profile = get_object_or_404(assigned_supplier_queryset(request.user), id=supplier_id)
         previous_status = supplier_profile.status
-        serializer = SupplierAdminStatusSerializer(instance=supplier_profile, data=request.data, partial=True)
+        data = request.data.copy()
+        if not can_access_all_admin_data(request.user):
+            data.pop('account_manager_id', None)
+        serializer = SupplierAdminStatusSerializer(instance=supplier_profile, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         supplier_profile = serializer.save()
         if supplier_profile.status != previous_status:

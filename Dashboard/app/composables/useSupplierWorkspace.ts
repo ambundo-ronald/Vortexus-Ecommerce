@@ -83,6 +83,108 @@ export function useSupplierWorkspace() {
     }
   }
 
+  async function getOffers(params: { page?: number, pageSize?: number, status?: string } = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ results: any[], pagination: any }>('/supplier/offers/', {
+        method: 'GET',
+        query: {
+          page: params.page || 1,
+          page_size: params.pageSize || 8,
+          status: params.status || '',
+        },
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = extractSupplierError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function createOffer(payload: {
+    product_id: number
+    supplier_unit_cost: number | string
+    currency?: string
+    available_quantity: number
+    lead_time_days?: number
+    supplier_sku?: string
+    notes?: string
+  }) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ offer: any }>('/supplier/offers/', {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.offer }
+    }
+    catch (err: any) {
+      error.value = extractSupplierError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function getProductRequests(params: { page?: number, pageSize?: number } = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ results: any[], pagination: any }>('/supplier/product-requests/', {
+        method: 'GET',
+        query: {
+          page: params.page || 1,
+          page_size: params.pageSize || 8,
+        },
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = extractSupplierError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
+  async function createProductRequest(payload: {
+    requested_title: string
+    brand?: string
+    category_hint?: string
+    description?: string
+    specs?: Record<string, any>
+    supplier_sku?: string
+    supplier_unit_cost?: number | string
+    currency?: string
+    available_quantity?: number
+    notes?: string
+  }) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ request: any }>('/supplier/product-requests/', {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.request }
+    }
+    catch (err: any) {
+      error.value = extractSupplierError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   async function getOrders(params: { page?: number, pageSize?: number } = {}) {
     loading.value = true
     error.value = null
@@ -109,7 +211,11 @@ export function useSupplierWorkspace() {
     loading,
     error,
     getDashboard,
+    getOffers,
     getProducts,
+    getProductRequests,
     getOrders,
+    createOffer,
+    createProductRequest,
   }
 }

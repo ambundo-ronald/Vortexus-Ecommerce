@@ -68,6 +68,8 @@ class AccountSummarySerializer(serializers.Serializer):
                 'partner_id': supplier_profile.partner_id if supplier_profile else None,
             },
             'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+            'dashboard_role': 'platform_admin' if user.is_superuser else 'account_manager' if user.is_staff else 'supplier' if supplier_profile else 'customer',
             'date_joined': user.date_joined,
             'last_login': user.last_login,
         }

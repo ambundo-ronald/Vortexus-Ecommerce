@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import type { SupplierItem, SupplierPayload } from '~/composables/useSuppliers'
+import type { UserTableRow } from '~/types/UserTableRow'
+import type { SupplierCreatePayload, SupplierItem, SupplierPayload } from '~/composables/useSuppliers'
 
 const toast = useToast()
-const { getSupplier, getSuppliers, updateSupplier } = useSuppliers()
+const auth = useAuth()
+const { createSupplier, getSupplier, getSuppliers, updateSupplier } = useSuppliers()
+const { getUsers } = useUser()
 
 const suppliers = ref<SupplierItem[]>([])
 const selectedSupplier = ref<SupplierItem | null>(null)
@@ -11,8 +14,14 @@ const ALL_STATUSES = '__all_statuses__'
 const statusFilter = ref(ALL_STATUSES)
 const isLoading = ref(false)
 const isSaving = ref(false)
+const isLoadingAccountManagers = ref(false)
 const editorOpen = ref(false)
+const editorMode = ref<'create' | 'edit'>('edit')
 const saveError = ref('')
+const accountManagerSearch = ref('')
+const accountManagerOptions = ref<UserTableRow[]>([])
+const accountManagerPickerOpen = ref(false)
+let accountManagerSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const statusOptions = [
   { label: 'All statuses', value: ALL_STATUSES },
@@ -22,6 +31,11 @@ const statusOptions = [
 ]
 
 const form = reactive({
+  email: '',
+  password: '',
+  first_name: '',
+  last_name: '',
+  partner_code: '',
   company_name: '',
   contact_name: '',
   phone: '',
@@ -50,6 +64,13 @@ const pendingCount = computed(() => suppliers.value.filter(supplier => supplier.
 const approvedCount = computed(() => suppliers.value.filter(supplier => supplier.status === 'approved').length)
 const suspendedCount = computed(() => suppliers.value.filter(supplier => supplier.status === 'suspended').length)
 
+const selectedAccountManagerLabel = computed(() => {
+  if (!form.account_manager_id)
+    return ''
+  const selected = accountManagerOptions.value.find(manager => String(manager.id) === String(form.account_manager_id))
+  return selected ? formatAccountManager(selected) : accountManagerSearch.value
+})
+
 function statusColor(status: string) {
   if (status === 'approved')
     return 'success'
@@ -68,7 +89,17 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function formatAccountManager(manager: UserTableRow) {
+  const name = manager.name && manager.name !== manager.email ? manager.name : ''
+  return name ? `${name} (${manager.email})` : manager.email
+}
+
 function fillForm(supplier: SupplierItem) {
+  form.email = supplier.user?.email || ''
+  form.password = ''
+  form.first_name = supplier.user?.first_name || ''
+  form.last_name = supplier.user?.last_name || ''
+  form.partner_code = supplier.partner?.code || ''
   form.company_name = supplier.company_name || ''
   form.contact_name = supplier.contact_name || ''
   form.phone = supplier.phone || ''
@@ -77,7 +108,78 @@ function fillForm(supplier: SupplierItem) {
   form.notes = supplier.notes || ''
   form.status_note = supplier.status_note || ''
   form.account_manager_id = supplier.account_manager?.id ? String(supplier.account_manager.id) : ''
+  accountManagerSearch.value = supplier.account_manager
+    ? supplier.account_manager.name || supplier.account_manager.email || `Staff #${supplier.account_manager.id}`
+    : ''
   form.status = supplier.status || 'pending'
+}
+
+function resetForm() {
+  form.email = ''
+  form.password = ''
+  form.first_name = ''
+  form.last_name = ''
+  form.partner_code = ''
+  form.company_name = ''
+  form.contact_name = ''
+  form.phone = ''
+  form.country_code = 'KE'
+  form.website = ''
+  form.notes = ''
+  form.status_note = ''
+  form.account_manager_id = ''
+  accountManagerSearch.value = ''
+  form.status = 'pending'
+}
+
+async function loadAccountManagers(search = '') {
+  if (!auth.isPlatformAdmin.value)
+    return
+
+  isLoadingAccountManagers.value = true
+  const result = await getUsers({
+    role: 'staff',
+    status: 'active',
+    search,
+    pageSize: 20,
+    sortBy: 'name',
+  })
+
+  if (result.success)
+    accountManagerOptions.value = result.data?.results ?? []
+  else
+    accountManagerOptions.value = []
+
+  isLoadingAccountManagers.value = false
+}
+
+async function openAccountManagerPicker() {
+  if (!auth.isPlatformAdmin.value)
+    return
+  accountManagerPickerOpen.value = true
+  await loadAccountManagers(accountManagerSearch.value.trim())
+}
+
+function queueAccountManagerSearch() {
+  form.account_manager_id = ''
+  accountManagerPickerOpen.value = true
+  if (accountManagerSearchTimer)
+    clearTimeout(accountManagerSearchTimer)
+  accountManagerSearchTimer = setTimeout(() => {
+    loadAccountManagers(accountManagerSearch.value.trim())
+  }, 250)
+}
+
+function selectAccountManager(manager: UserTableRow) {
+  form.account_manager_id = String(manager.id)
+  accountManagerSearch.value = formatAccountManager(manager)
+  accountManagerPickerOpen.value = false
+}
+
+function clearAccountManager() {
+  form.account_manager_id = ''
+  accountManagerSearch.value = ''
+  accountManagerPickerOpen.value = false
 }
 
 async function loadSuppliers() {
@@ -138,23 +240,39 @@ async function quickStatus(supplier: SupplierItem, status: string) {
 function openEditor() {
   if (!selectedSupplier.value)
     return
+  editorMode.value = 'edit'
   fillForm(selectedSupplier.value)
   saveError.value = ''
   editorOpen.value = true
+  loadAccountManagers(accountManagerSearch.value.trim())
+}
+
+function openCreateSupplier() {
+  editorMode.value = 'create'
+  selectedSupplier.value = null
+  resetForm()
+  saveError.value = ''
+  editorOpen.value = true
+  loadAccountManagers()
 }
 
 async function submitSupplier() {
-  if (!selectedSupplier.value)
-    return
-
   saveError.value = ''
+  if (editorMode.value === 'create' && !form.email.trim()) {
+    saveError.value = 'Supplier email is required.'
+    return
+  }
+  if (editorMode.value === 'create' && !form.password.trim()) {
+    saveError.value = 'Password is required for a new supplier user.'
+    return
+  }
   if (!form.company_name.trim()) {
     saveError.value = 'Company name is required.'
     return
   }
 
   isSaving.value = true
-  const payload: SupplierPayload = {
+  const basePayload: SupplierPayload = {
     company_name: form.company_name.trim(),
     contact_name: form.contact_name.trim(),
     phone: form.phone.trim(),
@@ -165,12 +283,27 @@ async function submitSupplier() {
     account_manager_id: form.account_manager_id ? Number(form.account_manager_id) : null,
     status: form.status,
   }
-  const result = await updateSupplier(selectedSupplier.value.id, payload)
+  const result = editorMode.value === 'create'
+    ? await createSupplier({
+        ...basePayload,
+        email: form.email.trim(),
+        password: form.password.trim(),
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        partner_code: form.partner_code.trim(),
+      } as SupplierCreatePayload)
+    : selectedSupplier.value
+      ? await updateSupplier(selectedSupplier.value.id, basePayload)
+      : { success: false, error: 'Select a supplier before saving.' }
 
   if (result.success && result.data) {
     selectedSupplier.value = result.data
     fillForm(result.data)
-    toast.add({ title: 'Supplier updated', description: `${result.data.company_name} was saved.`, color: 'success' })
+    toast.add({
+      title: editorMode.value === 'create' ? 'Supplier created' : 'Supplier updated',
+      description: `${result.data.company_name} was saved.`,
+      color: 'success',
+    })
     editorOpen.value = false
     await loadSuppliers()
   }
@@ -208,6 +341,10 @@ onMounted(loadSuppliers)
         <UButton color="neutral" variant="outline" :loading="isLoading" @click="loadSuppliers">
           <UIcon name="i-lucide-refresh-cw" />
           Refresh
+        </UButton>
+        <UButton v-if="auth.isPlatformAdmin.value" color="primary" variant="solid" @click="openCreateSupplier">
+          <UIcon name="i-lucide-plus" />
+          Add supplier
         </UButton>
       </div>
     </div>
@@ -363,13 +500,13 @@ onMounted(loadSuppliers)
 
     <p class="mt-4 text-sm text-slate-500">Showing {{ filteredSuppliers.length }} of {{ suppliers.length }} suppliers.</p>
 
-    <div v-if="editorOpen && selectedSupplier" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+    <div v-if="editorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <UCard class="w-full max-w-3xl">
         <template #header>
           <div class="flex items-center justify-between gap-4">
             <div>
-              <h3 class="font-semibold text-default">Edit supplier profile</h3>
-              <p class="text-sm text-dimmed">{{ selectedSupplier.company_name }}</p>
+              <h3 class="font-semibold text-default">{{ editorMode === 'create' ? 'Add supplier' : 'Edit supplier profile' }}</h3>
+              <p class="text-sm text-dimmed">{{ editorMode === 'create' ? 'Create a dashboard login and supplier partner profile.' : selectedSupplier?.company_name }}</p>
             </div>
             <UButton icon="i-lucide-x" color="neutral" variant="ghost" square @click="editorOpen = false" />
           </div>
@@ -378,13 +515,72 @@ onMounted(loadSuppliers)
         <div v-if="saveError" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{{ saveError }}</div>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <UFormField label="Supplier email" :required="editorMode === 'create'"><UInput v-model="form.email" type="email" autocomplete="email" :disabled="editorMode === 'edit'" /></UFormField>
+          <UFormField :label="editorMode === 'create' ? 'Password' : 'Password' " :required="editorMode === 'create'"><PasswordInput v-model="form.password" autocomplete="new-password" :placeholder="editorMode === 'create' ? '' : 'Leave blank to keep current password'" /></UFormField>
+          <UFormField label="First name"><UInput v-model="form.first_name" autocomplete="off" :disabled="editorMode === 'edit'" /></UFormField>
+          <UFormField label="Last name"><UInput v-model="form.last_name" autocomplete="off" :disabled="editorMode === 'edit'" /></UFormField>
           <UFormField label="Company name" required><UInput v-model="form.company_name" autocomplete="off" /></UFormField>
           <UFormField label="Status"><USelect v-model="form.status" :items="statusOptions.slice(1)" /></UFormField>
+          <UFormField label="Partner code"><UInput v-model="form.partner_code" autocomplete="off" :disabled="editorMode === 'edit'" /></UFormField>
           <UFormField label="Contact name"><UInput v-model="form.contact_name" autocomplete="off" /></UFormField>
           <UFormField label="Phone"><UInput v-model="form.phone" autocomplete="off" /></UFormField>
           <UFormField label="Country code"><UInput v-model="form.country_code" maxlength="2" autocomplete="off" /></UFormField>
           <UFormField label="Website"><UInput v-model="form.website" type="url" autocomplete="off" /></UFormField>
-          <UFormField label="Account manager ID"><UInput v-model="form.account_manager_id" type="number" min="1" autocomplete="off" /></UFormField>
+          <UFormField v-if="auth.isPlatformAdmin.value" label="Account manager">
+            <div class="relative">
+              <UInput
+                v-model="accountManagerSearch"
+                autocomplete="off"
+                icon="i-lucide-user-cog"
+                placeholder="Search active staff by name or email"
+                @focus="openAccountManagerPicker"
+                @input="queueAccountManagerSearch"
+                @keydown.esc="accountManagerPickerOpen = false"
+              />
+              <UButton
+                v-if="form.account_manager_id || accountManagerSearch"
+                class="absolute right-1 top-1/2 -translate-y-1/2"
+                icon="i-lucide-x"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                square
+                type="button"
+                @click="clearAccountManager"
+              />
+              <div
+                v-if="accountManagerPickerOpen"
+                class="absolute z-50 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
+              >
+                <div v-if="isLoadingAccountManagers" class="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-500">
+                  <UIcon name="i-lucide-loader-circle" class="animate-spin" />
+                  Searching staff
+                </div>
+                <button
+                  v-for="manager in accountManagerOptions"
+                  v-else
+                  :key="manager.id"
+                  type="button"
+                  class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-blue-50"
+                  @mousedown.prevent="selectAccountManager(manager)"
+                >
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">
+                    <UIcon name="i-lucide-user" />
+                  </span>
+                  <span class="min-w-0">
+                    <span class="block truncate text-sm font-semibold text-slate-950">{{ manager.name || manager.email }}</span>
+                    <span class="block truncate text-xs text-slate-500">{{ manager.email }}</span>
+                  </span>
+                </button>
+                <div v-if="!isLoadingAccountManagers && accountManagerOptions.length === 0" class="px-3 py-2 text-sm text-slate-500">
+                  No active staff users found.
+                </div>
+              </div>
+              <p v-if="form.account_manager_id" class="mt-1 text-xs text-slate-500">
+                Assigned to {{ selectedAccountManagerLabel }}
+              </p>
+            </div>
+          </UFormField>
           <UFormField label="Notes" class="md:col-span-2"><UTextarea v-model="form.notes" :rows="5" /></UFormField>
           <UFormField label="Supplier-facing status note" class="md:col-span-2"><UTextarea v-model="form.status_note" :rows="4" /></UFormField>
         </div>
@@ -392,7 +588,7 @@ onMounted(loadSuppliers)
         <template #footer>
           <div class="flex justify-end gap-3">
             <UButton color="neutral" variant="outline" :disabled="isSaving" @click="editorOpen = false">Cancel</UButton>
-            <UButton color="primary" variant="solid" :loading="isSaving" @click="submitSupplier">Save supplier</UButton>
+            <UButton color="primary" variant="solid" :loading="isSaving" @click="submitSupplier">{{ editorMode === 'create' ? 'Create supplier' : 'Save supplier' }}</UButton>
           </div>
         </template>
       </UCard>

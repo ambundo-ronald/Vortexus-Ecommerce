@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { navSections, supplierNavSections, supportNav } from '~/config/navigation'
+import { accountManagerNavSections, navSections, supplierNavSections, supportNav } from '~/config/navigation'
 
 const route = useRoute()
 const auth = useAuth()
@@ -20,7 +20,13 @@ const isLinkActive = (item: { to?: string }) => {
   return route.path.startsWith(item.to)
 }
 
-const visibleNavSections = computed(() => auth.isAdmin.value ? navSections : supplierNavSections)
+const visibleNavSections = computed(() => {
+  if (auth.isPlatformAdmin.value)
+    return navSections
+  if (auth.isAccountManager.value)
+    return accountManagerNavSections
+  return supplierNavSections
+})
 </script>
 
 <template>

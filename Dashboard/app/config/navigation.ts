@@ -125,6 +125,11 @@ export const navSections: NavSection[] = [
         to: '/supplier-product-reviews',
       },
       {
+        label: 'Supplier Offers',
+        icon: 'i-lucide-package-plus',
+        to: '/supplier-offers',
+      },
+      {
         label: 'Shipping',
         icon: 'i-lucide-truck',
         to: '/shipping',
@@ -209,6 +214,41 @@ export const navSections: NavSection[] = [
 ]
 
 export const mainNav = navSections.flatMap(section => section.items)
+
+export const accountManagerNavSections: NavSection[] = [
+  {
+    label: 'Supplier Portfolio',
+    items: [
+      {
+        label: 'Suppliers',
+        icon: 'i-lucide-store',
+        to: '/suppliers',
+      },
+      {
+        label: 'Product Reviews',
+        icon: 'i-lucide-package-check',
+        to: '/supplier-product-reviews',
+      },
+      {
+        label: 'Supplier Offers',
+        icon: 'i-lucide-package-plus',
+        to: '/supplier-offers',
+      },
+      {
+        label: 'Orders',
+        icon: 'i-lucide-receipt',
+        to: '/orders',
+      },
+      {
+        label: 'Payment Logs',
+        icon: 'i-lucide-credit-card',
+        to: '/payment-logs',
+      },
+    ],
+  },
+]
+
+export const accountManagerNav = accountManagerNavSections.flatMap(section => section.items)
 
 export const supplierNavSections: NavSection[] = [
   {

@@ -26,6 +26,8 @@ from apps.payments.pesapal import (
 )
 from apps.payments.services import log_payment_event, payment_reconciliation
 
+from .account_manager_scope import can_access_all_admin_data, scope_payment_sessions_queryset
+
 
 class MpesaConfigSerializer(serializers.Serializer):
     is_enabled = serializers.BooleanField(required=False)
@@ -270,6 +272,8 @@ class AdminPaymentConfigurationAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can view payment configuration.'}, status=status.HTTP_403_FORBIDDEN)
         return Response(
             {
                 'mpesa': _serialize_provider('mpesa'),
@@ -280,6 +284,8 @@ class AdminPaymentConfigurationAPIView(APIView):
         )
 
     def patch(self, request):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can update payment configuration.'}, status=status.HTTP_403_FORBIDDEN)
         return _update_payment_configuration(request)
 
 
@@ -287,6 +293,8 @@ class AdminPesapalRegisterIPNAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can register payment callbacks.'}, status=status.HTTP_403_FORBIDDEN)
         ipn_url = (request.data.get('ipn_url') or get_payment_setting('pesapal', 'ipn_url', settings.PESAPAL_IPN_URL) or '').strip()
         notification_type = (
             request.data.get('notification_type')
@@ -409,7 +417,7 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        queryset = (
+        queryset = scope_payment_sessions_queryset(
             PaymentSession.objects.select_related('user', 'order')
             .prefetch_related(
                 Prefetch(
@@ -418,7 +426,8 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
                     to_attr='prefetched_events',
                 )
             )
-            .order_by('-created_at')
+            .order_by('-created_at'),
+            request.user,
         )
 
         search = (request.query_params.get('q') or '').strip()
@@ -453,7 +462,7 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
         paginator = Paginator(queryset, page_size)
         page_obj = paginator.get_page(page)
 
-        base_queryset = PaymentSession.objects.all()
+        base_queryset = scope_payment_sessions_queryset(PaymentSession.objects.all(), request.user)
         summary = {
             'total': base_queryset.count(),
             'by_status': list(base_queryset.values('status').annotate(count=Count('id')).order_by('status')),
@@ -483,6 +492,8 @@ class AdminPaymentRefundAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, reference: str):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can request refunds.'}, status=status.HTTP_403_FORBIDDEN)
         payment = get_payment_or_404(reference)
         serializer = PaymentRefundRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

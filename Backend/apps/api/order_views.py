@@ -14,6 +14,7 @@ from apps.integrations.tasks import sync_order_cancellation_to_erpnext
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_shipping_update_email
 
+from .account_manager_scope import can_access_all_admin_data, scope_orders_queryset
 from .order_serializers import (
     AdminOrderStatusUpdateSerializer,
     AdminOrderDetailSerializer,
@@ -226,7 +227,7 @@ class AdminOrderCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        queryset = _admin_orders_queryset()
+        queryset = scope_orders_queryset(_admin_orders_queryset(), request.user)
         query = (request.query_params.get('q') or '').strip()
         status_filter = (request.query_params.get('status') or '').strip()
 
@@ -275,7 +276,7 @@ class AdminOrderCollectionAPIView(APIView):
         page_obj = paginator.get_page(page)
         serializer = AdminOrderListSerializer(page_obj.object_list, many=True)
 
-        summary_queryset = _admin_orders_queryset()
+        summary_queryset = scope_orders_queryset(_admin_orders_queryset(), request.user)
         if query:
             summary_queryset = summary_queryset.filter(
                 Q(number__icontains=query)
@@ -313,7 +314,7 @@ class AdminOrderDetailAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request, order_id: int):
-        order = get_object_or_404(_admin_orders_queryset(), id=order_id)
+        order = get_object_or_404(scope_orders_queryset(_admin_orders_queryset(), request.user), id=order_id)
         return Response({'order': AdminOrderDetailSerializer(order).data})
 
 
@@ -322,6 +323,17 @@ class AdminOrderStatusAPIView(APIView):
 
     @transaction.atomic
     def patch(self, request, order_id: int):
+        if not can_access_all_admin_data(request.user):
+            return Response(
+                {
+                    'error': {
+                        'code': 'platform_admin_required',
+                        'detail': 'Only a platform admin can update global order status.',
+                        'status': 403,
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
         order = get_object_or_404(_admin_orders_queryset(), id=order_id)
         serializer = AdminOrderStatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

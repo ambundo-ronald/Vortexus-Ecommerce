@@ -53,8 +53,7 @@ Frontend V1 runs on `http://127.0.0.1:5174`
   - `http://127.0.0.1:5173`
   - `http://localhost:5173`
 - Frontend API host is configured by `Frontend/.env` using:
-  - `VITE_API_BASE_URL=` (leave empty to use the Vite development proxy)
-  - `VITE_DEV_API_PROXY_TARGET=http://127.0.0.1:8000`
+  - `VITE_API_BASE_URL=http://127.0.0.1:8000`
 
 ## Docker / VPS Deployment
 

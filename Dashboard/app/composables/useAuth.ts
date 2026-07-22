@@ -6,6 +6,8 @@ export interface AdminSessionUser {
   last_name?: string
   full_name?: string
   is_staff?: boolean
+  is_superuser?: boolean
+  dashboard_role?: 'platform_admin' | 'account_manager' | 'supplier' | 'customer' | string
   supplier?: {
     is_supplier?: boolean
     status?: string
@@ -36,6 +38,8 @@ export function useAuth() {
 
   const isAuthenticated = computed(() => Boolean(user.value))
   const isAdmin = computed(() => Boolean(user.value?.is_staff))
+  const isPlatformAdmin = computed(() => Boolean(user.value?.is_superuser))
+  const isAccountManager = computed(() => Boolean(user.value?.is_staff && !user.value?.is_superuser))
   const isSupplier = computed(() => Boolean(user.value?.supplier?.is_supplier))
   const isApprovedSupplier = computed(() => user.value?.supplier?.status === 'approved')
   const hasDashboardAccess = computed(() => isAdmin.value || isSupplier.value)
@@ -130,6 +134,8 @@ export function useAuth() {
     error,
     isAuthenticated,
     isAdmin,
+    isPlatformAdmin,
+    isAccountManager,
     isSupplier,
     isApprovedSupplier,
     hasDashboardAccess,

@@ -63,6 +63,7 @@ export function useAdminNotifications() {
     error.value = null
     try {
       const result = await request<{ results: AdminNotification[], unread_count: number }>('/admin/notifications/', {
+        redirectOnAuthError: false,
         query: {
           unread: options.unread ? '1' : '',
           limit: options.limit || 20,
@@ -85,6 +86,7 @@ export function useAdminNotifications() {
     try {
       const result = await request<{ notification: AdminNotification }>(`/admin/notifications/${notificationId}/`, {
         method: 'PATCH',
+        redirectOnAuthError: false,
         body: { action: 'read' },
       })
       notifications.value = notifications.value.map(item => item.id === notificationId ? result.notification : item)
@@ -99,7 +101,7 @@ export function useAdminNotifications() {
 
   async function markAllRead() {
     try {
-      const result = await request<{ updated: number }>('/admin/notifications/read-all/', { method: 'POST' })
+      const result = await request<{ updated: number }>('/admin/notifications/read-all/', { method: 'POST', redirectOnAuthError: false })
       notifications.value = notifications.value.map(item => ({ ...item, read_at: item.read_at || new Date().toISOString() }))
       unreadCount.value = 0
       return { success: true, data: result }
@@ -113,7 +115,7 @@ export function useAdminNotifications() {
   async function fetchPushConfig() {
     pushError.value = null
     try {
-      const result = await request<AdminPushConfig>('/admin/push/config/')
+      const result = await request<AdminPushConfig>('/admin/push/config/', { redirectOnAuthError: false })
       pushConfig.value = result
       return { success: true, data: result }
     }
@@ -150,6 +152,7 @@ export function useAdminNotifications() {
     const body = subscription.toJSON()
     const result = await request('/admin/push/subscription/', {
       method: 'POST',
+      redirectOnAuthError: false,
       body: {
         subscription: {
           endpoint: body.endpoint,

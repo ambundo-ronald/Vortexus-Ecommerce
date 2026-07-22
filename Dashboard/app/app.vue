@@ -24,6 +24,7 @@ const unreadCount = computed(() => adminNotifications.unreadCount.value)
 const pushConfig = computed(() => adminNotifications.pushConfig.value)
 const pushError = computed(() => adminNotifications.pushError.value)
 const canEnablePush = computed(() => Boolean(pushConfig.value?.is_configured && import.meta.client))
+const canUseAdminNotifications = computed(() => Boolean(auth.isAdmin.value && !isAuthPage.value))
 const pushButtonLabel = computed(() => {
   if (!pushConfig.value?.is_configured)
     return 'Push keys missing'
@@ -34,11 +35,32 @@ const pushButtonLabel = computed(() => {
 
 onMounted(() => {
   isMounted.value = true
+  if (!canUseAdminNotifications.value)
+    return
   void adminNotifications.fetchNotifications()
   void adminNotifications.fetchPushConfig()
   notificationTimer = setInterval(() => {
-    void adminNotifications.fetchNotifications()
+    if (canUseAdminNotifications.value)
+      void adminNotifications.fetchNotifications()
   }, 45_000)
+})
+
+watch(canUseAdminNotifications, (enabled) => {
+  if (!enabled) {
+    if (notificationTimer) {
+      clearInterval(notificationTimer)
+      notificationTimer = null
+    }
+    return
+  }
+  void adminNotifications.fetchNotifications()
+  void adminNotifications.fetchPushConfig()
+  if (!notificationTimer) {
+    notificationTimer = setInterval(() => {
+      if (canUseAdminNotifications.value)
+        void adminNotifications.fetchNotifications()
+    }, 45_000)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -136,7 +158,7 @@ async function enablePush() {
             />
 
             <div class="ml-auto flex items-center gap-2">
-              <UPopover>
+              <UPopover v-if="canUseAdminNotifications">
                 <UButton icon="i-lucide-bell" color="neutral" variant="ghost" class="relative" aria-label="Admin notifications">
                   <span
                     v-if="unreadCount"
