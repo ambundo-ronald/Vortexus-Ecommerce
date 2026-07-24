@@ -94,8 +94,14 @@ export default function HomePage() {
             name: "Reesolmart",
             url: absoluteUrl("/"),
             logo: absoluteUrl("/Reesolmart logo.png"),
-            email: "support@reesolmart.local",
-            slogan: "Just in time, buying"
+            email: "support@reesolmart.com",
+            slogan: "Just in time, buying",
+            sameAs: [
+              "https://x.com/Reesolmart",
+              "https://www.instagram.com/reesolmart/",
+              "https://www.linkedin.com/in/reesol-mart-03b3a0420/",
+              "https://www.facebook.com/people/Reesolmart/61591495931916/"
+            ]
           },
           {
             "@context": "https://schema.org",

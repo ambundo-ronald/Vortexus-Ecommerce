@@ -1,4 +1,6 @@
 import { NavLink } from "react-router-dom";
+import { FaFacebookF, FaInstagram, FaLinkedinIn } from "react-icons/fa";
+import { FaXTwitter } from "react-icons/fa6";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import "./StoreFooter.css";
@@ -33,7 +35,7 @@ const companyLinks = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/offers", label: "Offers", icon: "sell" },
   { to: "/account/reviews", label: "Reviews", icon: "star" },
-  { href: "mailto:support@reesolmart.local", label: "Email support", icon: "alternate_email" },
+  { href: "mailto:support@reesolmart.com", label: "Email support", icon: "alternate_email" },
 ];
 
 const quickActions = [
@@ -42,7 +44,14 @@ const quickActions = [
   { to: "/orders/track", label: "Track", icon: "local_shipping" },
   { to: "/account/wishlist", label: "Wishlist", icon: "favorite" },
   { to: "/account/messages", label: "Inbox", icon: "forum" },
-  { href: "mailto:support@reesolmart.local", label: "Email", icon: "mail" },
+  { href: "mailto:support@reesolmart.com", label: "Email", icon: "mail" },
+];
+
+const socialLinks = [
+  { href: "https://x.com/Reesolmart", label: "X", Icon: FaXTwitter },
+  { href: "https://www.instagram.com/reesolmart/", label: "Instagram", Icon: FaInstagram },
+  { href: "https://www.linkedin.com/in/reesol-mart-03b3a0420/", label: "LinkedIn", Icon: FaLinkedinIn },
+  { href: "https://www.facebook.com/people/Reesolmart/61591495931916/", label: "Facebook", Icon: FaFacebookF },
 ];
 
 export default function Footer() {
@@ -70,9 +79,9 @@ export default function Footer() {
                 <MaterialIcon name="location_on" size={20} />
                 <span>Nairobi, Kenya</span>
               </span>
-              <a href="mailto:support@reesolmart.local">
+              <a href="mailto:support@reesolmart.com">
                 <MaterialIcon name="mail" size={20} />
-                <span>support@reesolmart.local</span>
+                <span>support@reesolmart.com</span>
               </a>
               <NavLink to="/quote">
                 <MaterialIcon name="chat" size={20} />
@@ -89,6 +98,15 @@ export default function Footer() {
               <FooterIconLink link={link} key={link.to || link.href} />
             ))}
           </div>
+        </section>
+
+        <section className="store-footer__socials" aria-label="Reesolmart social links">
+          {socialLinks.map(({ href, label, Icon }) => (
+            <a key={href} href={href} target="_blank" rel="noreferrer" aria-label={`Reesolmart on ${label}`}>
+              <Icon aria-hidden="true" />
+              <span>{label}</span>
+            </a>
+          ))}
         </section>
 
         <div className="store-footer__bottom">
