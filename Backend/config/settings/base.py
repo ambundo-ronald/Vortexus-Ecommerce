@@ -98,6 +98,7 @@ SITE_ID = 1
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
+CALLBACK_BUSINESS_TIME_ZONE = env('CALLBACK_BUSINESS_TIME_ZONE', default='Africa/Nairobi')
 USE_I18N = True
 USE_TZ = True
 
@@ -150,6 +151,7 @@ REST_FRAMEWORK = {
         'account_password': '10/hour',
         'account_password_reset': '5/hour',
         'quote_request': '8/hour',
+        'callback_request': '6/hour',
         'public_search': env('DRF_THROTTLE_PUBLIC_SEARCH_RATE', default='120/hour'),
         'image_search': '20/hour',
         'recommendations': env('DRF_THROTTLE_RECOMMENDATIONS_RATE', default='180/hour'),

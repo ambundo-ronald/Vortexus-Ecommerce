@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from apps.auditlog.models import SearchAnalyticsEvent
 from apps.common.products import stockrecord_count
+from apps.notifications.models import CallbackRequest
 
 
 def _decimal_to_float(value):
@@ -498,6 +499,33 @@ class AdminSupportAPIView(APIView):
         )
 
         tickets = []
+        callback_requests = list(
+            CallbackRequest.objects.select_related('product', 'user', 'assigned_to')
+            .order_by('respond_by', '-created_at')[:page_size]
+        )
+        now = timezone.now()
+        for callback_request in callback_requests:
+            tickets.append(
+                {
+                    'id': f'callback-{callback_request.id}',
+                    'callback_id': callback_request.id,
+                    'type': 'callback',
+                    'customer': callback_request.name,
+                    'contact': callback_request.phone_number,
+                    'subject': f'Call back about {callback_request.product.title}',
+                    'message': callback_request.reason,
+                    'status': callback_request.status,
+                    'source': 'Product callback',
+                    'reference': str(callback_request.product_id),
+                    'product_id': callback_request.product_id,
+                    'product_title': callback_request.product.title,
+                    'respond_by': callback_request.respond_by,
+                    'is_overdue': callback_request.status == CallbackRequest.STATUS_PENDING and callback_request.respond_by < now,
+                    'staff_notes': callback_request.staff_notes,
+                    'assigned_to': callback_request.assigned_to.get_full_name() or callback_request.assigned_to.email if callback_request.assigned_to else '',
+                    'created_at': callback_request.created_at,
+                }
+            )
         for notification in quote_notifications[:10]:
             metadata = notification.metadata or {}
             tickets.append(
@@ -547,6 +575,8 @@ class AdminSupportAPIView(APIView):
                     'open_cases': len(tickets),
                     'quote_cases': len([ticket for ticket in tickets if ticket['type'] == 'quote']),
                     'order_cases': len([ticket for ticket in tickets if ticket['type'] == 'order']),
+                    'callback_leads': len([ticket for ticket in tickets if ticket['type'] == 'callback']),
+                    'overdue_callbacks': len([ticket for ticket in tickets if ticket.get('is_overdue')]),
                     'failed_notifications': failed_notifications,
                 },
                 'tickets': tickets,

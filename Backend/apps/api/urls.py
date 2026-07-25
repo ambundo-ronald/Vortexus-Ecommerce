@@ -72,6 +72,7 @@ from .admin_notification_views import (
     AdminPushSubscriptionAPIView,
 )
 from .dashboard_views import AdminCampaignsAPIView, AdminDashboardAPIView, AdminSearchAnalyticsAPIView, AdminSupportAPIView
+from .callback_views import CallbackRequestCreateAPIView, AdminCallbackRequestDetailAPIView
 from .docs_views import ApiDocsHtmlAPIView, ApiDocsJsonAPIView, ApiRootAPIView
 from .email_config_views import (
     AdminEmailConfigurationAPIView,
@@ -319,6 +320,7 @@ urlpatterns = [
     path('admin/search-analytics/', AdminSearchAnalyticsAPIView.as_view(), name='admin-search-analytics'),
     path('admin/campaigns/', AdminCampaignsAPIView.as_view(), name='admin-campaigns'),
     path('admin/support/', AdminSupportAPIView.as_view(), name='admin-support'),
+    path('admin/callback-requests/<int:callback_id>/', AdminCallbackRequestDetailAPIView.as_view(), name='admin-callback-request-detail'),
     path('admin/notifications/', AdminNotificationCollectionAPIView.as_view(), name='admin-notifications'),
     path('admin/notifications/read-all/', AdminNotificationReadAllAPIView.as_view(), name='admin-notifications-read-all'),
     path('admin/notifications/<int:notification_id>/', AdminNotificationDetailAPIView.as_view(), name='admin-notification-detail'),
@@ -489,6 +491,7 @@ urlpatterns = [
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/vote/', ProductReviewVoteAPIView.as_view(), name='catalog-product-review-vote'),
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/', ProductReviewDetailAPIView.as_view(), name='catalog-product-review-detail'),
     path('catalog/products/<int:product_id>/alerts/', ProductAlertCreateAPIView.as_view(), name='catalog-product-alerts'),
+    path('callback-requests/', CallbackRequestCreateAPIView.as_view(), name='callback-request-create'),
     path('catalog/products/<int:product_id>/viewed/', ProductViewedAPIView.as_view(), name='catalog-product-viewed'),
     path('content/marketing-blocks/', PublicMarketingBlockCollectionAPIView.as_view(), name='marketing-blocks'),
     path('product-alerts/confirm/<str:key>/', ProductAlertConfirmAPIView.as_view(), name='product-alert-confirm'),

@@ -73,6 +73,7 @@ export const ENDPOINTS = {
   },
   recommendations: "/recommendations/",
   quotes: "/quotes/",
+  callbackRequests: "/callback-requests/",
   analytics: {
     events: "/analytics/events/"
   },

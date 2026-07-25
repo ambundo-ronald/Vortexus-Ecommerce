@@ -91,6 +91,60 @@ class EmailNotification(models.Model):
         return f'{self.event_type}:{self.recipient}:{self.status}'
 
 
+class CallbackRequest(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_CONTACTED = 'contacted'
+    STATUS_RESOLVED = 'resolved'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_CONTACTED, 'Contacted'),
+        (STATUS_RESOLVED, 'Resolved'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='callback_requests',
+    )
+    product = models.ForeignKey(
+        'catalogue.Product',
+        on_delete=models.PROTECT,
+        related_name='callback_requests',
+    )
+    name = models.CharField(max_length=160)
+    phone_number = models.CharField(max_length=32)
+    reason = models.TextField()
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    respond_by = models.DateTimeField()
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='assigned_callback_requests',
+    )
+    staff_notes = models.TextField(blank=True)
+    contacted_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['respond_by', '-created_at']
+        indexes = [
+            models.Index(fields=['status', 'respond_by']),
+            models.Index(fields=['product', '-created_at']),
+            models.Index(fields=['phone_number', '-created_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'Callback #{self.pk}: {self.name} - {self.product}'
+
+
 class EmailSuppression(models.Model):
     REASON_CHOICES = [
         ('bounce', 'Bounce'),

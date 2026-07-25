@@ -2,6 +2,9 @@ import apiClient from "./axiosClient";
 import { ENDPOINTS } from "../constants/apiEndpoints";
 
 export const storefrontExtrasApi = {
+  callbackRequests: {
+    create: (payload) => apiClient.post(ENDPOINTS.callbackRequests, payload).then((response) => response.data)
+  },
   vouchers: {
     apply: (payload) => apiClient.post(ENDPOINTS.checkout.vouchers, payload).then((response) => response.data),
     remove: (voucherId) => apiClient.delete(ENDPOINTS.checkout.voucher(voucherId)).then((response) => response.data)

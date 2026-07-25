@@ -45,6 +45,7 @@ export default function ProductDetailPage() {
   const [optionError, setOptionError] = useState("");
   const [copiedShare, setCopiedShare] = useState(false);
   const [alertSaving, setAlertSaving] = useState(false);
+  const [callbackOpen, setCallbackOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const productOptions = useMemo(() => product?.options || product?.product_options || [], [product]);
   const missingRequiredOptions = useMemo(
@@ -289,6 +290,10 @@ export default function ProductDetailPage() {
               <MaterialIcon name="request_quote" size={19} />
               Request quote
             </Link>
+            <button className="secondary-button callback-button" type="button" onClick={() => setCallbackOpen(true)}>
+              <MaterialIcon name="phone_callback" size={19} />
+              Call me back
+            </button>
           </div>
 
           {!stock.isAvailable ? (
@@ -321,6 +326,111 @@ export default function ProductDetailPage() {
       </div>
 
       <RelatedProducts products={related} />
+      {callbackOpen ? (
+        <CallbackRequestModal
+          productId={resolvedProductId}
+          productTitle={resolvedTitle}
+          user={user}
+          onClose={() => setCallbackOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CallbackRequestModal({ productId, productTitle: title, user, onClose }) {
+  const notify = useUiStore((state) => state.notify);
+  const [form, setForm] = useState({
+    name: [user?.first_name, user?.last_name].filter(Boolean).join(" ") || user?.name || "",
+    phone_number: user?.phone_number || user?.phone || "",
+    reason: ""
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await storefrontExtrasApi.callbackRequests.create({
+        product_id: Number(productId),
+        name: form.name.trim(),
+        phone_number: form.phone_number.trim(),
+        reason: form.reason.trim()
+      });
+      const deadline = result?.respond_by
+        ? new Date(result.respond_by).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })
+        : "within three working hours";
+      notify({
+        title: "Callback requested",
+        message: `Our team will call you by ${deadline}.`,
+        icon: "phone_callback"
+      });
+      onClose();
+    } catch (requestError) {
+      const payload = requestError?.response?.data;
+      const fieldError = payload && Object.values(payload).find((value) => Array.isArray(value));
+      setError(fieldError?.[0] || requestError?.normalized?.message || "We could not submit your request. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="callback-modal" role="dialog" aria-modal="true" aria-labelledby="callback-title" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !submitting) onClose();
+    }}>
+      <form className="callback-modal__panel" onSubmit={handleSubmit}>
+        <button className="callback-modal__close" type="button" disabled={submitting} onClick={onClose} aria-label="Close">
+          <MaterialIcon name="close" size={20} />
+        </button>
+        <span className="callback-modal__icon"><MaterialIcon name="phone_callback" size={26} /></span>
+        <h2 id="callback-title">Call me back</h2>
+        <p>Ask our team about <strong>{title}</strong>. We respond within three working hours, Monday–Friday, 7:00 AM–8:00 PM.</p>
+        <Alert>{error}</Alert>
+        <label>
+          <span>Name</span>
+          <input
+            value={form.name}
+            maxLength={160}
+            autoComplete="name"
+            required
+            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Phone number</span>
+          <input
+            type="tel"
+            value={form.phone_number}
+            maxLength={32}
+            autoComplete="tel"
+            placeholder="+254 700 000 000"
+            required
+            onChange={(event) => setForm((current) => ({ ...current, phone_number: event.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Reason for request</span>
+          <textarea
+            value={form.reason}
+            minLength={5}
+            maxLength={2000}
+            rows={4}
+            placeholder="Tell us what you would like help with"
+            required
+            onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+          />
+        </label>
+        <div className="callback-modal__actions">
+          <button className="primary-button" type="submit" disabled={submitting}>
+            <MaterialIcon name="phone_callback" size={19} />
+            {submitting ? "Sending..." : "Request callback"}
+          </button>
+          <button className="secondary-button" type="button" disabled={submitting} onClick={onClose}>Cancel</button>
+        </div>
+      </form>
     </div>
   );
 }

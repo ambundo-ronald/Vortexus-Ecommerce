@@ -28,9 +28,29 @@ export function useSupport() {
     }
   }
 
+  async function updateCallback(callbackId: number, payload: { status: string, staff_notes?: string }) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request(`/admin/callback-requests/${callbackId}/`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = err?.data?.error?.detail || err?.data?.detail || err?.message || 'Unknown error'
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     error,
     getSupportQueue,
     loading,
+    updateCallback,
   }
 }
