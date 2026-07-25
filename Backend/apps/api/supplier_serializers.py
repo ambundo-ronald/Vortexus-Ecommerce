@@ -22,6 +22,10 @@ def _money(value, default='0.00'):
     return Decimal(str(value if value is not None else default)).quantize(Decimal('0.01'))
 
 
+def _sum_supplier_allocations(queryset):
+    return queryset.aggregate(total=Sum('supplier_total_cost')).get('total') or ZERO
+
+
 def _canonical_stockrecord_for_product(product, exclude_partner_id=None):
     queryset = product.stockrecords.select_related('partner').order_by('id')
     if exclude_partner_id:
@@ -58,6 +62,18 @@ def _supplier_offer_payload(offer):
 
 
 def _supplier_product_request_payload(product_request):
+    SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
+    linked_offer = None
+    if product_request.linked_product_id:
+        linked_offer = (
+            SupplierProductOffer.objects.filter(
+                supplier=product_request.supplier,
+                product=product_request.linked_product,
+            )
+            .select_related('supplier', 'supplier__user', 'supplier__partner', 'product', 'stockrecord', 'reviewed_by')
+            .prefetch_related('product__stockrecords', 'product__categories', 'product__images')
+            .first()
+        )
     return {
         'id': product_request.id,
         'status': product_request.status,
@@ -73,6 +89,7 @@ def _supplier_product_request_payload(product_request):
         'notes': product_request.notes,
         'review_note': product_request.review_note,
         'linked_product': serialize_product_card(product_request.linked_product, display_currency=None) if product_request.linked_product else None,
+        'linked_offer': _supplier_offer_payload(linked_offer) if linked_offer else None,
         'supplier': SupplierProfileSerializer(product_request.supplier).data,
         'submitted_at': product_request.submitted_at,
         'reviewed_at': product_request.reviewed_at,
@@ -437,8 +454,8 @@ class SupplierDashboardSerializer(serializers.Serializer):
             order__supplier_groups__partner=partner,
             status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID],
         ).values_list('order_id', flat=True)
-        paid_supplier_orders = supplier_orders.filter(order_id__in=paid_order_ids)
         paid_allocations = allocations.filter(order_id__in=paid_order_ids)
+        pending_allocations = allocations.exclude(order_id__in=paid_order_ids)
 
         return {
             'supplier': SupplierProfileSerializer(supplier_profile).data,
@@ -462,19 +479,145 @@ class SupplierDashboardSerializer(serializers.Serializer):
                 'open_order_count': supplier_orders.exclude(status__in=['delivered', 'cancelled']).count(),
                 'delivered_order_count': supplier_orders.filter(status='delivered').count(),
                 'cancelled_order_count': supplier_orders.filter(status='cancelled').count(),
-                'gross_sales_total': supplier_orders.aggregate(total=Sum('total_incl_tax')).get('total') or 0,
-                'supplier_payable_total': allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'confirmed_payment_total': paid_supplier_orders.aggregate(total=Sum('total_incl_tax')).get('total') or 0,
-                'confirmed_payable_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'pending_payment_total': supplier_orders.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('total_incl_tax')).get('total') or 0,
+                'supplier_payable_total': _sum_supplier_allocations(allocations),
+                'confirmed_payable_total': _sum_supplier_allocations(paid_allocations),
+                'pending_payable_total': _sum_supplier_allocations(pending_allocations),
             },
             'payments': {
-                'basis': 'confirmed_customer_payment',
+                'basis': 'supplier_order_line_allocations',
                 'status': 'settlement_pending',
-                'confirmed_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'pending_total': allocations.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'paid_out_total': 0,
+                'confirmed_total': _sum_supplier_allocations(paid_allocations),
+                'pending_total': _sum_supplier_allocations(pending_allocations),
+                'paid_out_total': _sum_supplier_allocations(allocations.filter(payout_status='paid')),
             },
+        }
+
+
+def _supplier_order_group_payable(group):
+    return _sum_supplier_allocations(group.order.supplier_allocations.filter(partner=group.partner))
+
+
+def _supplier_order_group_payload(group, *, include_platform_fields=False):
+    order = group.order
+    payload = {
+        'id': group.id,
+        'order_number': order.number,
+        'order_id': order.id,
+        'order_status': order.status,
+        'status': group.status,
+        'date_placed': order.date_placed,
+        'currency': order.currency,
+        'line_count': group.line_count,
+        'item_count': group.item_count,
+        'supplier_payable_total': float(_supplier_order_group_payable(group)),
+        'tracking_reference': group.tracking_reference or '',
+        'customer': {
+            'email': order.user.email if getattr(order, 'user_id', None) else order.guest_email,
+            'name': order.user.get_full_name() if getattr(order, 'user_id', None) else '',
+        },
+    }
+    if include_platform_fields:
+        payload.update({
+            'total_incl_tax': float(group.total_incl_tax or ZERO),
+            'shipping_incl_tax': float(group.shipping_incl_tax or ZERO),
+        })
+    return payload
+
+
+def _supplier_allocation_payload(allocation, *, include_platform_fields=False):
+    payload = {
+        'id': allocation.id,
+        'order_number': allocation.order.number,
+        'order_status': allocation.order.status,
+        'line_id': allocation.line_id,
+        'line_status': allocation.line.status if allocation.line_id else '',
+        'product_id': allocation.product_id,
+        'product_title': allocation.product.title if allocation.product_id else allocation.line.title,
+        'quantity': allocation.quantity,
+        'supplier_unit_cost': float(allocation.supplier_unit_cost or ZERO),
+        'supplier_total_cost': float(allocation.supplier_total_cost or ZERO),
+        'currency': allocation.currency or default_currency(),
+        'payout_status': allocation.payout_status,
+        'payout_reference': allocation.payout_reference or '',
+        'supplier_offer_id': allocation.supplier_offer_id,
+        'stockrecord_id': allocation.stockrecord_id,
+        'created_at': allocation.created_at,
+        'updated_at': allocation.updated_at,
+    }
+    if include_platform_fields:
+        payload.update({
+            'customer_unit_price_incl_tax': float(allocation.customer_unit_price_incl_tax or ZERO),
+            'gross_margin': float(allocation.gross_margin or ZERO),
+        })
+    return payload
+
+
+class SupplierAdminDetailSerializer(serializers.Serializer):
+    def to_representation(self, supplier_profile):
+        StockRecord = apps.get_model('partner', 'StockRecord')
+        SupplierOrderGroup = apps.get_model('marketplace', 'SupplierOrderGroup')
+        SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
+        SupplierProductRequest = apps.get_model('marketplace', 'SupplierProductRequest')
+        SupplierOrderLineAllocation = apps.get_model('marketplace', 'SupplierOrderLineAllocation')
+        PaymentSession = apps.get_model('payments', 'PaymentSession')
+        partner = supplier_profile.partner
+
+        offers = (
+            SupplierProductOffer.objects.filter(supplier=supplier_profile)
+            .select_related('supplier', 'supplier__user', 'supplier__partner', 'product', 'stockrecord', 'reviewed_by')
+            .prefetch_related('product__stockrecords', 'product__categories', 'product__images')
+            .order_by('-updated_at', '-id')
+        )
+        product_requests = (
+            SupplierProductRequest.objects.filter(supplier=supplier_profile)
+            .select_related('supplier', 'supplier__user', 'supplier__partner', 'linked_product', 'reviewed_by')
+            .prefetch_related('linked_product__stockrecords', 'linked_product__categories', 'linked_product__images')
+            .order_by('-updated_at', '-id')
+        )
+        order_groups = (
+            SupplierOrderGroup.objects.filter(partner=partner)
+            .select_related('partner', 'order', 'order__user')
+            .order_by('-order__date_placed', '-id')
+        )
+        allocations = (
+            SupplierOrderLineAllocation.objects.filter(partner=partner)
+            .select_related('order', 'line', 'product', 'stockrecord', 'supplier_offer')
+            .order_by('-created_at', '-id')
+        )
+        paid_order_ids = PaymentSession.objects.filter(
+            order__supplier_groups__partner=partner,
+            status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID],
+        ).values_list('order_id', flat=True)
+        paid_allocations = allocations.filter(order_id__in=paid_order_ids)
+        stockrecords = StockRecord.objects.filter(partner=partner)
+
+        return {
+            'supplier': SupplierProfileSerializer(supplier_profile).data,
+            'metrics': {
+                'offer_count': offers.count(),
+                'approved_offer_count': offers.filter(status=SupplierProductOffer.STATUS_APPROVED).count(),
+                'pending_offer_count': offers.filter(status=SupplierProductOffer.STATUS_PENDING_REVIEW).count(),
+                'product_request_count': product_requests.count(),
+                'pending_product_request_count': product_requests.filter(status=SupplierProductRequest.STATUS_PENDING_REVIEW).count(),
+                'stock_units_on_hand': stockrecords.aggregate(total=Sum('num_in_stock')).get('total') or 0,
+                'stock_units_allocated': stockrecords.aggregate(total=Sum('num_allocated')).get('total') or 0,
+                'order_count': order_groups.count(),
+                'open_order_count': order_groups.exclude(status__in=['delivered', 'cancelled']).count(),
+                'supplier_payable_total': allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'confirmed_payable_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'pending_payable_total': allocations.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'gross_margin_total': allocations.aggregate(total=Sum('gross_margin')).get('total') or 0,
+            },
+            'payments': {
+                'basis': 'supplier_order_line_allocations',
+                'confirmed_payable_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'pending_payable_total': allocations.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'paid_out_total': allocations.filter(payout_status='paid').aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+            },
+            'offers': SupplierProductOfferListSerializer(offers[:12], many=True).data,
+            'product_requests': SupplierProductRequestListSerializer(product_requests[:12], many=True).data,
+            'orders': [_supplier_order_group_payload(group, include_platform_fields=True) for group in order_groups[:12]],
+            'allocations': [_supplier_allocation_payload(allocation, include_platform_fields=True) for allocation in allocations[:20]],
         }
 
 
@@ -629,7 +772,10 @@ class SupplierProductRequestModerationSerializer(serializers.Serializer):
         attrs['review_note'] = review_note
         return attrs
 
+    @transaction.atomic
     def update(self, instance, validated_data):
+        SupplierProductRequest = apps.get_model('marketplace', 'SupplierProductRequest')
+        SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
         linked_product = validated_data.pop('linked_product_id', serializers.empty)
         instance.status = validated_data['status']
         instance.review_note = validated_data.get('review_note', '')
@@ -638,6 +784,29 @@ class SupplierProductRequestModerationSerializer(serializers.Serializer):
         if linked_product is not serializers.empty:
             instance.linked_product = linked_product
         instance.save(update_fields=['status', 'review_note', 'reviewed_by', 'reviewed_at', 'linked_product', 'updated_at'])
+
+        if (
+            instance.status == SupplierProductRequest.STATUS_APPROVED
+            and instance.linked_product_id
+            and instance.supplier_unit_cost is not None
+        ):
+            SupplierProductOffer.objects.update_or_create(
+                supplier=instance.supplier,
+                product=instance.linked_product,
+                defaults={
+                    'supplier_unit_cost': instance.supplier_unit_cost,
+                    'currency': instance.currency or default_currency(),
+                    'available_quantity': instance.available_quantity or 0,
+                    'lead_time_days': 0,
+                    'supplier_sku': instance.supplier_sku or '',
+                    'notes': instance.notes or instance.description or '',
+                    'status': SupplierProductOffer.STATUS_PENDING_REVIEW,
+                    'submitted_by': instance.submitted_by,
+                    'reviewed_by': None,
+                    'reviewed_at': None,
+                    'review_note': 'Created from approved supplier product request.',
+                },
+            )
         return instance
 
 

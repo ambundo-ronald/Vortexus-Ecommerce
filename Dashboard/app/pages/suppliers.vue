@@ -89,6 +89,14 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function formatMoney(value: number | string | undefined, currency = 'KES') {
+  return new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: currency || 'KES',
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0))
+}
+
 function formatAccountManager(manager: UserTableRow) {
   const name = manager.name && manager.name !== manager.email ? manager.name : ''
   return name ? `${name} (${manager.email})` : manager.email
@@ -479,6 +487,67 @@ onMounted(loadSuppliers)
               <dd class="mt-1 text-slate-950">{{ formatDate(selectedSupplier.updated_at) }}</dd>
             </div>
           </dl>
+
+          <div v-if="selectedSupplier.metrics" class="mt-5 space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase text-slate-500">Approved offers</p>
+                <p class="mt-1 text-lg font-black text-slate-950">{{ selectedSupplier.metrics.approved_offer_count || 0 }}</p>
+              </div>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase text-slate-500">Stock on hand</p>
+                <p class="mt-1 text-lg font-black text-slate-950">{{ Number(selectedSupplier.metrics.stock_units_on_hand || 0).toLocaleString() }}</p>
+              </div>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase text-slate-500">Open orders</p>
+                <p class="mt-1 text-lg font-black text-slate-950">{{ selectedSupplier.metrics.open_order_count || 0 }}</p>
+              </div>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p class="text-xs font-semibold uppercase text-slate-500">Payable</p>
+                <p class="mt-1 text-lg font-black text-slate-950">{{ formatMoney(selectedSupplier.metrics.confirmed_payable_total || selectedSupplier.metrics.supplier_payable_total) }}</p>
+              </div>
+            </div>
+
+            <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950">
+              <p class="font-bold">Supplier logic</p>
+              <p class="mt-1">Product requests approve catalogue creation. Stock offers approve a supplier's cost and stock. Orders create supplier allocations, and allocations are the payout ledger.</p>
+            </div>
+
+            <div v-if="selectedSupplier.offers?.length" class="rounded-lg border border-slate-200">
+              <div class="border-b border-slate-200 px-3 py-2 text-sm font-bold text-slate-950">Recent stock offers</div>
+              <div v-for="offer in selectedSupplier.offers.slice(0, 5)" :key="offer.id" class="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-slate-950">{{ offer.product?.title || 'Untitled product' }}</p>
+                  <p class="text-xs text-slate-500">Qty {{ Number(offer.available_quantity || 0).toLocaleString() }} · Cost {{ formatMoney(offer.supplier_unit_cost, offer.currency) }}</p>
+                </div>
+                <UBadge :color="statusColor(offer.status)" variant="soft">{{ formatStatus(offer.status) }}</UBadge>
+              </div>
+            </div>
+
+            <div v-if="selectedSupplier.orders?.length" class="rounded-lg border border-slate-200">
+              <div class="border-b border-slate-200 px-3 py-2 text-sm font-bold text-slate-950">Recent supplier orders</div>
+              <div v-for="order in selectedSupplier.orders.slice(0, 5)" :key="order.id" class="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-slate-950">#{{ order.order_number }}</p>
+                  <p class="text-xs text-slate-500">{{ order.item_count }} items · {{ formatMoney(order.total_incl_tax, order.currency) }}</p>
+                </div>
+                <UBadge :color="order.status === 'cancelled' ? 'error' : order.status === 'delivered' ? 'success' : 'neutral'" variant="soft">{{ formatStatus(order.status) }}</UBadge>
+              </div>
+            </div>
+
+            <div v-if="selectedSupplier.allocations?.length" class="rounded-lg border border-slate-200">
+              <div class="border-b border-slate-200 px-3 py-2 text-sm font-bold text-slate-950">Supplier payout allocations</div>
+              <div v-for="allocation in selectedSupplier.allocations.slice(0, 6)" :key="allocation.id" class="border-b border-slate-100 px-3 py-2 last:border-b-0">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="truncate text-sm font-semibold text-slate-950">#{{ allocation.order_number }} · {{ allocation.product_title }}</p>
+                  <UBadge color="neutral" variant="soft">{{ formatStatus(allocation.payout_status) }}</UBadge>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">
+                  {{ allocation.quantity }} units · Supplier cost {{ formatMoney(allocation.supplier_total_cost, allocation.currency) }} · Margin {{ formatMoney(allocation.gross_margin, allocation.currency) }}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div class="mt-5 flex flex-wrap gap-2">
             <UButton color="primary" variant="solid" @click="openEditor">

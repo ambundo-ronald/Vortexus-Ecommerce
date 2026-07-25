@@ -8,9 +8,9 @@ export interface SupplierWorkspaceMetrics {
   open_order_count: number
   delivered_order_count: number
   cancelled_order_count: number
-  gross_sales_total: number | string
-  confirmed_payment_total: number | string
-  pending_payment_total: number | string
+  supplier_payable_total: number | string
+  confirmed_payable_total: number | string
+  pending_payable_total: number | string
 }
 
 export interface SupplierWorkspacePaymentSummary {

@@ -4,6 +4,8 @@ from django.apps import apps
 from phonenumber_field.phonenumber import PhoneNumber
 from rest_framework import serializers
 
+from apps.common.products import stockrecord_count
+
 
 class BasketItemCreateSerializer(serializers.Serializer):
     product_id = serializers.IntegerField(min_value=1)
@@ -30,19 +32,42 @@ class BasketItemCreateSerializer(serializers.Serializer):
         quantity = attrs['quantity']
         options = self._clean_options(product, attrs.get('options') or [])
         stock_info = request.strategy.fetch_for_product(product)
+        selected_stockrecord = self._select_stockrecord(product, quantity, options)
 
-        if not getattr(stock_info, 'stockrecord', None):
+        if not selected_stockrecord and not getattr(stock_info, 'stockrecord', None):
             raise serializers.ValidationError({'product_id': 'This product cannot be purchased yet.'})
 
-        requested_total = request.basket.line_quantity(product, stock_info.stockrecord, options=options) + quantity
-        permitted, reason = stock_info.availability.is_purchase_permitted(requested_total)
-        if not permitted:
-            raise serializers.ValidationError({'quantity': str(reason)})
+        if selected_stockrecord:
+            requested_total = request.basket.line_quantity(product, selected_stockrecord, options=options) + quantity
+            if requested_total > stockrecord_count(selected_stockrecord):
+                raise serializers.ValidationError({'quantity': 'Requested quantity is not available.'})
+        else:
+            requested_total = request.basket.line_quantity(product, stock_info.stockrecord, options=options) + quantity
+            permitted, reason = stock_info.availability.is_purchase_permitted(requested_total)
+            if not permitted:
+                raise serializers.ValidationError({'quantity': str(reason)})
 
         attrs['product'] = product
-        attrs['stockrecord'] = stock_info.stockrecord
+        attrs['stockrecord'] = selected_stockrecord or stock_info.stockrecord
         attrs['options'] = options
         return attrs
+
+    def _select_stockrecord(self, product, quantity, options):
+        SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
+        approved_offer_records = set(
+            SupplierProductOffer.objects.filter(
+                product=product,
+                status=SupplierProductOffer.STATUS_APPROVED,
+                stockrecord__isnull=False,
+            ).values_list('stockrecord_id', flat=True)
+        )
+        stockrecords = list(product.stockrecords.select_related('partner').order_by('id'))
+        preferred_records = [record for record in stockrecords if record.id in approved_offer_records]
+        fallback_records = [record for record in stockrecords if record.id not in approved_offer_records]
+        for stockrecord in [*preferred_records, *fallback_records]:
+            if stockrecord.price is not None and stockrecord_count(stockrecord) >= quantity:
+                return stockrecord
+        return None
 
     def _clean_options(self, product, submitted_options):
         product_options = list(getattr(product, 'options', []) or [])

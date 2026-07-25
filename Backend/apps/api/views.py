@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
-from apps.common.products import serialize_product_card, stockrecord_count
+from apps.common.products import product_stock_totals, serialize_product_card, stockrecord_count
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
@@ -166,9 +166,10 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
     card = serialize_product_card(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     category = product.categories.first()
-    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
-    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
-    available_stock = stockrecord_count(stockrecord)
+    stock_totals = product_stock_totals(product)
+    stock_on_hand = stock_totals['on_hand']
+    stock_allocated = stock_totals['allocated']
+    available_stock = stock_totals['available']
     return {
         'id': product.id,
         'name': product.title,
@@ -192,9 +193,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
     detail = _build_product_detail(product=product, display_currency=display_currency)
     stockrecord = _stockrecord_for_product(product)
     attributes = _attribute_value_map(product)
-    stock_on_hand = int(getattr(stockrecord, 'num_in_stock', 0) or 0)
-    stock_allocated = int(getattr(stockrecord, 'num_allocated', 0) or 0)
-    available_stock = stockrecord_count(stockrecord)
+    stock_totals = product_stock_totals(product)
+    stock_on_hand = stock_totals['on_hand']
+    stock_allocated = stock_totals['allocated']
+    available_stock = stock_totals['available']
     return {
         'id': product.id,
         'name': product.title,

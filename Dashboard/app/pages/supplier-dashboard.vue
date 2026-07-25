@@ -179,9 +179,9 @@ const orderColumns: TableColumn<any>[] = [
     cell: ({ row }) => Number(row.original.supplier_item_count || 0).toLocaleString(),
   },
   {
-    accessorKey: 'supplier_total_incl_tax',
-    header: 'Sales',
-    cell: ({ row }) => moneyFormatter.value.format(Number(row.original.supplier_total_incl_tax || 0)),
+    accessorKey: 'supplier_payable_total',
+    header: 'Payable',
+    cell: ({ row }) => moneyFormatter.value.format(Number(row.original.supplier_payable_total || 0)),
   },
 ]
 
@@ -374,7 +374,7 @@ onMounted(loadWorkspace)
           {{ dashboard?.supplier?.company_name || auth.user.value?.supplier?.company_name || 'Supplier dashboard' }}
         </h1>
         <p class="text-sm text-toned">
-          Products, sales, and payment visibility for your supplier account.
+          Products, orders, and payout visibility for your supplier account.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -418,9 +418,9 @@ onMounted(loadWorkspace)
         :loading="isLoading"
       />
       <CardsKpiCard2
-        name="Gross sales"
-        :value="Number(metrics.gross_sales_total || 0)"
-        :budget="Number(metrics.gross_sales_total || 0)"
+        name="Your payable"
+        :value="Number(metrics.supplier_payable_total || 0)"
+        :budget="Number(metrics.supplier_payable_total || 0)"
         format="currency"
         :currency="currency"
         color="var(--color-success)"
@@ -429,8 +429,8 @@ onMounted(loadWorkspace)
       />
       <CardsKpiCard2
         name="Confirmed payable"
-        :value="Number(metrics.confirmed_payable_total || metrics.confirmed_payment_total || 0)"
-        :budget="Number(metrics.confirmed_payable_total || metrics.confirmed_payment_total || 0)"
+        :value="Number(metrics.confirmed_payable_total || 0)"
+        :budget="Number(metrics.confirmed_payable_total || 0)"
         format="currency"
         :currency="currency"
         color="var(--color-info)"
@@ -483,17 +483,17 @@ onMounted(loadWorkspace)
               Payment summary
             </h3>
             <p class="text-sm text-toned">
-              Settlement ledger will be added in the next phase.
+              Amounts shown here are supplier payable amounts only.
             </p>
           </div>
         </template>
         <div class="space-y-4 text-sm">
           <div class="flex items-center justify-between">
-            <span class="text-toned">Confirmed customer payments</span>
+            <span class="text-toned">Confirmed payable</span>
             <span class="font-semibold">{{ formatMoney(payments.confirmed_total) }}</span>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-toned">Awaiting payment confirmation</span>
+            <span class="text-toned">Pending payable</span>
             <span class="font-semibold">{{ formatMoney(payments.pending_total) }}</span>
           </div>
           <div class="flex items-center justify-between">

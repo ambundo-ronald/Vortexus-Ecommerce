@@ -71,6 +71,15 @@ def stockrecord_count(stockrecord: Any) -> int:
     return max(0, num_in_stock - num_allocated)
 
 
+def product_stock_totals(product: Any) -> dict[str, int]:
+    stockrecords = list(product.stockrecords.all()) if hasattr(product, 'stockrecords') else []
+    return {
+        'available': sum(stockrecord_count(stockrecord) for stockrecord in stockrecords),
+        'on_hand': sum(int(getattr(stockrecord, 'num_in_stock', 0) or 0) for stockrecord in stockrecords),
+        'allocated': sum(int(getattr(stockrecord, 'num_allocated', 0) or 0) for stockrecord in stockrecords),
+    }
+
+
 def serialize_product_card(
     product: Any,
     score: float | None = None,
@@ -82,7 +91,7 @@ def serialize_product_card(
     base_currency = stockrecord_currency(stockrecord)
     base_previous_price = stockrecord_previous_price(stockrecord)
     base_previous_currency = stockrecord_previous_currency(stockrecord)
-    stock_count = stockrecord_count(stockrecord)
+    stock_count = product_stock_totals(product)['available']
     brand = product_brand(product)
     categories = list(product.categories.all()) if hasattr(product, 'categories') else []
     primary_category = categories[0] if categories else None

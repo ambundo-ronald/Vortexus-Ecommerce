@@ -28,6 +28,12 @@ export interface SupplierItem {
   user: SupplierUser
   created_at: string
   updated_at: string
+  metrics?: Record<string, any>
+  payments?: Record<string, any>
+  offers?: any[]
+  product_requests?: any[]
+  orders?: any[]
+  allocations?: any[]
 }
 
 export interface SupplierPayload {
@@ -98,10 +104,12 @@ export function useSuppliers() {
     error.value = null
 
     try {
-      const result = await request<{ supplier: SupplierItem }>(`/admin/suppliers/${id}/`, {
+      const result = await request<SupplierItem | { supplier: SupplierItem }>(`/admin/suppliers/${id}/`, {
         method: 'GET',
       })
-      return { success: true, data: result.supplier }
+      if ('supplier' in result)
+        return { success: true, data: { ...result.supplier, ...Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'supplier')) } }
+      return { success: true, data: result }
     }
     catch (err: any) {
       error.value = readApiError(err)

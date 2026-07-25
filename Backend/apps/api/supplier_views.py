@@ -26,6 +26,7 @@ from .supplier_order_serializers import (
 )
 from .supplier_serializers import (
     SupplierAdminCreateSerializer,
+    SupplierAdminDetailSerializer,
     SupplierAdminStatusSerializer,
     SupplierDashboardSerializer,
     SupplierProductOfferListSerializer,
@@ -889,7 +890,7 @@ class SupplierAdminDetailAPIView(APIView):
 
     def get(self, request, supplier_id: int):
         supplier_profile = get_object_or_404(assigned_supplier_queryset(request.user), id=supplier_id)
-        return Response({'supplier': SupplierProfileSerializer(supplier_profile).data})
+        return Response(SupplierAdminDetailSerializer(supplier_profile).data)
 
     def patch(self, request, supplier_id: int):
         supplier_profile = get_object_or_404(assigned_supplier_queryset(request.user), id=supplier_id)

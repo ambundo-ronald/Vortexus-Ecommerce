@@ -217,6 +217,43 @@ class BasketAPIView(APIView):
         return Response({'basket': build_checkout_payload(request)['basket']})
 
 
+def _add_product_with_stockrecord(basket, product, stockrecord, quantity, options):
+    stock_info = basket.strategy.fetch_for_product(product)
+    price_currency = basket.currency
+    if price_currency and stock_info.price.currency != price_currency:
+        raise ValueError(
+            (
+                'Basket lines must all have the same currency. Proposed '
+                'line has currency %s, while basket has currency %s'
+            )
+            % (stock_info.price.currency, price_currency)
+        )
+    line_ref = basket._create_line_reference(product, stockrecord, options)
+    defaults = {
+        'quantity': quantity,
+        'price_excl_tax': stock_info.price.excl_tax,
+        'price_currency': stock_info.price.currency,
+        'tax_code': stock_info.price.tax_code,
+        'stockrecord': stockrecord,
+    }
+    if stock_info.price.is_tax_known:
+        defaults['price_incl_tax'] = stock_info.price.incl_tax
+    line, created = basket.lines.get_or_create(
+        line_reference=line_ref,
+        product=product,
+        stockrecord=stockrecord,
+        defaults=defaults,
+    )
+    if created:
+        for option_dict in options:
+            line.attributes.create(option=option_dict['option'], value=option_dict['value'])
+    else:
+        line.quantity = max(0, line.quantity + quantity)
+        line.save()
+    basket.reset_offer_applications()
+    return line, created
+
+
 class BasketItemCollectionAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -227,10 +264,12 @@ class BasketItemCollectionAPIView(APIView):
         serializer = BasketItemCreateSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         try:
-            line, _ = request.basket.add_product(
+            line, _ = _add_product_with_stockrecord(
+                request.basket,
                 serializer.validated_data['product'],
-                quantity=serializer.validated_data['quantity'],
-                options=serializer.validated_data.get('options') or [],
+                serializer.validated_data['stockrecord'],
+                serializer.validated_data['quantity'],
+                serializer.validated_data.get('options') or [],
             )
         except ValueError as exc:
             raise serializers.ValidationError({'basket': _basket_value_error_message(exc)}) from exc

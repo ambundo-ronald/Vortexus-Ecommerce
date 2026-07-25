@@ -114,6 +114,16 @@ function productImage(item: any) {
   return product.image || product.thumbnail || ''
 }
 
+function requestNextStep(item: any) {
+  if (activeTab.value !== 'requests' || item.status !== 'approved')
+    return ''
+  if (item.linked_offer)
+    return `Stock offer #${item.linked_offer.id} was created. Review it under Stock offers before this supplier stock goes live.`
+  if (item.supplier_unit_cost)
+    return 'A stock offer will be created after the approved request is linked to an official catalogue product.'
+  return 'The supplier can now add a stock offer against the linked official catalogue product.'
+}
+
 function getStatusOptions() {
   return activeTab.value === 'offers' ? statusOptions : requestStatusOptions
 }
@@ -228,9 +238,12 @@ async function submitDecision() {
       body: payload,
     })
     const updated = result.offer || result.request
+    const description = activeTab.value === 'requests' && decisionStatus.value === 'approved'
+      ? requestNextStep(updated) || `${productTitle(updated)} is now ${formatStatus(updated.status)}.`
+      : `${productTitle(updated)} is now ${formatStatus(updated.status)}.`
     toast.add({
       title: 'Supplier queue updated',
-      description: `${productTitle(updated)} is now ${formatStatus(updated.status)}.`,
+      description,
       color: 'success',
     })
     decisionOpen.value = false
@@ -386,6 +399,14 @@ onMounted(() => loadRows())
               <dt class="font-semibold text-slate-500">Requested catalogue details</dt>
               <dd class="mt-1 whitespace-pre-wrap text-slate-950">{{ selectedItem.description || 'No description supplied.' }}</dd>
               <dd class="mt-1 text-xs text-slate-500">{{ selectedItem.brand || 'No brand' }} - {{ selectedItem.category_hint || 'No category hint' }}</dd>
+            </div>
+            <div v-if="activeTab === 'requests' && selectedItem.linked_product">
+              <dt class="font-semibold text-slate-500">Linked official product</dt>
+              <dd class="mt-1 text-slate-950">{{ selectedItem.linked_product.title }}</dd>
+            </div>
+            <div v-if="activeTab === 'requests' && requestNextStep(selectedItem)" class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+              <dt class="font-semibold text-blue-900">Next step</dt>
+              <dd class="mt-1 text-blue-900">{{ requestNextStep(selectedItem) }}</dd>
             </div>
             <div>
               <dt class="font-semibold text-slate-500">Submitted</dt>
