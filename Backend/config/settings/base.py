@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'apps.search',
     'apps.image_search',
     'apps.recommendations',
+    'apps.personal_shopper',
     'apps.backups',
 ]
 

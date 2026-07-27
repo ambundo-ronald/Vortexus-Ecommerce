@@ -44,6 +44,7 @@ import RangeDetailPage from "../pages/public/RangeDetailPage.jsx";
 import QuoteRequestPage from "../pages/public/QuoteRequestPage.jsx";
 import SearchPage from "../pages/public/SearchPage.jsx";
 import SharedWishlistPage from "../pages/public/SharedWishlistPage.jsx";
+import HubPage from "../pages/account/HubPage.jsx";
 import SupplierDashboardPage from "../pages/supplier/SupplierDashboardPage.jsx";
 import SupplierApplyPage from "../pages/supplier/SupplierApplyPage.jsx";
 import SupplierOrderDetailPage from "../pages/supplier/SupplierOrderDetailPage.jsx";
@@ -80,6 +81,7 @@ export default function AppRouter() {
       <Route path="/account/verify-email" element={<PageWrapper><VerifyEmailPage /></PageWrapper>} />
       <Route path="/unauthorized" element={<PageWrapper><UnauthorizedPage /></PageWrapper>} />
       <Route path="/account" element={<PageWrapper><ProtectedRoute><AccountDashboardPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/hub/:shareToken" element={<PageWrapper><ProtectedRoute><HubPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/delete" element={<PageWrapper><ProtectedRoute><AccountDeletePage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/addresses" element={<PageWrapper><ProtectedRoute><AddressesPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/account/profile" element={<PageWrapper><ProtectedRoute><ProfilePage /></ProtectedRoute></PageWrapper>} />

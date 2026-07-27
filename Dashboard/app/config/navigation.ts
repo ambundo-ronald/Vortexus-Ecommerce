@@ -110,6 +110,11 @@ export const navSections: NavSection[] = [
         to: '/users',
       },
       {
+        label: 'Personal Shopper',
+        icon: 'i-lucide-shopping-basket',
+        to: '/personal-shopper',
+      },
+      {
         label: 'Partners',
         icon: 'i-lucide-handshake',
         to: '/partners',
@@ -219,6 +224,11 @@ export const accountManagerNavSections: NavSection[] = [
   {
     label: 'Supplier Portfolio',
     items: [
+      {
+        label: 'Personal Shopper',
+        icon: 'i-lucide-shopping-basket',
+        to: '/personal-shopper',
+      },
       {
         label: 'Suppliers',
         icon: 'i-lucide-store',

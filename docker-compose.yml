@@ -174,9 +174,11 @@ services:
       context: ./Dashboard
       args:
         NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-https://api.example.com/api/v1}
+        NUXT_PUBLIC_STOREFRONT_BASE: ${NUXT_PUBLIC_STOREFRONT_BASE:-http://localhost:5173}
     restart: unless-stopped
     environment:
       NUXT_PUBLIC_API_BASE: ${NUXT_PUBLIC_API_BASE:-https://api.example.com/api/v1}
+      NUXT_PUBLIC_STOREFRONT_BASE: ${NUXT_PUBLIC_STOREFRONT_BASE:-http://localhost:5173}
     ports:
       - "${DASHBOARD_BIND:-127.0.0.1}:${DASHBOARD_PORT:-3000}:80"
 

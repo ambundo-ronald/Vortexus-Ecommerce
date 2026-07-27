@@ -72,6 +72,11 @@ export const ENDPOINTS = {
     cancel: (key) => `/product-alerts/cancel/${key}/`
   },
   recommendations: "/recommendations/",
+  personalShopper: {
+    lists: "/account/personal-shopper/lists/",
+    hub: (token) => `/personal-shopper/hub/${token}/`,
+    addedToCart: (token) => `/personal-shopper/hub/${token}/added-to-cart/`
+  },
   quotes: "/quotes/",
   callbackRequests: "/callback-requests/",
   analytics: {
