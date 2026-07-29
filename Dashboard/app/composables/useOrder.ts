@@ -42,6 +42,11 @@ export interface CreateOrderNotePayload {
   note_type?: string
 }
 
+export interface PromptCodMpesaPayload {
+  phone_number?: string
+  amount?: number | string
+}
+
 function readApiError(err: any) {
   const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
   const errors = err?.data?.error?.errors || err?.data
@@ -213,6 +218,25 @@ export function useOrder() {
     }
   }
 
+  async function promptCodMpesa(orderNumber: string, payload: PromptCodMpesaPayload = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, payment: any }>(`/admin/orders/${encodeURIComponent(orderNumber)}/cod/mpesa-prompt/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.payment, detail: result.detail }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value, errors: err?.data?.error?.errors || null }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     addOrderNote,
     getOrderLine,
@@ -221,6 +245,7 @@ export function useOrder() {
     error,
     getOrder,
     getOrders,
+    promptCodMpesa,
     updateOrderStatus,
     updateOrderShippingAddress,
   }

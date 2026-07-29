@@ -18,6 +18,7 @@ export interface UserFormPayload {
   role?: string
   status?: string
   password?: string
+  cash_on_delivery_allowed?: boolean
 }
 
 export interface UserProductAlert {
@@ -89,6 +90,7 @@ function mapUserDetailToForm(user: any) {
     preferredCurrency: user.preferred_currency || '',
     receiveOrderUpdates: !!user.receive_order_updates,
     receiveMarketingEmails: !!user.receive_marketing_emails,
+    cashOnDeliveryAllowed: !!user.cash_on_delivery_allowed,
     isSupplier: user.supplier?.is_supplier || false,
     supplierStatus: user.supplier?.status || '',
     supplierCompanyName: user.supplier?.company_name || '',

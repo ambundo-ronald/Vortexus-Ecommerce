@@ -22,7 +22,7 @@ class PaymentInitializationSerializer(serializers.Serializer):
         basket = request.basket
         shipping_address = get_shipping_address(request, basket)
         shipping_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
-        method = get_payment_method(attrs['method'])
+        method = get_payment_method(attrs['method'], user=request.user, basket=basket)
 
         if basket.is_empty:
             raise serializers.ValidationError({'basket': 'Your basket is empty.'})

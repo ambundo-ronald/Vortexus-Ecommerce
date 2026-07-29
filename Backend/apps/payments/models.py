@@ -108,12 +108,14 @@ class PaymentProviderConfiguration(models.Model):
     PROVIDER_PESAPAL = 'pesapal'
     PROVIDER_AIRTEL_MONEY = 'airtel_money'
     PROVIDER_CARD = 'card'
+    PROVIDER_CASH_ON_DELIVERY = 'cash_on_delivery'
 
     PROVIDER_CHOICES = [
         (PROVIDER_MPESA, 'M-Pesa'),
         (PROVIDER_PESAPAL, 'Pesapal'),
         (PROVIDER_AIRTEL_MONEY, 'Airtel Money'),
         (PROVIDER_CARD, 'Card'),
+        (PROVIDER_CASH_ON_DELIVERY, 'Cash on Delivery'),
     ]
 
     provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES, unique=True)

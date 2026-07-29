@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute();
-const { addOrderNote, getOrder, getOrderLine, getOrderNotes, updateOrderShippingAddress, updateOrderStatus } = useOrder();
+const { addOrderNote, getOrder, getOrderLine, getOrderNotes, promptCodMpesa, updateOrderShippingAddress, updateOrderStatus } = useOrder();
 const toast = useToast();
 
 const order = ref<any>(null);
@@ -9,6 +9,7 @@ const isLoading = ref(true);
 const isSaving = ref(false);
 const isSavingAddress = ref(false);
 const isSavingNote = ref(false);
+const isPromptingCodPayment = ref(false);
 const isEditingAddress = ref(false);
 const isLineDetailOpen = ref(false);
 const isLoadingLine = ref(false);
@@ -36,6 +37,10 @@ const shippingForm = reactive({
 const noteForm = reactive({
   note_type: "Admin",
   message: "",
+});
+const codPromptForm = reactive({
+  phone_number: "",
+  amount: "",
 });
 const statusOptions = computed(() =>
   (order.value?.availableStatuses || []).map((status: string) => ({
@@ -76,6 +81,24 @@ const orderSteps = computed(() => {
     { label: "Shipped", status: isShipped ? "completed" : "future" },
     { label: "Delivered", status: isDelivered ? "completed" : "future" },
   ];
+});
+
+const paymentSessions = computed(() => order.value?.payment?.sessions || []);
+const hasCashOnDelivery = computed(() => Boolean(order.value?.payment?.has_cash_on_delivery));
+const canPromptCodMpesa = computed(() => Boolean(order.value?.payment?.cod_mpesa_prompt_available));
+const codOutstandingAmount = computed(() => Number(order.value?.payment?.outstanding_amount || 0));
+
+const latestPayment = computed(() => paymentSessions.value[0] || null);
+
+const paymentStatusColor = computed(() => {
+  const status = String(latestPayment.value?.status || order.value?.status || "").toLowerCase();
+  if (["paid", "authorized", "success"].includes(status))
+    return "success";
+  if (["failed", "cancelled", "canceled"].includes(status))
+    return "error";
+  if (["pending", "initialized"].includes(status))
+    return "warning";
+  return "neutral";
 });
 
 const googleMapsUrl = computed(() => {
@@ -149,6 +172,12 @@ function fillShippingForm(address: any = {}) {
   shippingForm.location_label = address?.location?.label || "";
 }
 
+function formatPaymentLabel(value: string) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase()) || "Not recorded";
+}
+
 async function loadOrder() {
   const result = await getOrder(route.params.id as string);
   if (result.success) {
@@ -157,6 +186,8 @@ async function loadOrder() {
     statusForm.tracking_reference = result.data?.trackingReference || "";
     statusForm.note = "";
     fillShippingForm(result.data?.shippingAddress || {});
+    codPromptForm.phone_number = result.data?.shippingAddress?.phoneNumber || result.data?.customer?.phone || "";
+    codPromptForm.amount = result.data?.payment?.outstanding_amount ? String(result.data.payment.outstanding_amount) : "";
   }
   else {
     toast.add({
@@ -304,6 +335,45 @@ async function submitOrderNote() {
   }
 
   isSavingNote.value = false;
+}
+
+async function submitCodMpesaPrompt() {
+  if (!order.value?.orderNo)
+    return;
+
+  const phoneNumber = codPromptForm.phone_number.trim();
+  if (!phoneNumber) {
+    toast.add({
+      title: "Phone number needed",
+      description: "Add the customer's M-Pesa phone number before sending the prompt.",
+      color: "warning",
+    });
+    return;
+  }
+
+  isPromptingCodPayment.value = true;
+  const result = await promptCodMpesa(order.value.orderNo, {
+    phone_number: phoneNumber,
+    amount: codPromptForm.amount || undefined,
+  });
+
+  if (result.success) {
+    toast.add({
+      title: "M-Pesa prompt sent",
+      description: result.detail || "The customer has been prompted to pay before dispatch.",
+      color: "success",
+    });
+    await loadOrder();
+  }
+  else {
+    toast.add({
+      title: "Prompt failed",
+      description: result.error || "Could not send the M-Pesa prompt.",
+      color: "error",
+    });
+  }
+
+  isPromptingCodPayment.value = false;
 }
 
 async function openLineDetail(product: any) {
@@ -567,6 +637,87 @@ onMounted(async () => {
         </div>
 
         <div class="space-y-6">
+          <UCard class="border border-slate-200 bg-white shadow-sm">
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-credit-card" class="h-5 w-5 text-slate-950" />
+                  <h3 class="text-lg font-bold text-slate-950">Payment</h3>
+                </div>
+                <UBadge :color="paymentStatusColor" variant="soft">
+                  {{ formatPaymentLabel(latestPayment?.status || (order.paid ? "paid" : "pending")) }}
+                </UBadge>
+              </div>
+            </template>
+
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs font-bold uppercase text-slate-500">Outstanding</p>
+                  <p class="mt-1 font-semibold text-slate-950">{{ formatMoney(codOutstandingAmount, "KES") }}</p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p class="text-xs font-bold uppercase text-slate-500">Method</p>
+                  <p class="mt-1 font-semibold text-slate-950">{{ formatPaymentLabel(latestPayment?.method || (hasCashOnDelivery ? "cash_on_delivery" : "")) }}</p>
+                </div>
+              </div>
+
+              <div v-if="paymentSessions.length" class="space-y-2">
+                <div
+                  v-for="payment in paymentSessions"
+                  :key="payment.reference"
+                  class="rounded-lg border border-slate-200 p-3 text-sm"
+                >
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="truncate font-semibold text-slate-950">{{ payment.reference }}</p>
+                      <p class="text-slate-500">{{ formatPaymentLabel(payment.method) }}</p>
+                    </div>
+                    <UBadge :color="statusColor(payment.status)" variant="soft">
+                      {{ formatPaymentLabel(payment.status) }}
+                    </UBadge>
+                  </div>
+                  <p class="mt-2 text-slate-600">{{ formatMoney(payment.amount || 0, payment.currency || "KES") }}</p>
+                </div>
+              </div>
+              <div v-else class="rounded-lg border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                No payment sessions linked.
+              </div>
+
+              <div v-if="hasCashOnDelivery" class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div class="flex items-start gap-3">
+                  <UIcon name="i-lucide-banknote" class="mt-0.5 h-5 w-5 text-amber-700" />
+                  <div class="min-w-0 flex-1">
+                    <p class="font-semibold text-amber-950">Cash on Delivery order</p>
+                    <p class="mt-1 text-sm text-amber-800">
+                      Prompt the customer to pay with M-Pesa before dispatch when cash collection should be avoided.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3">
+                  <UFormField label="M-Pesa phone">
+                    <UInput v-model="codPromptForm.phone_number" placeholder="2547..." />
+                  </UFormField>
+                  <UFormField label="Amount">
+                    <UInput v-model="codPromptForm.amount" type="number" min="1" :max="codOutstandingAmount || undefined" />
+                  </UFormField>
+                  <UButton
+                    color="primary"
+                    variant="solid"
+                    icon="i-lucide-smartphone"
+                    :loading="isPromptingCodPayment"
+                    :disabled="!canPromptCodMpesa || isPromptingCodPayment"
+                    block
+                    @click="submitCodMpesaPrompt"
+                  >
+                    Prompt M-Pesa before dispatch
+                  </UButton>
+                </div>
+              </div>
+            </div>
+          </UCard>
+
           <UCard class="border border-slate-200 bg-white shadow-sm">
             <template #header>
               <div class="flex items-center gap-2">

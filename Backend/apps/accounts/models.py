@@ -14,6 +14,7 @@ class CustomerProfile(models.Model):
     company = models.CharField(max_length=120, blank=True)
     receive_order_updates = models.BooleanField(default=True)
     receive_marketing_emails = models.BooleanField(default=False)
+    cash_on_delivery_allowed = models.BooleanField(default=False)
     email_verified_at = models.DateTimeField(blank=True, null=True)
     two_factor_email_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -117,8 +118,8 @@ class DistanceDeliveryMethod(models.Model):
     class Meta:
         ordering = ['sort_order', 'name']
         indexes = [
-            models.Index(fields=['is_active', 'sort_order']),
-            models.Index(fields=['vehicle_type', 'is_active']),
+            models.Index(fields=['is_active', 'sort_order'], name='accounts_di_is_acti_8686c0_idx'),
+            models.Index(fields=['vehicle_type', 'is_active'], name='accounts_di_vehicle_849c83_idx'),
         ]
 
     def __str__(self):
@@ -155,9 +156,9 @@ class DeliveryRouteCache(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=['provider', 'vehicle_type']),
-            models.Index(fields=['origin_latitude', 'origin_longitude']),
-            models.Index(fields=['destination_latitude', 'destination_longitude']),
+            models.Index(fields=['provider', 'vehicle_type'], name='accounts_de_provide_166fb8_idx'),
+            models.Index(fields=['origin_latitude', 'origin_longitude'], name='accounts_de_origin__229cb6_idx'),
+            models.Index(fields=['destination_latitude', 'destination_longitude'], name='accounts_de_destina_67a1ca_idx'),
         ]
 
     def __str__(self):
@@ -187,8 +188,8 @@ class ProductAttributeMetadata(models.Model):
     class Meta:
         ordering = ['attribute__code']
         indexes = [
-            models.Index(fields=['data_type']),
-            models.Index(fields=['uom']),
+            models.Index(fields=['data_type'], name='accounts_pr_data_t_62e25c_idx'),
+            models.Index(fields=['uom'], name='accounts_pr_uom_0c5f4a_idx'),
         ]
 
     def __str__(self):

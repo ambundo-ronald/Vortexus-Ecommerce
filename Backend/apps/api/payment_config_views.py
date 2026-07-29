@@ -34,6 +34,7 @@ from apps.payments.config import (
     provider_missing_requirements,
 )
 from apps.payments.models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentRefundLedger, PaymentReturnCase, PaymentSession
+from apps.payments.mpesa import MpesaConfigurationError, MpesaGatewayError, initiate_stk_push, mpesa_is_configured
 from apps.payments.pesapal import (
     PesapalConfigurationError,
     PesapalGatewayError,
@@ -42,10 +43,12 @@ from apps.payments.pesapal import (
 )
 from apps.payments.services import (
     create_payment_return_case,
+    initialize_payment_session,
     log_payment_event,
     payment_reconciliation,
     record_payment_refund_ledger,
     update_payment_return_case,
+    serialize_payment_session,
 )
 
 from .account_manager_scope import can_access_all_admin_data, can_access_finance_data, scope_orders_queryset, scope_payment_sessions_queryset
@@ -93,6 +96,12 @@ class AirtelMoneyConfigSerializer(serializers.Serializer):
 class CardConfigSerializer(serializers.Serializer):
     is_enabled = serializers.BooleanField(required=False)
     provider_name = serializers.CharField(required=False, allow_blank=True, max_length=80)
+
+
+class CashOnDeliveryConfigSerializer(serializers.Serializer):
+    is_enabled = serializers.BooleanField(required=False)
+    requires_customer_approval = serializers.BooleanField(required=False)
+    prompt_before_dispatch = serializers.BooleanField(required=False)
 
 
 class PaymentRefundRequestSerializer(serializers.Serializer):
@@ -145,6 +154,11 @@ class FinanceReturnStatusSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
 
+class AdminCodMpesaPromptSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
+
+
 def _serialize_provider(provider: str) -> dict:
     if provider == 'mpesa':
         is_enabled = provider_is_enabled('mpesa', default=True)
@@ -193,6 +207,18 @@ def _serialize_provider(provider: str) -> dict:
             'missing_requirements': provider_missing_requirements('airtel_money'),
             'provider_name': get_payment_setting('airtel_money', 'provider_name', settings.AIRTEL_MONEY_PROVIDER_NAME),
             'sandbox_enabled': bool(settings.AIRTEL_MONEY_SANDBOX_ENABLED),
+        }
+    if provider == 'cash_on_delivery':
+        is_enabled = provider_is_enabled('cash_on_delivery', default=False)
+        requires_customer_approval = bool(get_payment_setting('cash_on_delivery', 'requires_customer_approval', True))
+        prompt_before_dispatch = bool(get_payment_setting('cash_on_delivery', 'prompt_before_dispatch', True))
+        return {
+            'is_enabled': is_enabled,
+            'is_configured': True,
+            'checkout_visible': bool(is_enabled),
+            'missing_requirements': [],
+            'requires_customer_approval': requires_customer_approval,
+            'prompt_before_dispatch': prompt_before_dispatch,
         }
     is_enabled = provider_is_enabled('card', default=True)
     is_configured = provider_is_configured('card')
@@ -307,6 +333,23 @@ def _update_payment_configuration(request) -> Response:
         )
         changed.append('card')
 
+    if 'cash_on_delivery' in request.data:
+        serializer = CashOnDeliveryConfigSerializer(data=request.data.get('cash_on_delivery') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'cash_on_delivery',
+            is_enabled=data.get('is_enabled'),
+            public_config={
+                key: data[key]
+                for key in ['requires_customer_approval', 'prompt_before_dispatch']
+                if key in data
+            },
+            secret_config={},
+            user=request.user,
+        )
+        changed.append('cash_on_delivery')
+
     if changed:
         record_audit_event(
             event_type='payments.configuration_updated',
@@ -323,6 +366,7 @@ def _update_payment_configuration(request) -> Response:
             'pesapal': _serialize_provider('pesapal'),
             'airtel_money': _serialize_provider('airtel_money'),
             'card': _serialize_provider('card'),
+            'cash_on_delivery': _serialize_provider('cash_on_delivery'),
         }
     )
 
@@ -339,6 +383,7 @@ class AdminPaymentConfigurationAPIView(APIView):
                 'pesapal': _serialize_provider('pesapal'),
                 'airtel_money': _serialize_provider('airtel_money'),
                 'card': _serialize_provider('card'),
+                'cash_on_delivery': _serialize_provider('cash_on_delivery'),
             }
         )
 
@@ -1726,6 +1771,126 @@ class AdminPaymentRefundAPIView(APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+def _order_has_cash_on_delivery(order) -> bool:
+    return PaymentSession.objects.filter(order=order, method=PaymentSession.METHOD_CASH_ON_DELIVERY).exists()
+
+
+def _order_paid_amount(order) -> Decimal:
+    total = (
+        PaymentSession.objects.filter(
+            order=order,
+            status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID],
+        )
+        .exclude(method=PaymentSession.METHOD_CASH_ON_DELIVERY)
+        .aggregate(total=Sum('amount'))['total']
+        or Decimal('0')
+    )
+    return Decimal(str(total)).quantize(Decimal('0.01'))
+
+
+def _order_phone(order) -> str:
+    address = getattr(order, 'shipping_address', None)
+    for field in ('phone_number', 'phone'):
+        value = (getattr(address, field, '') or '').strip() if address else ''
+        if value:
+            return value
+    user = getattr(order, 'user', None)
+    profile = getattr(user, 'customer_profile', None)
+    return (getattr(profile, 'phone', '') or '').strip()
+
+
+class AdminCodMpesaPromptAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, order_number: str):
+        order = get_object_or_404(scope_orders_queryset(apps.get_model('order', 'Order').objects.all(), request.user), number=order_number)
+        serializer = AdminCodMpesaPromptSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if not _order_has_cash_on_delivery(order):
+            return Response({'detail': 'This order was not placed with Cash on Delivery.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not mpesa_is_configured():
+            return Response(
+                {
+                    'error': {
+                        'code': 'mpesa_not_configured',
+                        'detail': 'M-Pesa Daraja credentials are not configured.',
+                        'status': status.HTTP_503_SERVICE_UNAVAILABLE,
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        order_total = Decimal(str(order.total_incl_tax or 0)).quantize(Decimal('0.01'))
+        outstanding = (order_total - _order_paid_amount(order)).quantize(Decimal('0.01'))
+        amount = Decimal(str(serializer.validated_data.get('amount') or outstanding)).quantize(Decimal('0.01'))
+        if outstanding <= Decimal('0.00'):
+            return Response({'detail': 'This order already has confirmed payment covering the total.'}, status=status.HTTP_400_BAD_REQUEST)
+        if amount <= Decimal('0.00') or amount > outstanding:
+            return Response({'detail': 'Prompt amount must be greater than zero and not exceed the outstanding balance.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        phone_number = (serializer.validated_data.get('phone_number') or _order_phone(order)).strip()
+        if not phone_number:
+            return Response({'detail': 'A customer phone number is required to send an M-Pesa prompt.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_session = initialize_payment_session(
+            basket=None,
+            user=order.user,
+            method_code=PaymentSession.METHOD_MPESA,
+            amount=amount,
+            currency=order.currency,
+            payer_email=getattr(order.user, 'email', '') if order.user_id else getattr(order, 'guest_email', ''),
+            payer_phone=phone_number,
+            metadata={
+                'source': 'cod_dispatch_prompt',
+                'order_number': order.number,
+                'triggered_by_user_id': request.user.id,
+                'outstanding_before_prompt': str(outstanding),
+            },
+        )
+        payment_session.order = order
+        payment_session.save(update_fields=['order', 'updated_at'])
+
+        try:
+            provider_payload = initiate_stk_push(payment_session)
+        except (MpesaConfigurationError, MpesaGatewayError) as exc:
+            payment_session.status = PaymentSession.STATUS_FAILED
+            payment_session.metadata = {**payment_session.metadata, 'gateway_error': str(exc)}
+            payment_session.save(update_fields=['status', 'metadata', 'updated_at'])
+            return Response(
+                {
+                    'error': {
+                        'code': 'mpesa_gateway_error',
+                        'detail': str(exc),
+                        'status': status.HTTP_502_BAD_GATEWAY,
+                    }
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        log_payment_event(
+            payment_session,
+            kind='provider_submitted',
+            status_before=PaymentSession.STATUS_INITIALIZED,
+            status_after=payment_session.status,
+            external_reference=payment_session.external_reference,
+            message='Staff prompted M-Pesa payment for a COD order before dispatch.',
+            payload={'provider_payload': provider_payload, 'order_number': order.number},
+        )
+        record_audit_event(
+            event_type='payments.cod_mpesa_prompted',
+            request=request,
+            actor=request.user,
+            target=order,
+            message='Staff prompted M-Pesa Express payment for COD order.',
+            metadata={'order_number': order.number, 'payment_reference': payment_session.reference, 'amount': str(amount)},
+        )
+
+        payload = serialize_payment_session(payment_session)
+        payload['provider_payload'] = provider_payload
+        return Response({'detail': 'M-Pesa prompt sent.', 'payment': payload}, status=status.HTTP_201_CREATED)
 
 
 def get_payment_or_404(reference: str):

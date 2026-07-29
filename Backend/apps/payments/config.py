@@ -50,6 +50,13 @@ PROVIDER_SETTINGS = {
         },
         'secret': {},
     },
+    'cash_on_delivery': {
+        'public': {
+            'requires_customer_approval': 'COD_REQUIRES_CUSTOMER_APPROVAL',
+            'prompt_before_dispatch': 'COD_PROMPT_BEFORE_DISPATCH',
+        },
+        'secret': {},
+    },
 }
 
 

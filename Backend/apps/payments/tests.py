@@ -2,15 +2,24 @@ from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
+from apps.accounts.models import CustomerProfile
 
-from .models import PaymentEvent, PaymentReconciliation, PaymentSession
+from .models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentSession
 from .pesapal import PesapalGatewayError, handle_transaction_status, request_refund
-from .services import _payment_method_capabilities, payment_reconciliation, sync_payment_reconciliation
+from .services import (
+    _payment_method_capabilities,
+    available_payment_methods,
+    customer_can_use_cash_on_delivery,
+    get_payment_method,
+    payment_reconciliation,
+    sync_payment_reconciliation,
+)
 
 
 class PaymentMethodCapabilityTests(SimpleTestCase):
@@ -28,6 +37,53 @@ class PaymentMethodCapabilityTests(SimpleTestCase):
             _payment_method_capabilities('credit_card', 'card'),
             {'flow': 'card_token', 'is_sandbox': True},
         )
+
+
+class CashOnDeliveryAvailabilityTests(TestCase):
+    def setUp(self):
+        self.User = get_user_model()
+        self.user = self.User.objects.create_user(username='customer', email='customer@example.com', password='password')
+        self.staff = self.User.objects.create_user(username='staff', email='staff@example.com', password='password', is_staff=True)
+        CustomerProfile.objects.create(user=self.user)
+        PaymentProviderConfiguration.objects.create(
+            provider='cash_on_delivery',
+            is_enabled=True,
+            public_config={'requires_customer_approval': True, 'prompt_before_dispatch': True},
+        )
+
+    def _method_codes(self, user=None):
+        return {method['code'] for method in available_payment_methods(user=user)}
+
+    def test_cash_on_delivery_is_not_enabled_without_provider_config(self):
+        PaymentProviderConfiguration.objects.filter(provider='cash_on_delivery').delete()
+
+        self.user.customer_profile.cash_on_delivery_allowed = True
+        self.user.customer_profile.save(update_fields=['cash_on_delivery_allowed'])
+
+        self.assertNotIn('cash_on_delivery', self._method_codes(self.user))
+
+    def test_cash_on_delivery_requires_customer_approval(self):
+        self.assertFalse(customer_can_use_cash_on_delivery(self.user))
+        self.assertNotIn('cash_on_delivery', self._method_codes(self.user))
+
+        self.user.customer_profile.cash_on_delivery_allowed = True
+        self.user.customer_profile.save(update_fields=['cash_on_delivery_allowed'])
+
+        self.assertTrue(customer_can_use_cash_on_delivery(self.user))
+        self.assertIn('cash_on_delivery', self._method_codes(self.user))
+        self.assertEqual(get_payment_method('cash_on_delivery', user=self.user)['code'], 'cash_on_delivery')
+
+    def test_staff_can_use_cash_on_delivery_for_admin_operations(self):
+        self.assertTrue(customer_can_use_cash_on_delivery(self.staff))
+        self.assertIn('cash_on_delivery', self._method_codes(self.staff))
+
+    def test_customer_approval_can_be_disabled_by_admin_setting(self):
+        PaymentProviderConfiguration.objects.filter(provider='cash_on_delivery').update(
+            public_config={'requires_customer_approval': False, 'prompt_before_dispatch': True}
+        )
+
+        self.assertTrue(customer_can_use_cash_on_delivery(self.user))
+        self.assertIn('cash_on_delivery', self._method_codes(self.user))
 
 
 class PesapalStatusHandlingTests(TestCase):

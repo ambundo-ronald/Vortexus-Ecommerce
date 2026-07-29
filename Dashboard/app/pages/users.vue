@@ -47,6 +47,7 @@ const userForm = reactive({
   status: "active",
   password: "",
   isSupplier: false,
+  cashOnDeliveryAllowed: false,
 });
 
 const roleOptions = [
@@ -104,6 +105,7 @@ function resetForm() {
   userForm.status = "active";
   userForm.password = "";
   userForm.isSupplier = false;
+  userForm.cashOnDeliveryAllowed = false;
 }
 
 function normalizeSelectedUser(value: any): UserTableRow {
@@ -194,6 +196,7 @@ async function openEditUser(user: UserTableRow) {
     userForm.role = data.role;
     userForm.status = data.status;
     userForm.isSupplier = data.isSupplier;
+    userForm.cashOnDeliveryAllowed = data.cashOnDeliveryAllowed;
     await loadUserProductAlerts(rowUser.id);
   }
   else {
@@ -269,6 +272,7 @@ async function submitUserForm() {
     role: userForm.isSupplier ? undefined : userForm.role,
     status: userForm.status,
     password: userForm.password || undefined,
+    cash_on_delivery_allowed: userForm.cashOnDeliveryAllowed,
   };
   const result = editingUserId.value
     ? await updateUser(editingUserId.value, payload)
@@ -509,6 +513,15 @@ watch([roleFilter, statusFilter, pageSize], () => {
               option-attribute="label"
             />
           </UFormField>
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+            <UCheckbox
+              v-model="userForm.cashOnDeliveryAllowed"
+              label="Allow Cash on Delivery for this customer"
+            />
+            <p class="mt-2 text-xs text-slate-500">
+              COD is hidden at checkout unless it is enabled in payment settings and this customer is approved.
+            </p>
+          </div>
         </div>
 
         <div v-if="editingUserId" class="mt-6 rounded-xl border border-slate-200 bg-white p-4">

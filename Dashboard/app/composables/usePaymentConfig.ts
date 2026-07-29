@@ -46,6 +46,14 @@ export interface AdminPaymentConfiguration {
     provider_name: string
     sandbox_enabled: boolean
   }
+  cash_on_delivery: {
+    is_enabled: boolean
+    is_configured: boolean
+    checkout_visible: boolean
+    missing_requirements: string[]
+    requires_customer_approval: boolean
+    prompt_before_dispatch: boolean
+  }
 }
 
 export interface AdminPaymentConfigurationPayload {
@@ -81,6 +89,11 @@ export interface AdminPaymentConfigurationPayload {
   card?: {
     is_enabled?: boolean
     provider_name?: string
+  }
+  cash_on_delivery?: {
+    is_enabled?: boolean
+    requires_customer_approval?: boolean
+    prompt_before_dispatch?: boolean
   }
 }
 

@@ -28,9 +28,22 @@ CANCELLATION_REFUND_ORDER_STATUSES = {'cancelled', 'canceled'}
 FULFILLED_LINE_STATUSES = {'shipped', 'delivered'}
 
 
-def available_payment_methods() -> list[dict]:
+def customer_can_use_cash_on_delivery(user, basket=None) -> bool:
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_staff', False):
+        return True
+    if not bool(get_payment_setting('cash_on_delivery', 'requires_customer_approval', True)):
+        return True
+    profile = getattr(user, 'customer_profile', None)
+    return bool(profile and profile.cash_on_delivery_allowed)
+
+
+def available_payment_methods(*, user=None, basket=None) -> list[dict]:
     methods = []
     for method in settings.PAYMENT_METHODS:
+        if method.get('code') == 'cash_on_delivery' and not customer_can_use_cash_on_delivery(user, basket):
+            continue
         provider = method.get('provider') or method.get('code')
         if _payment_method_is_available(provider):
             payload = method.copy()
@@ -40,10 +53,12 @@ def available_payment_methods() -> list[dict]:
     return methods
 
 
-def get_payment_method(code: str) -> dict | None:
+def get_payment_method(code: str, *, user=None, basket=None) -> dict | None:
     normalized = (code or '').strip()
     for method in settings.PAYMENT_METHODS:
         if method['code'] == normalized:
+            if method.get('code') == 'cash_on_delivery' and not customer_can_use_cash_on_delivery(user, basket):
+                return None
             provider = method.get('provider') or method.get('code')
             if not _payment_method_is_available(provider):
                 return None
@@ -54,8 +69,17 @@ def get_payment_method(code: str) -> dict | None:
     return None
 
 
+def payment_method_definition(code: str) -> dict | None:
+    normalized = (code or '').strip()
+    for method in settings.PAYMENT_METHODS:
+        if method['code'] == normalized:
+            return method.copy()
+    return None
+
+
 def _payment_method_is_available(provider: str) -> bool:
-    if not provider_is_enabled(provider, default=True):
+    default_enabled = provider != 'cash_on_delivery'
+    if not provider_is_enabled(provider, default=default_enabled):
         return False
     if provider in OFFLINE_PAYMENT_PROVIDERS:
         return True
@@ -92,7 +116,7 @@ def _payment_method_capabilities(method_code: str, provider: str) -> dict:
 
 
 def payment_requires_prepayment(method_code: str) -> bool:
-    method = get_payment_method(method_code)
+    method = get_payment_method(method_code, user=user, basket=basket)
     return bool(method and method.get('requires_prepayment'))
 
 
@@ -337,9 +361,10 @@ def link_payment_to_order(payment_session, order):
     Source = apps.get_model('payment', 'Source')
     Transaction = apps.get_model('payment', 'Transaction')
 
+    method_definition = payment_method_definition(payment_session.method) or {'name': payment_session.method}
     source_type, _ = SourceType.objects.get_or_create(
         code=payment_session.method,
-        defaults={'name': get_payment_method(payment_session.method)['name']},
+        defaults={'name': method_definition['name']},
     )
 
     amount_allocated = payment_session.amount if payment_session.status in {'authorized', 'paid'} else Decimal('0.00')
@@ -965,7 +990,7 @@ def _queue_paid_order_accounting_export(payment_session) -> None:
 def _notify_admin_payment_status(payment_session, *, previous_status: str = '') -> None:
     from apps.notifications.services import create_admin_notification
 
-    method = get_payment_method(payment_session.method) or {}
+    method = payment_method_definition(payment_session.method) or {}
     method_name = method.get('name') or payment_session.method
     amount = f'{payment_session.currency} {payment_session.amount}'
     if payment_session.status in SUCCESS_PAYMENT_STATUSES:
@@ -1035,7 +1060,7 @@ def _notify_admin_paid_order(payment_session) -> None:
 
 
 def serialize_payment_session(payment_session) -> dict:
-    method = get_payment_method(payment_session.method) or {}
+    method = payment_method_definition(payment_session.method) or {}
     return {
         'id': payment_session.id,
         'reference': payment_session.reference,

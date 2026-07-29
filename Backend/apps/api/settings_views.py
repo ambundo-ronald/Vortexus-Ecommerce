@@ -41,7 +41,7 @@ def _serialize_store_settings(site):
             'requires_prepayment': bool(method.get('requires_prepayment', False)),
             'is_configured': bool(method.get('is_configured', True)),
         }
-        for method in available_payment_methods()
+        for method in available_payment_methods(user=request.user if request.user.is_authenticated else None)
     ]
     return {
         'site_name': site.name,

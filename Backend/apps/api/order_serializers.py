@@ -2,6 +2,7 @@ import re
 from decimal import Decimal
 
 from django.conf import settings
+from django.apps import apps
 from rest_framework import serializers
 
 from .checkout_utils import (
@@ -167,6 +168,31 @@ def _order_primary_tracking_reference(order) -> str:
         if match:
             return match.group(1).strip()
     return ''
+
+
+def _order_payment_payload(order) -> dict:
+    PaymentSession = apps.get_model('payments', 'PaymentSession')
+    from apps.payments.services import serialize_payment_session
+
+    sessions = list(PaymentSession.objects.filter(order=order).order_by('-created_at', '-id'))
+    confirmed_statuses = {PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID}
+    non_cod_confirmed = [
+        session
+        for session in sessions
+        if session.method != PaymentSession.METHOD_CASH_ON_DELIVERY and session.status in confirmed_statuses
+    ]
+    paid_amount = sum((session.amount or Decimal('0.00')) for session in non_cod_confirmed)
+    order_total = order.total_incl_tax or Decimal('0.00')
+    outstanding = max(order_total - paid_amount, Decimal('0.00'))
+    has_cash_on_delivery = any(session.method == PaymentSession.METHOD_CASH_ON_DELIVERY for session in sessions)
+
+    return {
+        'sessions': [serialize_payment_session(session) for session in sessions],
+        'has_cash_on_delivery': has_cash_on_delivery,
+        'paid_amount': float(paid_amount),
+        'outstanding_amount': float(outstanding),
+        'cod_mpesa_prompt_available': bool(has_cash_on_delivery and outstanding > Decimal('0.00')),
+    }
 
 
 class SupplierGroupSerializer(serializers.Serializer):
@@ -405,6 +431,7 @@ class AdminOrderDetailSerializer(serializers.Serializer):
             'orderVia': 'Web',
             'trackingReference': _order_primary_tracking_reference(order),
             'availableStatuses': [choice[0] for choice in ADMIN_ORDER_STATUS_CHOICES],
+            'payment': _order_payment_payload(order),
             'shippingAddress': {
                 'firstName': getattr(shipping_address, 'first_name', '') or '',
                 'lastName': getattr(shipping_address, 'last_name', '') or '',

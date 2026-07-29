@@ -16,6 +16,7 @@ from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
 from apps.common.products import product_stock_totals, serialize_product_card, stockrecord_count
+from apps.common.taxes import product_tax_exemption_reason, product_tax_profile, product_tax_status
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
@@ -170,6 +171,7 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
     stock_on_hand = stock_totals['on_hand']
     stock_allocated = stock_totals['allocated']
     available_stock = stock_totals['available']
+    tax_status = product_tax_status(product)
     return {
         'id': product.id,
         'name': product.title,
@@ -221,7 +223,10 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'tags': attributes.get('tags', ''),
         'dimensions': attributes.get('dimensions', ''),
         'weight': float(attributes['weight_grams']) if attributes.get('weight_grams') not in (None, '') and str(attributes.get('weight_grams')).replace('.', '', 1).isdigit() else None,
-        'chargeTax': True,
+        'chargeTax': tax_status == 'taxable',
+        'taxStatus': tax_status,
+        'taxProfile': product_tax_profile(product),
+        'taxExemptionReason': product_tax_exemption_reason(product),
         'recommendedProducts': [
             {
                 'id': recommended.id,

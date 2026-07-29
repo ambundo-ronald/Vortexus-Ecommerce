@@ -113,6 +113,14 @@ const paymentConfig = ref({
     provider_name: "sandbox_card",
     sandbox_enabled: false,
   },
+  cash_on_delivery: {
+    is_enabled: false,
+    is_configured: true,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
+    requires_customer_approval: true,
+    prompt_before_dispatch: true,
+  },
 });
 
 function paymentVisibilityBadge(provider: keyof typeof paymentConfig.value) {
@@ -207,6 +215,10 @@ async function loadPaymentConfig() {
       card: {
         ...paymentConfig.value.card,
         ...result.data.card,
+      },
+      cash_on_delivery: {
+        ...paymentConfig.value.cash_on_delivery,
+        ...result.data.cash_on_delivery,
       },
     };
   }
@@ -341,6 +353,11 @@ async function savePaymentConfig() {
       is_enabled: paymentConfig.value.card.is_enabled,
       provider_name: paymentConfig.value.card.provider_name,
     },
+    cash_on_delivery: {
+      is_enabled: paymentConfig.value.cash_on_delivery.is_enabled,
+      requires_customer_approval: paymentConfig.value.cash_on_delivery.requires_customer_approval,
+      prompt_before_dispatch: paymentConfig.value.cash_on_delivery.prompt_before_dispatch,
+    },
   });
 
   if (result.success && result.data) {
@@ -365,6 +382,10 @@ async function savePaymentConfig() {
       card: {
         ...paymentConfig.value.card,
         ...result.data.card,
+      },
+      cash_on_delivery: {
+        ...paymentConfig.value.cash_on_delivery,
+        ...result.data.cash_on_delivery,
       },
     };
     toast.add({
@@ -848,6 +869,27 @@ onMounted(() => {
                 {{ paymentMissingText('card') }}
               </p>
             </div>
+          </div>
+
+          <div class="rounded-lg border border-default p-4 xl:col-span-2">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">Cash on Delivery</h4>
+                <p class="text-xs text-(--ui-text-muted)">Controlled trust-based payment option for approved customers.</p>
+              </div>
+              <UBadge :color="paymentVisibilityBadge('cash_on_delivery').color" variant="soft">
+                {{ paymentVisibilityBadge('cash_on_delivery').label }}
+              </UBadge>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <UCheckbox v-model="paymentConfig.cash_on_delivery.is_enabled" label="Enable COD provider" :disabled="isPaymentLoading" />
+              <UCheckbox v-model="paymentConfig.cash_on_delivery.requires_customer_approval" label="Require customer approval" :disabled="isPaymentLoading" />
+              <UCheckbox v-model="paymentConfig.cash_on_delivery.prompt_before_dispatch" label="Prompt M-Pesa before dispatch" :disabled="isPaymentLoading" />
+            </div>
+            <p class="mt-3 text-xs text-(--ui-text-muted)">
+              COD is hidden from guests and ordinary customers. Enable it per customer from Users before it appears at checkout.
+            </p>
           </div>
         </div>
       </UCard>

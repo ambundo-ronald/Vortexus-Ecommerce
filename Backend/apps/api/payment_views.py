@@ -67,7 +67,8 @@ class PaymentMethodCollectionAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        serializer = PaymentMethodSerializer(available_payment_methods(), many=True)
+        user = request.user if request.user.is_authenticated else None
+        serializer = PaymentMethodSerializer(available_payment_methods(user=user, basket=getattr(request, 'basket', None)), many=True)
         return Response({'results': serializer.data})
 
 

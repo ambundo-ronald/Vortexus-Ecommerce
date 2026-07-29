@@ -48,6 +48,7 @@ class AdminUserListSerializer(serializers.Serializer):
             'email_verified': profile.email_verified_at is not None,
             'email_verified_at': profile.email_verified_at,
             'two_factor_email_enabled': profile.two_factor_email_enabled,
+            'cash_on_delivery_allowed': profile.cash_on_delivery_allowed,
         }
 
 
@@ -75,6 +76,7 @@ class AdminUserDetailSerializer(serializers.Serializer):
             'preferred_currency': profile.preferred_currency or '',
             'receive_order_updates': profile.receive_order_updates,
             'receive_marketing_emails': profile.receive_marketing_emails,
+            'cash_on_delivery_allowed': profile.cash_on_delivery_allowed,
             'email_verified': profile.email_verified_at is not None,
             'email_verified_at': profile.email_verified_at,
             'two_factor_email_enabled': profile.two_factor_email_enabled,
@@ -95,6 +97,7 @@ class AdminUserWriteSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=ADMIN_USER_ROLE_CHOICES, required=False)
     status = serializers.ChoiceField(choices=[('active', 'Active'), ('suspended', 'Suspended')], required=False)
     password = serializers.CharField(required=False, allow_blank=False, trim_whitespace=False, write_only=True)
+    cash_on_delivery_allowed = serializers.BooleanField(required=False)
 
     def validate_email(self, value):
         email = value.strip().lower()
@@ -144,6 +147,7 @@ class AdminUserWriteSerializer(serializers.Serializer):
         status_value = validated_data.pop('status', 'active')
         phone = validated_data.pop('phone', '').strip()
         company = validated_data.pop('company', '').strip()
+        cash_on_delivery_allowed = validated_data.pop('cash_on_delivery_allowed', False)
 
         user = User.objects.create_user(
             username=self._generate_username(email),
@@ -161,7 +165,8 @@ class AdminUserWriteSerializer(serializers.Serializer):
         profile = get_or_create_customer_profile(user)
         profile.phone = phone
         profile.company = company
-        profile.save(update_fields=['phone', 'company'])
+        profile.cash_on_delivery_allowed = bool(cash_on_delivery_allowed)
+        profile.save(update_fields=['phone', 'company', 'cash_on_delivery_allowed'])
         return user
 
     @transaction.atomic
@@ -170,6 +175,7 @@ class AdminUserWriteSerializer(serializers.Serializer):
         status_value = validated_data.pop('status', None)
         phone = validated_data.pop('phone', None)
         company = validated_data.pop('company', None)
+        cash_on_delivery_allowed = validated_data.pop('cash_on_delivery_allowed', None)
         password = validated_data.pop('password', None)
 
         dirty_fields = []
@@ -210,6 +216,9 @@ class AdminUserWriteSerializer(serializers.Serializer):
             if profile.company != company:
                 profile.company = company
                 profile_dirty_fields.append('company')
+        if cash_on_delivery_allowed is not None and profile.cash_on_delivery_allowed != cash_on_delivery_allowed:
+            profile.cash_on_delivery_allowed = cash_on_delivery_allowed
+            profile_dirty_fields.append('cash_on_delivery_allowed')
         if profile_dirty_fields:
             profile.save(update_fields=profile_dirty_fields)
 

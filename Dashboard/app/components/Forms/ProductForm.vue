@@ -37,6 +37,9 @@ const productSchema = z.object({
     })
     .optional(),
   chargeTax: z.boolean().default(true),
+  taxStatus: z.enum(["taxable", "tax_exempt", "zero_rated"]).default("taxable"),
+  taxProfile: z.string().optional(),
+  taxExemptionReason: z.string().optional(),
   sku: z.string().optional(),
   stock: z
     .number({
@@ -97,6 +100,9 @@ const localFormState = reactive<ProductFormSchema>({
   currency: "KES",
   originalPrice: undefined,
   chargeTax: true,
+  taxStatus: "taxable",
+  taxProfile: "standard",
+  taxExemptionReason: "",
   sku: "",
   stock: 0,
   weight: null,
@@ -135,6 +141,9 @@ watch(
       currency: "KES",
       originalPrice: undefined,
       chargeTax: true,
+      taxStatus: "taxable",
+      taxProfile: "standard",
+      taxExemptionReason: "",
       sku: "",
       stock: 0,
       weight: null,
@@ -175,6 +184,20 @@ const isSearchingRecommendedProducts = ref(false)
 const productOptionPool = ref<{ label: string; value: string }[]>([])
 let recommendedSearchTimer: ReturnType<typeof setTimeout> | null = null
 let recommendedSearchRequestId = 0
+
+const taxStatusOptions = [
+  { label: "Taxable", value: "taxable" },
+  { label: "Tax exempt", value: "tax_exempt" },
+  { label: "Zero-rated", value: "zero_rated" },
+]
+
+const taxProfileOptions = [
+  { label: "Standard product", value: "standard" },
+  { label: "Accessory", value: "accessory" },
+  { label: "Project equipment", value: "project" },
+  { label: "Water treatment chemical", value: "water_treatment_chemical" },
+  { label: "Service", value: "service" },
+]
 
 function mergeProductOptions(options: { label: string; value: string }[] = []) {
   const byId = new Map(productOptionPool.value.map(option => [String(option.value), option]))
@@ -726,11 +749,38 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                   />
                 </UFormField>
               </div>
-              <div class="mt-4 border-t border-slate-200 pt-4">
-                <UFormField name="chargeTax">
-                  <UCheckbox
-                    v-model="localFormState.chargeTax"
-                    label="Charge tax on this product"
+              <div class="mt-4 grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                <UFormField label="Tax status" name="taxStatus">
+                  <USelect
+                    v-model="localFormState.taxStatus"
+                    :items="taxStatusOptions"
+                    value-attribute="value"
+                    option-attribute="label"
+                    size="lg"
+                    class="w-full"
+                    @update:model-value="(value) => { localFormState.chargeTax = value === 'taxable' }"
+                  />
+                </UFormField>
+                <UFormField label="Tax profile" name="taxProfile">
+                  <USelect
+                    v-model="localFormState.taxProfile"
+                    :items="taxProfileOptions"
+                    value-attribute="value"
+                    option-attribute="label"
+                    size="lg"
+                    class="w-full"
+                  />
+                </UFormField>
+                <UFormField
+                  v-if="localFormState.taxStatus !== 'taxable'"
+                  label="Exemption reason"
+                  name="taxExemptionReason"
+                  class="sm:col-span-2"
+                >
+                  <UInput
+                    v-model="localFormState.taxExemptionReason"
+                    placeholder="e.g. VAT exempt product, zero-rated supply"
+                    size="lg"
                   />
                 </UFormField>
               </div>
