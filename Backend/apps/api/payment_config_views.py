@@ -550,7 +550,8 @@ def _refund_request_summary(payments) -> dict:
 
     refund_count = 0
     refund_total = Decimal('0.00')
-    for payment in payments.exclude(id__in=payments_with_ledger).only('metadata', 'amount'):
+    metadata_payments = payments.exclude(id__in=payments_with_ledger).select_related(None).only('metadata', 'amount')
+    for payment in metadata_payments:
         for refund in (payment.metadata or {}).get('refund_requests', []):
             refund_count += 1
             refund_total += Decimal(str(refund.get('amount') or payment.amount or 0))

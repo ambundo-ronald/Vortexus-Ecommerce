@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
+from apps.api.payment_config_views import _refund_request_summary
 from apps.accounts.models import CustomerProfile
 
 from .models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentSession
@@ -254,6 +255,16 @@ class PaymentReconciliationTests(TestCase):
         self.assertEqual(ledger.status, PaymentReconciliation.STATUS_MANUAL_REVIEW)
         self.assertIn('Payment is confirmed but no order is linked.', ledger.issues)
         self.assertEqual(ledger.paid_amount, payment.amount)
+
+    def test_refund_summary_handles_select_related_payment_queryset(self):
+        self._payment(
+            status=PaymentSession.STATUS_PAID,
+            metadata={'refund_requests': [{'amount': '250.00'}]},
+        )
+
+        summary = _refund_request_summary(PaymentSession.objects.select_related('order').all())
+
+        self.assertEqual(summary, {'count': 1, 'total': 250.0})
 
 
 class PesapalNotificationSerializerTests(TestCase):
