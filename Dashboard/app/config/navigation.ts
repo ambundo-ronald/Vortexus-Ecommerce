@@ -160,6 +160,11 @@ export const navSections: NavSection[] = [
         to: '/payment-logs',
       },
       {
+        label: 'Finance',
+        icon: 'i-lucide-chart-no-axes-combined',
+        to: '/finance',
+      },
+      {
         label: 'Email Suppressions',
         icon: 'i-lucide-mail-x',
         to: '/email-suppressions',

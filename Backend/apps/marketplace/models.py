@@ -254,6 +254,233 @@ class SupplierOrderLineAllocation(models.Model):
         return f'{self.order.number} line={self.line_id} partner={self.partner_id} payout={self.supplier_total_cost}'
 
 
+class SupplierPayableLedger(models.Model):
+    ERP_STATUS_PENDING = 'pending'
+    ERP_STATUS_SYNCED = 'synced'
+    ERP_STATUS_SKIPPED = 'skipped'
+    ERP_STATUS_FAILED = 'failed'
+
+    ERP_STATUS_CHOICES = [
+        (ERP_STATUS_PENDING, 'Pending'),
+        (ERP_STATUS_SYNCED, 'Synced'),
+        (ERP_STATUS_SKIPPED, 'Skipped'),
+        (ERP_STATUS_FAILED, 'Failed'),
+    ]
+
+    STATUS_PENDING = 'pending'
+    STATUS_PAYABLE = 'payable'
+    STATUS_ON_HOLD = 'on_hold'
+    STATUS_APPROVED = 'approved'
+    STATUS_PAID = 'paid'
+    STATUS_DISPUTED = 'disputed'
+    STATUS_REVERSED = 'reversed'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_PAYABLE, 'Payable'),
+        (STATUS_ON_HOLD, 'On Hold'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_PAID, 'Paid'),
+        (STATUS_DISPUTED, 'Disputed'),
+        (STATUS_REVERSED, 'Reversed'),
+    ]
+
+    allocation = models.OneToOneField(
+        SupplierOrderLineAllocation,
+        on_delete=models.CASCADE,
+        related_name='payable_ledger',
+    )
+    supplier = models.ForeignKey(SupplierProfile, on_delete=models.SET_NULL, related_name='payable_ledgers', null=True, blank=True)
+    partner = models.ForeignKey('partner.Partner', on_delete=models.CASCADE, related_name='payable_ledgers')
+    order = models.ForeignKey('order.Order', on_delete=models.CASCADE, related_name='supplier_payable_ledgers')
+    line = models.ForeignKey('order.Line', on_delete=models.CASCADE, related_name='supplier_payable_ledgers')
+    product = models.ForeignKey('catalogue.Product', on_delete=models.SET_NULL, related_name='supplier_payable_ledgers', null=True, blank=True)
+    supplier_offer = models.ForeignKey(SupplierProductOffer, on_delete=models.SET_NULL, related_name='payable_ledgers', null=True, blank=True)
+    stockrecord = models.ForeignKey('partner.StockRecord', on_delete=models.SET_NULL, related_name='supplier_payable_ledgers', null=True, blank=True)
+    quantity = models.PositiveIntegerField(default=0)
+    supplier_unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payable_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=12, default='KES')
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    source_status = models.CharField(max_length=64, blank=True)
+    payout_reference = models.CharField(max_length=128, blank=True)
+    reversal_reason = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    erpnext_sync_status = models.CharField(max_length=16, choices=ERP_STATUS_CHOICES, default=ERP_STATUS_PENDING)
+    erpnext_reference = models.CharField(max_length=128, blank=True)
+    erpnext_sync_message = models.TextField(blank=True)
+    erpnext_synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order_id', 'line_id', 'id']
+        indexes = [
+            models.Index(fields=['partner', 'status'], name='supp_pay_partner_status'),
+            models.Index(fields=['supplier', 'status'], name='supp_pay_supplier_status'),
+            models.Index(fields=['order', 'status'], name='supp_pay_order_status'),
+            models.Index(fields=['status', 'updated_at'], name='supp_pay_status_updated'),
+            models.Index(fields=['erpnext_sync_status', 'updated_at'], name='supp_pay_erp_status'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.order.number} line={self.line_id} supplier={self.supplier_id} payable={self.payable_total}'
+
+
+class SupplierPayoutBatch(models.Model):
+    ERP_STATUS_PENDING = 'pending'
+    ERP_STATUS_SYNCED = 'synced'
+    ERP_STATUS_SKIPPED = 'skipped'
+    ERP_STATUS_FAILED = 'failed'
+
+    ERP_STATUS_CHOICES = [
+        (ERP_STATUS_PENDING, 'Pending'),
+        (ERP_STATUS_SYNCED, 'Synced'),
+        (ERP_STATUS_SKIPPED, 'Skipped'),
+        (ERP_STATUS_FAILED, 'Failed'),
+    ]
+
+    STATUS_DRAFT = 'draft'
+    STATUS_PENDING_APPROVAL = 'pending_approval'
+    STATUS_APPROVED = 'approved'
+    STATUS_PAID = 'paid'
+    STATUS_CANCELLED = 'cancelled'
+
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_PENDING_APPROVAL, 'Pending Approval'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_PAID, 'Paid'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    batch_reference = models.CharField(max_length=64, unique=True)
+    supplier = models.ForeignKey(SupplierProfile, on_delete=models.SET_NULL, related_name='payout_batches', null=True, blank=True)
+    partner = models.ForeignKey('partner.Partner', on_delete=models.SET_NULL, related_name='supplier_payout_batches', null=True, blank=True)
+    currency = models.CharField(max_length=12, default='KES')
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    entry_count = models.PositiveIntegerField(default=0)
+    payout_method = models.CharField(max_length=64, blank=True)
+    payout_reference = models.CharField(max_length=128, blank=True)
+    evidence_url = models.URLField(blank=True)
+    evidence_file = models.FileField(upload_to='finance/payout-evidence/%Y/%m/', blank=True)
+    notes = models.TextField(blank=True)
+    erpnext_sync_status = models.CharField(max_length=16, choices=ERP_STATUS_CHOICES, default=ERP_STATUS_PENDING)
+    erpnext_reference = models.CharField(max_length=128, blank=True)
+    erpnext_sync_message = models.TextField(blank=True)
+    erpnext_synced_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='created_supplier_payout_batches', null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='approved_supplier_payout_batches', null=True, blank=True)
+    paid_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='paid_supplier_payout_batches', null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['status', '-created_at'], name='supp_payout_status_created'),
+            models.Index(fields=['supplier', 'status'], name='supp_payout_supplier_status'),
+            models.Index(fields=['batch_reference'], name='supp_payout_reference'),
+            models.Index(fields=['erpnext_sync_status', '-created_at'], name='supp_payout_erp_status'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.batch_reference}:{self.status}:{self.total_amount}'
+
+
+class SupplierPayoutBatchEntry(models.Model):
+    batch = models.ForeignKey(SupplierPayoutBatch, on_delete=models.CASCADE, related_name='entries')
+    payable = models.OneToOneField(SupplierPayableLedger, on_delete=models.PROTECT, related_name='payout_batch_entry')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=12, default='KES')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['batch_id', 'id']
+        indexes = [
+            models.Index(fields=['batch', 'currency'], name='supp_payout_entry_batch'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.batch.batch_reference}:{self.payable_id}:{self.amount}'
+
+
+class SupplierPayableAdjustment(models.Model):
+    ERP_STATUS_PENDING = 'pending'
+    ERP_STATUS_SYNCED = 'synced'
+    ERP_STATUS_SKIPPED = 'skipped'
+    ERP_STATUS_FAILED = 'failed'
+
+    ERP_STATUS_CHOICES = [
+        (ERP_STATUS_PENDING, 'Pending'),
+        (ERP_STATUS_SYNCED, 'Synced'),
+        (ERP_STATUS_SKIPPED, 'Skipped'),
+        (ERP_STATUS_FAILED, 'Failed'),
+    ]
+
+    TYPE_DEBIT = 'debit'
+    TYPE_CREDIT = 'credit'
+    TYPE_REVERSAL = 'reversal'
+
+    TYPE_CHOICES = [
+        (TYPE_DEBIT, 'Debit'),
+        (TYPE_CREDIT, 'Credit'),
+        (TYPE_REVERSAL, 'Reversal'),
+    ]
+
+    STATUS_PENDING_REVIEW = 'pending_review'
+    STATUS_APPROVED = 'approved'
+    STATUS_APPLIED = 'applied'
+    STATUS_VOID = 'void'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING_REVIEW, 'Pending Review'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_APPLIED, 'Applied'),
+        (STATUS_VOID, 'Void'),
+    ]
+
+    adjustment_reference = models.CharField(max_length=64, unique=True)
+    payable = models.ForeignKey(SupplierPayableLedger, on_delete=models.CASCADE, related_name='adjustments')
+    supplier = models.ForeignKey(SupplierProfile, on_delete=models.SET_NULL, related_name='payable_adjustments', null=True, blank=True)
+    partner = models.ForeignKey('partner.Partner', on_delete=models.CASCADE, related_name='supplier_payable_adjustments')
+    order = models.ForeignKey('order.Order', on_delete=models.CASCADE, related_name='supplier_payable_adjustments')
+    line = models.ForeignKey('order.Line', on_delete=models.CASCADE, related_name='supplier_payable_adjustments')
+    adjustment_type = models.CharField(max_length=32, choices=TYPE_CHOICES, default=TYPE_DEBIT)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING_REVIEW)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=12, default='KES')
+    reason = models.CharField(max_length=255, blank=True)
+    source_reference = models.CharField(max_length=128, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    erpnext_sync_status = models.CharField(max_length=16, choices=ERP_STATUS_CHOICES, default=ERP_STATUS_PENDING)
+    erpnext_reference = models.CharField(max_length=128, blank=True)
+    erpnext_sync_message = models.TextField(blank=True)
+    erpnext_synced_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='created_supplier_payable_adjustments', null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='approved_supplier_payable_adjustments', null=True, blank=True)
+    applied_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='applied_supplier_payable_adjustments', null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['supplier', 'status'], name='supp_adj_supplier_status'),
+            models.Index(fields=['partner', 'status'], name='supp_adj_partner_status'),
+            models.Index(fields=['order', 'status'], name='supp_adj_order_status'),
+            models.Index(fields=['adjustment_reference'], name='supp_adj_reference'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.adjustment_reference}:{self.adjustment_type}:{self.amount}'
+
+
 class SupplierProductSubmission(models.Model):
     STATUS_DRAFT = 'draft'
     STATUS_PENDING_REVIEW = 'pending_review'

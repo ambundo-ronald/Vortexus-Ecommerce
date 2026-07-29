@@ -18,6 +18,16 @@ def can_access_all_admin_data(user) -> bool:
     return is_platform_admin(user)
 
 
+def can_access_finance_data(user) -> bool:
+    if is_platform_admin(user):
+        return True
+    if not (user and user.is_authenticated and getattr(user, 'is_staff', False)):
+        return False
+    if user.has_perm('payments.view_paymentreconciliation') or user.has_perm('payments.view_paymentsession'):
+        return True
+    return user.groups.filter(name__in=['finance', 'finance_viewer', 'finance_operator', 'finance_approver']).exists()
+
+
 def assigned_supplier_queryset(user):
     SupplierProfile = apps.get_model('marketplace', 'SupplierProfile')
     queryset = SupplierProfile.objects.select_related('user', 'partner', 'account_manager')
@@ -46,4 +56,3 @@ def scope_payment_sessions_queryset(queryset, user):
     if is_account_manager(user):
         return queryset.filter(order__supplier_groups__partner_id__in=assigned_partner_ids(user)).distinct()
     return queryset.none()
-

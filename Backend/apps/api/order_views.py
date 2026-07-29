@@ -12,7 +12,13 @@ from apps.auditlog.services import record_audit_event
 from apps.common.async_utils import dispatch_background_task
 from apps.integrations.tasks import sync_order_cancellation_to_erpnext
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
+from apps.marketplace.payables import sync_supplier_payables_for_order
 from apps.notifications.services import queue_shipping_update_email
+from apps.payments.services import (
+    ensure_order_finance_clear_for_fulfillment,
+    order_has_fulfilled_lines,
+    record_paid_order_cancellation_finance,
+)
 
 from .account_manager_scope import can_access_all_admin_data, scope_orders_queryset
 from .order_serializers import (
@@ -342,6 +348,33 @@ class AdminOrderStatusAPIView(APIView):
         note = serializer.validated_data.get('note', '')
         tracking_reference = serializer.validated_data.get('tracking_reference', '')
 
+        if new_status in {'Processing', 'Packed', 'Shipped', 'Delivered'}:
+            try:
+                ensure_order_finance_clear_for_fulfillment(order)
+            except ValueError as exc:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'finance_hold',
+                            'detail': str(exc),
+                            'status': 409,
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+        if new_status == 'Cancelled' and order_has_fulfilled_lines(order):
+            return Response(
+                {
+                    'error': {
+                        'code': 'return_required_after_fulfillment',
+                        'detail': 'This order has shipped or delivered lines. Use the return intake workflow after fulfillment.',
+                        'status': 409,
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         previous_order_status = _cascade_admin_order_status(
             order,
             new_status=new_status,
@@ -351,6 +384,7 @@ class AdminOrderStatusAPIView(APIView):
         order.refresh_from_db()
 
         if new_status in {'Shipped', 'Delivered'}:
+            sync_supplier_payables_for_order(order)
             queue_shipping_update_email(
                 order,
                 status_label=new_status,
@@ -358,11 +392,26 @@ class AdminOrderStatusAPIView(APIView):
                 note=note or 'Updated by admin.',
             )
         if new_status == 'Cancelled':
+            try:
+                record_paid_order_cancellation_finance(order, reason=note or 'Cancelled by admin.', user=request.user)
+            except ValueError as exc:
+                return Response(
+                    {
+                        'error': {
+                            'code': 'finance_cancellation_blocked',
+                            'detail': str(exc),
+                            'status': 409,
+                        }
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             dispatch_background_task(
                 sync_order_cancellation_to_erpnext,
                 run_kwargs={'order_number': order.number, 'reason': note or 'Cancelled by admin.'},
                 async_kwargs={'order_number': order.number, 'reason': note or 'Cancelled by admin.'},
             )
+        else:
+            sync_supplier_payables_for_order(order)
 
         record_audit_event(
             event_type='orders.status_changed',

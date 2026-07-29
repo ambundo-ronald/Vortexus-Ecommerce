@@ -136,9 +136,9 @@ class CallbackRequest(models.Model):
     class Meta:
         ordering = ['respond_by', '-created_at']
         indexes = [
-            models.Index(fields=['status', 'respond_by']),
-            models.Index(fields=['product', '-created_at']),
-            models.Index(fields=['phone_number', '-created_at']),
+            models.Index(fields=['status', 'respond_by'], name='notificatio_status_737379_idx'),
+            models.Index(fields=['product', '-created_at'], name='notificatio_product_b9ec68_idx'),
+            models.Index(fields=['phone_number', '-created_at'], name='notificatio_phone_n_4a2f46_idx'),
         ]
 
     def __str__(self) -> str:
@@ -208,9 +208,9 @@ class AdminNotification(models.Model):
             models.UniqueConstraint(fields=['user', 'event_key'], condition=~models.Q(event_key=''), name='unique_admin_notification_event_per_user'),
         ]
         indexes = [
-            models.Index(fields=['user', 'read_at', '-created_at']),
-            models.Index(fields=['event_type', '-created_at']),
-            models.Index(fields=['severity', '-created_at']),
+            models.Index(fields=['user', 'read_at', '-created_at'], name='notificatio_user_id_66e356_idx'),
+            models.Index(fields=['event_type', '-created_at'], name='notificatio_event_t_727cec_idx'),
+            models.Index(fields=['severity', '-created_at'], name='notificatio_severit_d8084a_idx'),
         ]
 
     def __str__(self) -> str:
@@ -241,7 +241,7 @@ class PushSubscription(models.Model):
     class Meta:
         ordering = ['-updated_at']
         indexes = [
-            models.Index(fields=['user', 'channel', 'is_enabled']),
+            models.Index(fields=['user', 'channel', 'is_enabled'], name='notificatio_user_id_e03349_idx'),
         ]
 
     def __str__(self) -> str:
@@ -275,8 +275,8 @@ class PushDeliveryLog(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['status', '-created_at']),
-            models.Index(fields=['event_type', '-created_at']),
+            models.Index(fields=['status', '-created_at'], name='notificatio_status_370a60_idx'),
+            models.Index(fields=['event_type', '-created_at'], name='notificatio_event_t_726565_idx'),
         ]
 
     def __str__(self) -> str:

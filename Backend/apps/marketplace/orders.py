@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from django.apps import apps
 
+from .payables import sync_supplier_payables_for_order
+
 
 ZERO = Decimal('0.00')
 
@@ -103,6 +105,7 @@ def ensure_supplier_order_groups(order):
 
     SupplierOrderGroup.objects.filter(order=order).exclude(partner_id__in=seen_partner_ids).delete()
     SupplierOrderLineAllocation.objects.filter(order=order).exclude(line_id__in=seen_line_ids).delete()
+    sync_supplier_payables_for_order(order)
     return created_groups
 
 

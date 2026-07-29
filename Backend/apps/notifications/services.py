@@ -642,6 +642,54 @@ def queue_supplier_status_changed_email(supplier_profile) -> None:
     dispatch_background_task(send_supplier_status_changed_email_task, run_kwargs={'supplier_id': supplier_profile.id})
 
 
+def send_supplier_payout_paid_email(batch, *, raise_on_failure: bool = False) -> bool:
+    supplier = getattr(batch, 'supplier', None)
+    user = getattr(supplier, 'user', None)
+    if not user:
+        return notification_service._log_skip(
+            event_type='supplier_payout_paid',
+            recipient='',
+            subject='',
+            related_object_type='supplier_payout_batch',
+            related_object_id=str(batch.id),
+            metadata={'batch_id': batch.id, 'batch_reference': batch.batch_reference},
+            error_message='Payout batch has no supplier user recipient.',
+        )
+
+    context = {
+        'shop_name': settings.OSCAR_SHOP_NAME,
+        'supplier': supplier,
+        'user': user,
+        'display_name': _display_name_for_user(user),
+        'batch': batch,
+        'payout_total': _format_money(batch.total_amount, batch.currency),
+    }
+    return notification_service.send(
+        event_type='supplier_payout_paid',
+        to_email=user.email,
+        subject_template='emails/supplier_payout_paid_subject.txt',
+        body_template='emails/supplier_payout_paid_body.txt',
+        context=context,
+        related_object_type='supplier_payout_batch',
+        related_object_id=str(batch.id),
+        metadata={
+            'supplier_id': supplier.id,
+            'batch_id': batch.id,
+            'batch_reference': batch.batch_reference,
+            'payout_reference': batch.payout_reference,
+            'amount': str(batch.total_amount),
+            'currency': batch.currency,
+        },
+        raise_on_failure=raise_on_failure,
+    )
+
+
+def queue_supplier_payout_paid_email(batch) -> None:
+    from .tasks import send_supplier_payout_paid_email_task
+
+    dispatch_background_task(send_supplier_payout_paid_email_task, run_kwargs={'batch_id': batch.id})
+
+
 def send_order_confirmation_email(order, *, raise_on_failure: bool = False) -> bool:
     if getattr(order, 'user_id', None) and not _user_allows_order_updates(order.user):
         return notification_service._log_skip(

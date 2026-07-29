@@ -13,6 +13,7 @@ from apps.common.currency import (
     normalize_country_code,
     normalize_currency_code,
 )
+from .account_manager_scope import can_access_finance_data
 
 User = get_user_model()
 
@@ -70,6 +71,9 @@ class AccountSummarySerializer(serializers.Serializer):
             'is_staff': user.is_staff,
             'is_superuser': user.is_superuser,
             'dashboard_role': 'platform_admin' if user.is_superuser else 'account_manager' if user.is_staff else 'supplier' if supplier_profile else 'customer',
+            'permissions': {
+                'can_access_finance': can_access_finance_data(user),
+            },
             'date_joined': user.date_joined,
             'last_login': user.last_login,
         }

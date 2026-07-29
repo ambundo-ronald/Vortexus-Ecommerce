@@ -8,9 +8,9 @@ from rest_framework.test import APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
 
-from .models import PaymentEvent, PaymentSession
+from .models import PaymentEvent, PaymentReconciliation, PaymentSession
 from .pesapal import PesapalGatewayError, handle_transaction_status, request_refund
-from .services import _payment_method_capabilities, payment_reconciliation
+from .services import _payment_method_capabilities, payment_reconciliation, sync_payment_reconciliation
 
 
 class PaymentMethodCapabilityTests(SimpleTestCase):
@@ -178,6 +178,26 @@ class PaymentReconciliationTests(TestCase):
         self.assertEqual(reconciliation['status'], 'pending_too_long')
         self.assertFalse(reconciliation['needs_attention'])
         self.assertEqual(reconciliation['severity'], 'warning')
+
+    def test_sync_payment_reconciliation_creates_pending_ledger_row(self):
+        payment = self._payment(external_reference='')
+
+        ledger = sync_payment_reconciliation(payment)
+
+        self.assertEqual(ledger.status, PaymentReconciliation.STATUS_PENDING)
+        self.assertEqual(ledger.payment_session, payment)
+        self.assertEqual(ledger.merchant_reference, payment.reference)
+        self.assertEqual(ledger.expected_amount, payment.amount)
+        self.assertEqual(ledger.paid_amount, Decimal('0.00'))
+
+    def test_sync_payment_reconciliation_flags_paid_without_order_for_review(self):
+        payment = self._payment(status=PaymentSession.STATUS_PAID)
+
+        ledger = sync_payment_reconciliation(payment)
+
+        self.assertEqual(ledger.status, PaymentReconciliation.STATUS_MANUAL_REVIEW)
+        self.assertIn('Payment is confirmed but no order is linked.', ledger.issues)
+        self.assertEqual(ledger.paid_amount, payment.amount)
 
 
 class PesapalNotificationSerializerTests(TestCase):

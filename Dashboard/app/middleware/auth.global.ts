@@ -30,7 +30,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/')
 
   if (auth.isAccountManager.value) {
-    const isAllowed = Array.from(accountManagerRoutes).some(route => to.path === route || to.path.startsWith(`${route}/`))
+    const isAllowedRoute = Array.from(accountManagerRoutes).some(route => to.path === route || to.path.startsWith(`${route}/`))
+    const isFinanceRoute = to.path === '/finance' || to.path.startsWith('/finance/')
+    const isAllowed = isAllowedRoute || (auth.canAccessFinance.value && isFinanceRoute)
     if (to.path === '/')
       return navigateTo('/suppliers')
     if (!isAllowed)

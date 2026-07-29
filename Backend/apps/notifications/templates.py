@@ -87,6 +87,23 @@ CUSTOM_COMMUNICATION_TEMPLATES = [
             '{{ shop_name }}\n'
         ),
     },
+    {
+        'code': 'supplier_payout_paid',
+        'name': 'Supplier Payout Paid',
+        'category': 'Supplier Finance',
+        'email_subject_template': '{{ shop_name }} payout {{ batch.batch_reference }} has been marked paid',
+        'email_body_template': (
+            'Hello {{ display_name }},\n\n'
+            'Your supplier payout has been marked paid on {{ shop_name }}.\n\n'
+            'Batch reference: {{ batch.batch_reference }}\n'
+            'Payout reference: {{ batch.payout_reference }}\n'
+            'Amount: {{ payout_total }}\n'
+            'Method: {{ batch.payout_method }}\n'
+            'Paid at: {{ batch.paid_at }}\n\n'
+            'You can review the payout from your supplier dashboard.\n\n'
+            '{{ shop_name }}\n'
+        ),
+    },
 ]
 
 

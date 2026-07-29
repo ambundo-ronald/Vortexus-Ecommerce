@@ -129,3 +129,309 @@ class PaymentProviderConfiguration(models.Model):
 
     def __str__(self) -> str:
         return f'{self.provider}:{"enabled" if self.is_enabled else "disabled"}'
+
+
+class PaymentReconciliation(models.Model):
+    ERP_STATUS_PENDING = 'pending'
+    ERP_STATUS_SYNCED = 'synced'
+    ERP_STATUS_SKIPPED = 'skipped'
+    ERP_STATUS_FAILED = 'failed'
+
+    ERP_STATUS_CHOICES = [
+        (ERP_STATUS_PENDING, 'Pending'),
+        (ERP_STATUS_SYNCED, 'Synced'),
+        (ERP_STATUS_SKIPPED, 'Skipped'),
+        (ERP_STATUS_FAILED, 'Failed'),
+    ]
+
+    STATUS_PENDING = 'pending'
+    STATUS_MATCHED = 'matched'
+    STATUS_AMOUNT_MISMATCH = 'amount_mismatch'
+    STATUS_DUPLICATE = 'duplicate'
+    STATUS_FAILED = 'failed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_REVERSED = 'reversed'
+    STATUS_REFUNDED = 'refunded'
+    STATUS_MANUAL_REVIEW = 'manual_review'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_MATCHED, 'Matched'),
+        (STATUS_AMOUNT_MISMATCH, 'Amount Mismatch'),
+        (STATUS_DUPLICATE, 'Duplicate'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_REVERSED, 'Reversed'),
+        (STATUS_REFUNDED, 'Refunded'),
+        (STATUS_MANUAL_REVIEW, 'Manual Review'),
+    ]
+
+    payment_session = models.OneToOneField(
+        PaymentSession,
+        on_delete=models.CASCADE,
+        related_name='reconciliation',
+    )
+    order = models.ForeignKey(
+        'order.Order',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='payment_reconciliations',
+    )
+    provider = models.CharField(max_length=64)
+    method = models.CharField(max_length=32)
+    merchant_reference = models.CharField(max_length=64)
+    provider_reference = models.CharField(max_length=128, blank=True)
+    expected_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    fee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    settled_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=12)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    issues = models.JSONField(default=list, blank=True)
+    raw_provider_payload = models.JSONField(default=dict, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_payment_reconciliations',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.TextField(blank=True)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    erpnext_sync_status = models.CharField(max_length=16, choices=ERP_STATUS_CHOICES, default=ERP_STATUS_PENDING)
+    erpnext_reference = models.CharField(max_length=128, blank=True)
+    erpnext_sync_message = models.TextField(blank=True)
+    erpnext_synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        indexes = [
+            models.Index(fields=['status', '-updated_at']),
+            models.Index(fields=['provider', 'provider_reference']),
+            models.Index(fields=['merchant_reference']),
+            models.Index(fields=['order', 'status']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.merchant_reference}:{self.status}'
+
+
+class PaymentRefundLedger(models.Model):
+    TYPE_REFUND = 'refund'
+    TYPE_CANCELLATION = 'cancellation'
+    TYPE_RETURN = 'return'
+    TYPE_ADJUSTMENT = 'adjustment'
+
+    TYPE_CHOICES = [
+        (TYPE_REFUND, 'Refund'),
+        (TYPE_CANCELLATION, 'Cancellation'),
+        (TYPE_RETURN, 'Return'),
+        (TYPE_ADJUSTMENT, 'Adjustment'),
+    ]
+
+    STATUS_REQUESTED = 'requested'
+    STATUS_SUBMITTED = 'submitted'
+    STATUS_SUCCEEDED = 'succeeded'
+    STATUS_FAILED = 'failed'
+    STATUS_CANCELLED = 'cancelled'
+
+    STATUS_CHOICES = [
+        (STATUS_REQUESTED, 'Requested'),
+        (STATUS_SUBMITTED, 'Submitted'),
+        (STATUS_SUCCEEDED, 'Succeeded'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    SCOPE_PARTIAL = 'partial'
+    SCOPE_FULL = 'full'
+
+    SCOPE_CHOICES = [
+        (SCOPE_PARTIAL, 'Partial'),
+        (SCOPE_FULL, 'Full'),
+    ]
+
+    COMPLETION_PARTIAL_REQUESTED = 'partial_requested'
+    COMPLETION_FULL_REQUESTED = 'full_requested'
+    COMPLETION_PARTIAL_SUBMITTED = 'partial_submitted'
+    COMPLETION_FULL_SUBMITTED = 'full_submitted'
+    COMPLETION_PARTIAL_COMPLETED = 'partial_completed'
+    COMPLETION_FULL_COMPLETED = 'full_completed'
+    COMPLETION_FAILED = 'failed'
+    COMPLETION_CANCELLED = 'cancelled'
+
+    COMPLETION_CHOICES = [
+        (COMPLETION_PARTIAL_REQUESTED, 'Partial Requested'),
+        (COMPLETION_FULL_REQUESTED, 'Full Requested'),
+        (COMPLETION_PARTIAL_SUBMITTED, 'Partial Submitted'),
+        (COMPLETION_FULL_SUBMITTED, 'Full Submitted'),
+        (COMPLETION_PARTIAL_COMPLETED, 'Partial Completed'),
+        (COMPLETION_FULL_COMPLETED, 'Full Completed'),
+        (COMPLETION_FAILED, 'Failed'),
+        (COMPLETION_CANCELLED, 'Cancelled'),
+    ]
+
+    ERP_STATUS_PENDING = 'pending'
+    ERP_STATUS_SYNCED = 'synced'
+    ERP_STATUS_SKIPPED = 'skipped'
+    ERP_STATUS_FAILED = 'failed'
+
+    ERP_STATUS_CHOICES = [
+        (ERP_STATUS_PENDING, 'Pending'),
+        (ERP_STATUS_SYNCED, 'Synced'),
+        (ERP_STATUS_SKIPPED, 'Skipped'),
+        (ERP_STATUS_FAILED, 'Failed'),
+    ]
+
+    payment_session = models.ForeignKey(
+        PaymentSession,
+        on_delete=models.CASCADE,
+        related_name='refund_ledgers',
+    )
+    reconciliation = models.ForeignKey(
+        PaymentReconciliation,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='refund_ledgers',
+    )
+    order = models.ForeignKey(
+        'order.Order',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='refund_ledgers',
+    )
+    line = models.ForeignKey(
+        'order.Line',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='refund_ledgers',
+    )
+    refund_type = models.CharField(max_length=32, choices=TYPE_CHOICES, default=TYPE_REFUND)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    refund_scope = models.CharField(max_length=16, choices=SCOPE_CHOICES, default=SCOPE_PARTIAL)
+    completion_state = models.CharField(max_length=32, choices=COMPLETION_CHOICES, default=COMPLETION_PARTIAL_REQUESTED)
+    refund_reference = models.CharField(max_length=128, unique=True)
+    provider_reference = models.CharField(max_length=128, blank=True)
+    gateway = models.CharField(max_length=64, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=12)
+    reason = models.CharField(max_length=255, blank=True)
+    gateway_payload = models.JSONField(default=dict, blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='requested_payment_refunds',
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_payment_refunds',
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    erpnext_sync_status = models.CharField(max_length=16, choices=ERP_STATUS_CHOICES, default=ERP_STATUS_PENDING)
+    erpnext_reference = models.CharField(max_length=128, blank=True)
+    erpnext_sync_message = models.TextField(blank=True)
+    erpnext_synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['refund_scope', 'completion_state']),
+            models.Index(fields=['refund_type', 'status']),
+            models.Index(fields=['erpnext_sync_status', '-created_at']),
+            models.Index(fields=['order', 'status']),
+            models.Index(fields=['payment_session', 'status']),
+            models.Index(fields=['refund_reference']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.refund_reference}:{self.status}:{self.amount}'
+
+
+class PaymentReturnCase(models.Model):
+    STATUS_REQUESTED = 'requested'
+    STATUS_APPROVED = 'approved'
+    STATUS_RECEIVED = 'received'
+    STATUS_ACCEPTED = 'accepted'
+    STATUS_REJECTED = 'rejected'
+    STATUS_REFUNDED = 'refunded'
+    STATUS_CANCELLED = 'cancelled'
+
+    STATUS_CHOICES = [
+        (STATUS_REQUESTED, 'Requested'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_RECEIVED, 'Received'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_REJECTED, 'Rejected'),
+        (STATUS_REFUNDED, 'Refunded'),
+        (STATUS_CANCELLED, 'Cancelled'),
+    ]
+
+    RESTOCK_PENDING = 'pending'
+    RESTOCK_RESTOCK = 'restock'
+    RESTOCK_QUARANTINE = 'quarantine'
+    RESTOCK_SCRAP = 'scrap'
+    RESTOCK_REJECTED = 'rejected'
+
+    RESTOCK_CHOICES = [
+        (RESTOCK_PENDING, 'Pending'),
+        (RESTOCK_RESTOCK, 'Restock'),
+        (RESTOCK_QUARANTINE, 'Quarantine'),
+        (RESTOCK_SCRAP, 'Scrap'),
+        (RESTOCK_REJECTED, 'Rejected'),
+    ]
+
+    return_reference = models.CharField(max_length=128, unique=True)
+    payment_session = models.ForeignKey(PaymentSession, on_delete=models.CASCADE, related_name='return_cases')
+    reconciliation = models.ForeignKey(PaymentReconciliation, null=True, blank=True, on_delete=models.SET_NULL, related_name='return_cases')
+    refund_ledger = models.ForeignKey(PaymentRefundLedger, null=True, blank=True, on_delete=models.SET_NULL, related_name='return_cases')
+    order = models.ForeignKey('order.Order', on_delete=models.CASCADE, related_name='return_cases')
+    line = models.ForeignKey('order.Line', on_delete=models.CASCADE, related_name='return_cases')
+    product = models.ForeignKey('catalogue.Product', null=True, blank=True, on_delete=models.SET_NULL, related_name='return_cases')
+    stockrecord = models.ForeignKey('partner.StockRecord', null=True, blank=True, on_delete=models.SET_NULL, related_name='return_cases')
+    quantity = models.PositiveIntegerField(default=1)
+    accepted_quantity = models.PositiveIntegerField(default=0)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=12, default='KES')
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    restock_decision = models.CharField(max_length=32, choices=RESTOCK_CHOICES, default=RESTOCK_PENDING)
+    condition_note = models.CharField(max_length=255, blank=True)
+    reason = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    erpnext_rule = models.CharField(max_length=64, default='credit_note')
+    metadata = models.JSONField(default=dict, blank=True)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='requested_payment_returns')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_payment_returns')
+    received_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    restocked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['order', 'status']),
+            models.Index(fields=['line', 'status']),
+            models.Index(fields=['return_reference']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.return_reference}:{self.status}:{self.refund_amount}'

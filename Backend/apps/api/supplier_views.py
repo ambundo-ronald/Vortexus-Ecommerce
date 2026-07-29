@@ -17,6 +17,7 @@ from apps.notifications.services import (
     queue_supplier_application_submitted_email,
     queue_supplier_status_changed_email,
 )
+from apps.marketplace.payables import sync_supplier_payables_for_order
 
 from .account_manager_scope import assigned_supplier_queryset, can_access_all_admin_data, is_account_manager
 from .supplier_order_serializers import (
@@ -1052,6 +1053,7 @@ class SupplierOrderLineStatusAPIView(APIView):
                 'tracking_reference': tracking_reference,
             },
         )
+        sync_supplier_payables_for_order(order)
 
         return Response(
             {

@@ -1,0 +1,13 @@
+Hello {{ display_name }},
+
+Your supplier payout has been marked paid on {{ shop_name }}.
+
+Batch reference: {{ batch.batch_reference }}
+Payout reference: {{ batch.payout_reference }}
+Amount: {{ payout_total }}
+Method: {{ batch.payout_method }}
+Paid at: {{ batch.paid_at }}
+
+You can review the payout from your supplier dashboard.
+
+{{ shop_name }}

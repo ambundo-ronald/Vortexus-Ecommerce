@@ -5,6 +5,7 @@ from .erpnext_sync import (
     export_order_to_active_erpnext,
     export_paid_order_accounting_to_active_erpnext,
     export_refund_credit_note_to_active_erpnext,
+    export_supplier_payout_batch_to_active_erpnext,
     sync_active_erpnext_stock,
     sync_customer_to_active_erpnext,
     sync_order_cancellation_to_active_erpnext,
@@ -97,3 +98,13 @@ def export_refund_credit_note_to_erpnext(payment_reference: str, refund_amount: 
         reason=reason,
         refund_reference=refund_reference,
     )
+
+
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={'max_retries': 5},
+)
+def export_supplier_payout_batch_to_erpnext(batch_id: int):
+    return export_supplier_payout_batch_to_active_erpnext(batch_id)

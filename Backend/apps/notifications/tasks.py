@@ -13,6 +13,7 @@ from .services import (
     send_quote_request_notifications,
     send_shipping_update_email,
     send_supplier_application_submitted_email,
+    send_supplier_payout_paid_email,
     send_supplier_status_changed_email,
 )
 
@@ -94,6 +95,15 @@ def send_supplier_status_changed_email_task(self, supplier_id: int) -> bool:
     if not supplier_profile:
         return False
     return send_supplier_status_changed_email(supplier_profile, raise_on_failure=True)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})
+def send_supplier_payout_paid_email_task(self, batch_id: int) -> bool:
+    SupplierPayoutBatch = apps.get_model('marketplace', 'SupplierPayoutBatch')
+    batch = SupplierPayoutBatch.objects.filter(id=batch_id).select_related('supplier__user').first()
+    if not batch:
+        return False
+    return send_supplier_payout_paid_email(batch, raise_on_failure=True)
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 3})

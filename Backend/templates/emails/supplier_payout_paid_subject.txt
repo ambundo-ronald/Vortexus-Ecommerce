@@ -1,0 +1,1 @@
+{{ shop_name }} payout {{ batch.batch_reference }} has been marked paid

@@ -23,8 +23,23 @@ const isLinkActive = (item: { to?: string }) => {
 const visibleNavSections = computed(() => {
   if (auth.isPlatformAdmin.value)
     return navSections
-  if (auth.isAccountManager.value)
-    return accountManagerNavSections
+  if (auth.isAccountManager.value) {
+    if (!auth.canAccessFinance.value)
+      return accountManagerNavSections
+    return [
+      ...accountManagerNavSections,
+      {
+        label: 'Finance',
+        items: [
+          {
+            label: 'Finance',
+            icon: 'i-lucide-chart-no-axes-combined',
+            to: '/finance',
+          },
+        ],
+      },
+    ]
+  }
   return supplierNavSections
 })
 </script>

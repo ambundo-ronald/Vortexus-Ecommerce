@@ -1,12 +1,15 @@
+from django.apps import apps
+
 from rest_framework import serializers
 
 
-def _supplier_allocations_for_group(group):
-    return group.order.supplier_allocations.filter(partner=group.partner)
+def _supplier_payables_for_group(group):
+    SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
+    return SupplierPayableLedger.objects.filter(order=group.order, partner=group.partner)
 
 
 def _supplier_payable_total(group):
-    return sum((allocation.supplier_total_cost or 0) for allocation in _supplier_allocations_for_group(group))
+    return sum((payable.payable_total or 0) for payable in _supplier_payables_for_group(group))
 
 
 SUPPLIER_LINE_STATUS_CHOICES = [
@@ -60,15 +63,15 @@ class SupplierOrderDetailSerializer(serializers.Serializer):
     def to_representation(self, group):
         order = group.order
         supplier_profile = self.context['supplier_profile']
-        allocations_by_line_id = {
-            allocation.line_id: allocation
-            for allocation in _supplier_allocations_for_group(group).select_related('line', 'product')
+        payables_by_line_id = {
+            payable.line_id: payable
+            for payable in _supplier_payables_for_group(group).select_related('line', 'product')
         }
         supplier_lines = []
         for line in order.lines.all():
             if line.partner_id != supplier_profile.partner_id:
                 continue
-            allocation = allocations_by_line_id.get(line.id)
+            payable = payables_by_line_id.get(line.id)
             supplier_lines.append(
                 {
                     'id': line.id,
@@ -77,9 +80,9 @@ class SupplierOrderDetailSerializer(serializers.Serializer):
                     'quantity': line.quantity,
                     'partner_sku': line.partner_sku,
                     'status': line.status,
-                    'supplier_unit_cost': float(getattr(allocation, 'supplier_unit_cost', 0) or 0),
-                    'supplier_line_total': float(getattr(allocation, 'supplier_total_cost', 0) or 0),
-                    'payout_status': getattr(allocation, 'payout_status', '') or '',
+                    'supplier_unit_cost': float(getattr(payable, 'supplier_unit_cost', 0) or 0),
+                    'supplier_line_total': float(getattr(payable, 'payable_total', 0) or 0),
+                    'payout_status': getattr(payable, 'status', '') or '',
                 }
             )
 

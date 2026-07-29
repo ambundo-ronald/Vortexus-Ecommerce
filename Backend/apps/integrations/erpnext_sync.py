@@ -98,6 +98,23 @@ def _upsert_mapping(connection: IntegrationConnection, entity_type: str, externa
     )
 
 
+def _mark_erpnext_sync(record, *, status: str, reference: str = '', message: str = ''):
+    if record is None:
+        return
+    record.erpnext_sync_status = status
+    record.erpnext_reference = reference or ''
+    record.erpnext_sync_message = (message or '')[:2000]
+    record.erpnext_synced_at = timezone.now() if status in {'synced', 'skipped'} else None
+    record.save(update_fields=['erpnext_sync_status', 'erpnext_reference', 'erpnext_sync_message', 'erpnext_synced_at', 'updated_at'])
+
+
+def _optional_related(record, attr: str):
+    try:
+        return getattr(record, attr)
+    except Exception:
+        return None
+
+
 def _save_attribute(product, product_class, code: str, name: str, value: str):
     ProductAttribute = apps.get_model('catalogue', 'ProductAttribute')
     attribute, _ = ProductAttribute.objects.get_or_create(
@@ -914,6 +931,12 @@ class ERPNextSyncService:
             job.finished_at = timezone.now()
             job.summary = summary
             job.save(update_fields=['status', 'finished_at', 'summary'])
+            _mark_erpnext_sync(
+                _optional_related(payment_session, 'reconciliation'),
+                status='synced',
+                reference=metadata.get('payment_entry', '') or metadata.get('sales_invoice', ''),
+                message='ERPNext Sales Invoice and Payment Entry exported.',
+            )
             return {'status': 'exported', **summary}
         except ERPNextIntegrationError as exc:
             job.status = SyncJob.STATUS_FAILED
@@ -922,6 +945,7 @@ class ERPNextSyncService:
             job.summary = {'order_number': order.number, 'payment_reference': payment_session.reference, 'accounting': True}
             job.save(update_fields=['status', 'finished_at', 'error_message', 'summary'])
             self._log_event(job, entity_type='payment', status=SyncEventLog.STATUS_FAILED, external_reference=payment_session.reference, error_message=str(exc))
+            _mark_erpnext_sync(_optional_related(payment_session, 'reconciliation'), status='failed', message=str(exc))
             raise
 
     def sync_order_cancellation(self, order, *, reason: str = '') -> dict:
@@ -966,7 +990,7 @@ class ERPNextSyncService:
             self._log_event(job, entity_type='order', status=SyncEventLog.STATUS_FAILED, external_reference=mapping.external_id, error_message=str(exc))
             raise
 
-    def export_refund_credit_note(self, payment_session, *, refund_amount: str = '', reason: str = '', refund_reference: str = '') -> dict:
+    def export_refund_credit_note(self, payment_session, *, refund_amount: str = '', reason: str = '', refund_reference: str = '', refund_ledger=None) -> dict:
         if self.connection.metadata.get('use_vortexus_bridge_app') is not True:
             return {'status': 'skipped', 'reason': 'vortexus_bridge_app_not_enabled'}
         order = payment_session.order
@@ -1008,8 +1032,36 @@ class ERPNextSyncService:
                 'refund_reference': effective_refund_reference,
                 'refund_amount': refund_amount or str(payment_session.amount),
                 'reason': reason or 'Reesolmart ecommerce refund.',
+                'refund_type': getattr(refund_ledger, 'refund_type', 'refund') if refund_ledger else 'refund',
+                'erpnext_rule': 'credit_note',
                 'submit': self.connection.metadata.get('submit_credit_notes', True),
             }
+            if refund_ledger and getattr(refund_ledger, 'line_id', None):
+                line = refund_ledger.line
+                payload['line'] = {
+                    'line_id': str(line.id),
+                    'product_id': str(line.product_id or ''),
+                    'sku': line.partner_sku or '',
+                    'title': line.title,
+                    'quantity': int(line.quantity or 0),
+                    'refund_quantity': int(
+                        (refund_ledger.return_cases.first().accepted_quantity if hasattr(refund_ledger, 'return_cases') and refund_ledger.return_cases.exists() else 0)
+                        or 0
+                    ),
+                    'refund_amount': str(refund_ledger.amount),
+                }
+            if refund_ledger and getattr(refund_ledger, 'refund_type', '') == 'return':
+                return_case = refund_ledger.return_cases.first()
+                if return_case:
+                    payload['return_case'] = {
+                        'return_reference': return_case.return_reference,
+                        'status': return_case.status,
+                        'quantity': return_case.quantity,
+                        'accepted_quantity': return_case.accepted_quantity,
+                        'restock_decision': return_case.restock_decision,
+                        'restocked_at': return_case.restocked_at.isoformat() if return_case.restocked_at else '',
+                        'condition_note': return_case.condition_note,
+                    }
             response = self.client.call_method(
                 'vortexus_ecommerce_integration.api.order.create_credit_note',
                 {'payload': payload},
@@ -1036,6 +1088,12 @@ class ERPNextSyncService:
             job.finished_at = timezone.now()
             job.summary = summary
             job.save(update_fields=['status', 'finished_at', 'summary'])
+            _mark_erpnext_sync(
+                refund_ledger,
+                status='synced',
+                reference=response.get('credit_note', ''),
+                message='ERPNext credit note exported.',
+            )
             return {'status': 'exported', **summary}
         except ERPNextIntegrationError as exc:
             job.status = SyncJob.STATUS_FAILED
@@ -1044,6 +1102,104 @@ class ERPNextSyncService:
             job.summary = {'order_number': order.number, 'refund_reference': effective_refund_reference, 'refund': True}
             job.save(update_fields=['status', 'finished_at', 'error_message', 'summary'])
             self._log_event(job, entity_type='payment', status=SyncEventLog.STATUS_FAILED, external_reference=effective_refund_reference, error_message=str(exc))
+            _mark_erpnext_sync(refund_ledger, status='failed', message=str(exc))
+            raise
+
+    def export_supplier_payout_batch(self, payout_batch) -> dict:
+        if self.connection.metadata.get('use_vortexus_bridge_app') is not True:
+            return {'status': 'skipped', 'reason': 'vortexus_bridge_app_not_enabled'}
+        if payout_batch.status != 'paid':
+            return {'status': 'skipped', 'reason': 'payout_batch_not_paid'}
+        if payout_batch.erpnext_sync_status == 'synced' and payout_batch.erpnext_reference:
+            return {
+                'status': 'already_exported',
+                'batch_reference': payout_batch.batch_reference,
+                'erpnext_reference': payout_batch.erpnext_reference,
+            }
+
+        job = SyncJob.objects.create(
+            connection=self.connection,
+            job_type=SyncJob.TYPE_SUPPLIERS_IMPORT,
+            direction=SyncJob.DIRECTION_OUTBOUND,
+            status=SyncJob.STATUS_RUNNING,
+            started_at=timezone.now(),
+            summary={'batch_reference': payout_batch.batch_reference, 'supplier_payout': True},
+        )
+        try:
+            entries = list(
+                payout_batch.entries.select_related(
+                    'payable',
+                    'payable__order',
+                    'payable__line',
+                    'payable__supplier',
+                    'payable__partner',
+                ).all()
+            )
+            payload = {
+                'batch_id': str(payout_batch.id),
+                'batch_reference': payout_batch.batch_reference,
+                'supplier': payout_batch.supplier.company_name if payout_batch.supplier_id else payout_batch.partner.name if payout_batch.partner_id else '',
+                'supplier_id': str(payout_batch.supplier_id or ''),
+                'partner_id': str(payout_batch.partner_id or ''),
+                'currency': payout_batch.currency,
+                'total_amount': _decimal_to_float(payout_batch.total_amount),
+                'payout_method': payout_batch.payout_method,
+                'payout_reference': payout_batch.payout_reference or payout_batch.batch_reference,
+                'posting_date': (payout_batch.paid_at.date() if payout_batch.paid_at else timezone.localdate()).isoformat(),
+                'evidence_url': payout_batch.evidence_url,
+                'notes': payout_batch.notes,
+                'items': [
+                    {
+                        'payable_id': str(entry.payable_id),
+                        'order_number': entry.payable.order.number if entry.payable.order_id else '',
+                        'line_id': str(entry.payable.line_id),
+                        'product': entry.payable.line.title if entry.payable.line_id else '',
+                        'amount': _decimal_to_float(entry.amount),
+                        'currency': entry.currency,
+                    }
+                    for entry in entries
+                ],
+                'submit': self.connection.metadata.get('submit_supplier_payouts', True),
+            }
+            response = self.client.call_method(
+                'vortexus_ecommerce_integration.api.supplier.create_supplier_payout',
+                {'payload': payload},
+            ) or {}
+            erp_reference = response.get('supplier_payment') or response.get('payment_entry') or response.get('name') or ''
+            _mark_erpnext_sync(
+                payout_batch,
+                status='synced',
+                reference=erp_reference,
+                message='ERPNext supplier payout exported.',
+            )
+            for entry in entries:
+                _mark_erpnext_sync(
+                    entry.payable,
+                    status='synced',
+                    reference=erp_reference,
+                    message=f'Included in ERPNext payout {payout_batch.batch_reference}.',
+                )
+            self._log_event(
+                job,
+                entity_type='supplier_payout',
+                status=SyncEventLog.STATUS_PROCESSED,
+                external_reference=payout_batch.batch_reference,
+                payload_excerpt={'batch_reference': payout_batch.batch_reference, 'erpnext_reference': erp_reference},
+            )
+            summary = {'batch_reference': payout_batch.batch_reference, 'erpnext_reference': erp_reference}
+            job.status = SyncJob.STATUS_SUCCEEDED
+            job.finished_at = timezone.now()
+            job.summary = summary
+            job.save(update_fields=['status', 'finished_at', 'summary'])
+            return {'status': 'exported', **summary}
+        except ERPNextIntegrationError as exc:
+            job.status = SyncJob.STATUS_FAILED
+            job.finished_at = timezone.now()
+            job.error_message = str(exc)
+            job.summary = {'batch_reference': payout_batch.batch_reference, 'supplier_payout': True}
+            job.save(update_fields=['status', 'finished_at', 'error_message', 'summary'])
+            self._log_event(job, entity_type='supplier_payout', status=SyncEventLog.STATUS_FAILED, external_reference=payout_batch.batch_reference, error_message=str(exc))
+            _mark_erpnext_sync(payout_batch, status='failed', message=str(exc))
             raise
 
     def sync_customer(self, user) -> dict:
@@ -1223,6 +1379,7 @@ def export_paid_order_accounting_to_active_erpnext(payment_reference: str) -> di
         summaries['connections_processed'] += 1
         if result.get('status') == 'skipped':
             summaries['accounting_skipped'] += 1
+            _mark_erpnext_sync(_optional_related(payment, 'reconciliation'), status='skipped', message=result.get('reason', 'Skipped ERPNext accounting export.'))
         else:
             summaries['accounting_exported'] += 1
     return summaries
@@ -1250,10 +1407,14 @@ def sync_order_cancellation_to_active_erpnext(order_number: str, reason: str = '
 
 def export_refund_credit_note_to_active_erpnext(payment_reference: str, refund_amount: str = '', reason: str = '', refund_reference: str = '') -> dict:
     PaymentSession = apps.get_model('payments', 'PaymentSession')
+    PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
     payment = PaymentSession.objects.select_related('order').get(reference=payment_reference)
     summaries = {'connections_processed': 0, 'credit_notes_exported': 0, 'credit_notes_skipped': 0}
     if not payment.order_id:
         return summaries
+    refund_ledger = None
+    if refund_reference:
+        refund_ledger = PaymentRefundLedger.objects.filter(refund_reference=refund_reference).first()
 
     queryset = IntegrationConnection.objects.filter(
         connection_type=IntegrationConnection.TYPE_ERPNEXT,
@@ -1267,10 +1428,37 @@ def export_refund_credit_note_to_active_erpnext(payment_reference: str, refund_a
             refund_amount=refund_amount,
             reason=reason,
             refund_reference=refund_reference,
+            refund_ledger=refund_ledger,
         )
         summaries['connections_processed'] += 1
         if result.get('status') == 'skipped':
             summaries['credit_notes_skipped'] += 1
+            _mark_erpnext_sync(refund_ledger, status='skipped', message=result.get('reason', 'Skipped ERPNext credit note export.'))
         else:
             summaries['credit_notes_exported'] += 1
+    return summaries
+
+
+def export_supplier_payout_batch_to_active_erpnext(batch_id: int) -> dict:
+    SupplierPayoutBatch = apps.get_model('marketplace', 'SupplierPayoutBatch')
+    batch = SupplierPayoutBatch.objects.select_related('supplier', 'partner').prefetch_related('entries__payable').get(id=batch_id)
+    summaries = {'connections_processed': 0, 'payouts_exported': 0, 'payouts_skipped': 0}
+    if batch.status != 'paid':
+        _mark_erpnext_sync(batch, status='skipped', message='Payout batch is not marked paid.')
+        return summaries
+
+    queryset = IntegrationConnection.objects.filter(
+        connection_type=IntegrationConnection.TYPE_ERPNEXT,
+        is_active=True,
+    ).order_by('id')
+    for connection in queryset:
+        if connection.metadata.get('sync_supplier_payouts') is False:
+            continue
+        result = ERPNextSyncService(connection).export_supplier_payout_batch(batch)
+        summaries['connections_processed'] += 1
+        if result.get('status') == 'skipped':
+            summaries['payouts_skipped'] += 1
+            _mark_erpnext_sync(batch, status='skipped', message=result.get('reason', 'Skipped ERPNext supplier payout export.'))
+        else:
+            summaries['payouts_exported'] += 1
     return summaries
