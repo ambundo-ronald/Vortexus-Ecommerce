@@ -199,6 +199,7 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
     stock_on_hand = stock_totals['on_hand']
     stock_allocated = stock_totals['allocated']
     available_stock = stock_totals['available']
+    tax_status = product_tax_status(product)
     return {
         'id': product.id,
         'name': product.title,
