@@ -14,6 +14,7 @@ from .review_serializers import (
     review_payload,
     review_summary_for_product,
     verified_reviewer_ids_for_product,
+    get_product_model,
 )
 
 
@@ -23,11 +24,14 @@ class ProductReviewCollectionAPIView(APIView):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
-    def get_product(self, product_id: int):
-        return get_object_or_404(public_product_queryset(), id=product_id)
+    def get_product(self, request, product_id: int, *, include_hidden_for_staff=False):
+        queryset = public_product_queryset()
+        if include_hidden_for_staff and request.user and request.user.is_staff:
+            queryset = get_product_model().objects.exclude(structure='parent')
+        return get_object_or_404(queryset, id=product_id)
 
     def get(self, request, product_id: int):
-        product = self.get_product(product_id)
+        product = self.get_product(request, product_id, include_hidden_for_staff=True)
         Review = get_review_model()
 
         reviews = (
@@ -60,7 +64,7 @@ class ProductReviewCollectionAPIView(APIView):
         return Response(payload)
 
     def post(self, request, product_id: int):
-        product = self.get_product(product_id)
+        product = self.get_product(request, product_id)
         serializer = ProductReviewCreateSerializer(
             data=request.data,
             context={

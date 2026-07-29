@@ -33,6 +33,25 @@ export function useProductReviews(productId, { auto = true } = {}) {
       setReviewEligibility(payload?.review_eligibility || null);
       return payload;
     } catch (error) {
+      if (error?.response?.status === 404) {
+        const emptyPayload = {
+          results: [],
+          summary: {
+            average_score: null,
+            review_count: 0,
+            verified_rating_count: 0,
+            rating_distribution: [5, 4, 3, 2, 1].map((score) => ({ score, count: 0 })),
+            product_rating: null
+          },
+          your_review: null,
+          review_eligibility: null
+        };
+        setReviews(emptyPayload.results);
+        setSummary(emptyPayload.summary);
+        setYourReview(null);
+        setReviewEligibility(null);
+        return emptyPayload;
+      }
       setError(messageFromError(error));
       throw error;
     } finally {
