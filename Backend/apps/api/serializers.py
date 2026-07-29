@@ -78,8 +78,6 @@ class ProductWriteSerializer(serializers.Serializer):
         required=False,
         choices=['taxable', 'tax_exempt', 'zero_rated'],
     )
-    tax_profile = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=80)
-    tax_exemption_reason = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=255)
     attributes = serializers.DictField(
         required=False,
         child=serializers.CharField(required=False, allow_blank=True, allow_null=True),
@@ -159,7 +157,7 @@ class ProductWriteSerializer(serializers.Serializer):
         if attrs.get('partner_id'):
             self._get_partner_by_id(attrs['partner_id'])
 
-        self._sync_tax_attributes(attrs)
+        self._prepare_tax_configuration(attrs)
 
         return attrs
 
@@ -304,12 +302,10 @@ class ProductWriteSerializer(serializers.Serializer):
 
             attribute.save_value(product, value)
 
-    def _sync_tax_attributes(self, attrs):
-        tax_fields_present = any(field in attrs for field in ('charge_tax', 'tax_status', 'tax_profile', 'tax_exemption_reason'))
+    def _prepare_tax_configuration(self, attrs):
+        tax_fields_present = any(field in attrs for field in ('charge_tax', 'tax_status'))
         if not tax_fields_present:
             return
-
-        attributes = attrs.setdefault('attributes', {})
 
         if 'tax_status' in attrs:
             tax_status = attrs['tax_status']
@@ -318,19 +314,18 @@ class ProductWriteSerializer(serializers.Serializer):
         else:
             tax_status = 'taxable'
 
-        attributes['tax_status'] = tax_status
-        attributes['charge_tax'] = 'true' if tax_status == 'taxable' else 'false'
-
-        if 'tax_profile' in attrs:
-            attributes['tax_profile'] = (attrs.get('tax_profile') or '').strip() or 'standard'
-        elif tax_status == 'taxable':
-            attributes.setdefault('tax_profile', 'standard')
-
-        if 'tax_exemption_reason' in attrs:
-            attributes['tax_exemption_reason'] = (attrs.get('tax_exemption_reason') or '').strip()
-
-        for field in ('charge_tax', 'tax_status', 'tax_profile', 'tax_exemption_reason'):
+        attrs['tax_configuration'] = {'status': tax_status}
+        for field in ('charge_tax', 'tax_status'):
             attrs.pop(field, None)
+
+    def _save_tax_configuration(self, product, tax_configuration):
+        if tax_configuration is None:
+            return
+        ProductTaxConfiguration = apps.get_model('accounts', 'ProductTaxConfiguration')
+        ProductTaxConfiguration.objects.update_or_create(
+            product=product,
+            defaults={'status': tax_configuration.get('status') or 'taxable'},
+        )
 
     def _save_recommendations(self, product, recommended_products):
         ProductRecommendation = apps.get_model('catalogue', 'ProductRecommendation')

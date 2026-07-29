@@ -1,17 +1,19 @@
 import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
+import { basketTaxStatuses, normalizeCheckoutTotals } from "../../utils/checkoutTotals";
 import { formatCurrency } from "../../utils/currency";
 import { productTitle } from "../../utils/productDisplay";
 
 export default function OrderSummaryPanel({ basket, shipping, action, actionTo, loading = false }) {
-  const totals = shipping?.totals || basket?.totals || {};
+  const totals = normalizeCheckoutTotals({ basket, shipping });
   const lines = basket?.lines || [];
-  const currency = totals.currency || basket?.currency || "KES";
-  const subtotal = totals.subtotal ?? basket?.totals?.subtotal ?? 0;
-  const shippingTotal = totals.shipping ?? 0;
-  const tax = totals.tax ?? 0;
-  const orderTotal = totals.order_total ?? subtotal;
+  const currency = totals.currency;
+  const subtotal = totals.subtotal;
+  const shippingTotal = totals.shipping;
+  const tax = totals.tax;
+  const orderTotal = totals.order_total;
+  const taxStatusLabels = basketTaxStatuses(basket);
 
   return (
     <aside className="checkout-summary surface-panel">
@@ -51,6 +53,11 @@ export default function OrderSummaryPanel({ basket, shipping, action, actionTo, 
               <span>Tax</span>
               <strong>{formatCurrency(tax, currency)}</strong>
             </div>
+            {taxStatusLabels.length ? (
+              <p className="checkout-tax-note">
+                {taxStatusLabels.join(" / ")} item{taxStatusLabels.length === 1 ? "" : "s"} included.
+              </p>
+            ) : null}
           </>
         ) : null}
         <div className="checkout-total-row">

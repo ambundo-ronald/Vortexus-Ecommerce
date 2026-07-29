@@ -23,6 +23,7 @@ class ProductService:
         product_class_name = validated_data.pop('resolved_product_class_name', self.serializer.DEFAULT_PRODUCT_CLASS)
         product_class = self.serializer._get_or_create_product_class(product_class_name)
         attributes = validated_data.pop('attributes', {})
+        tax_configuration = validated_data.pop('tax_configuration', {'status': 'taxable'})
         domain_specs = validated_data.pop('domain_specs', None)
         recommended_products = validated_data.pop('resolved_recommended_products', None)
         stock_requested = validated_data.pop('stock_requested', False)
@@ -51,6 +52,7 @@ class ProductService:
             stockrecord = self.serializer._save_stockrecord(product=product, partner=partner, payload=validated_data)
 
         self.serializer._save_attributes(product=product, product_class=product_class, attributes=attributes)
+        self.serializer._save_tax_configuration(product=product, tax_configuration=tax_configuration)
         if recommended_products is not None:
             self.serializer._save_recommendations(product=product, recommended_products=recommended_products)
 
@@ -69,6 +71,7 @@ class ProductService:
         categories = validated_data.pop('resolved_categories', None)
         product_class_name = validated_data.pop('resolved_product_class_name', None)
         attributes = validated_data.pop('attributes', None)
+        tax_configuration = validated_data.pop('tax_configuration', None)
         domain_specs = validated_data.pop('domain_specs', None)
         recommended_products = validated_data.pop('resolved_recommended_products', None)
         stock_requested = validated_data.pop('stock_requested', False)
@@ -114,6 +117,8 @@ class ProductService:
 
         if attributes is not None:
             self.serializer._save_attributes(product=instance, product_class=product_class, attributes=attributes)
+        if tax_configuration is not None:
+            self.serializer._save_tax_configuration(product=instance, tax_configuration=tax_configuration)
 
         if recommended_products is not None:
             self.serializer._save_recommendations(product=instance, recommended_products=recommended_products)

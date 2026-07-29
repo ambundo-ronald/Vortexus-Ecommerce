@@ -1,11 +1,10 @@
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 
 ZERO = Decimal('0.00')
 TAX_STATUS_ATTRIBUTE = 'tax_status'
-TAX_PROFILE_ATTRIBUTE = 'tax_profile'
-TAX_EXEMPTION_REASON_ATTRIBUTE = 'tax_exemption_reason'
 CHARGE_TAX_ATTRIBUTE = 'charge_tax'
 TAX_EXEMPT_STATUSES = {'tax_exempt', 'zero_rated'}
 
@@ -38,14 +37,7 @@ def tax_rate_for_country(country_code: str | None) -> Decimal | None:
 
 
 def shipping_tax_rate(country_code: str | None, shipping_profile: str | None = None) -> Decimal | None:
-    rules = _rules_for_country(country_code)
-    if not rules:
-        return None
-    shipping_profile = (shipping_profile or '').strip().lower()
-    profile_rates = rules.get('shipping_profile_rates', {})
-    if shipping_profile and shipping_profile in profile_rates:
-        return _decimal(profile_rates[shipping_profile], default=ZERO)
-    return _decimal(rules.get('shipping_rate', rules.get('default_rate')), default=ZERO)
+    return ZERO
 
 
 def _product_attribute_value(product, code: str, *, lower: bool = True) -> str:
@@ -67,6 +59,14 @@ def _product_attribute_value(product, code: str, *, lower: bool = True) -> str:
 
 
 def product_tax_status(product) -> str:
+    try:
+        config = getattr(product, 'tax_configuration', None)
+    except ObjectDoesNotExist:
+        config = None
+    status = (getattr(config, 'status', '') or '').strip().lower() if config else ''
+    if status in {'taxable', 'tax_exempt', 'zero_rated'}:
+        return status
+
     status = _product_attribute_value(product, TAX_STATUS_ATTRIBUTE)
     if status in {'taxable', 'tax_exempt', 'zero_rated'}:
         return status
@@ -80,27 +80,6 @@ def product_tax_status(product) -> str:
     return 'taxable'
 
 
-def product_tax_exemption_reason(product) -> str:
-    return _product_attribute_value(product, TAX_EXEMPTION_REASON_ATTRIBUTE, lower=False)
-
-
-def product_tax_profile(product) -> str:
-    profile = _product_attribute_value(product, TAX_PROFILE_ATTRIBUTE)
-    if profile:
-        return profile
-
-    title = (getattr(product, 'title', '') or '').lower()
-    if any(token in title for token in ('chemical', 'chlorine', 'media', 'resin')):
-        return 'water_treatment_chemical'
-    if any(token in title for token in ('installation service', 'maintenance service', 'inspection service')):
-        return 'service'
-    if any(token in title for token in ('accessory', 'fitting', 'controller', 'sensor')):
-        return 'accessory'
-    if any(token in title for token in ('borehole', 'treatment system', 'dosing plant', 'tank')):
-        return 'project'
-    return 'standard'
-
-
 def product_tax_rate(product, country_code: str | None) -> Decimal | None:
     rules = _rules_for_country(country_code)
     if not rules:
@@ -108,11 +87,6 @@ def product_tax_rate(product, country_code: str | None) -> Decimal | None:
 
     if product_tax_status(product) in TAX_EXEMPT_STATUSES:
         return ZERO
-
-    profile = product_tax_profile(product)
-    profile_rates = rules.get('product_profile_rates', {})
-    if profile in profile_rates:
-        return _decimal(profile_rates[profile], default=ZERO)
 
     return _decimal(rules.get('default_rate'), default=ZERO)
 
@@ -164,11 +138,9 @@ def calculate_checkout_taxes(
                 'product_id': line.product_id,
                 'quantity': int(line.quantity or 0),
                 'tax_status': product_tax_status(line.product),
-                'tax_profile': product_tax_profile(line.product),
                 'tax_rate': float(rate) if rate is not None else None,
                 'line_subtotal': float(line_subtotal.quantize(Decimal('0.01'))),
                 'line_tax': float(tax_amount),
-                'exemption_reason': product_tax_exemption_reason(line.product),
             }
         )
 

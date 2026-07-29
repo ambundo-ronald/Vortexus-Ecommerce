@@ -27,6 +27,36 @@ class CustomerProfile(models.Model):
         return f'CustomerProfile(user_id={self.user_id})'
 
 
+class ProductTaxConfiguration(models.Model):
+    STATUS_TAXABLE = 'taxable'
+    STATUS_TAX_EXEMPT = 'tax_exempt'
+    STATUS_ZERO_RATED = 'zero_rated'
+
+    STATUS_CHOICES = [
+        (STATUS_TAXABLE, 'Taxable'),
+        (STATUS_TAX_EXEMPT, 'Tax exempt'),
+        (STATUS_ZERO_RATED, 'Zero-rated'),
+    ]
+
+    product = models.OneToOneField(
+        'catalogue.Product',
+        on_delete=models.CASCADE,
+        related_name='tax_configuration',
+    )
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_TAXABLE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['product_id']
+        indexes = [
+            models.Index(fields=['status']),
+        ]
+
+    def __str__(self):
+        return f'ProductTaxConfiguration(product_id={self.product_id}, status={self.status})'
+
+
 class EmailTwoFactorChallenge(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

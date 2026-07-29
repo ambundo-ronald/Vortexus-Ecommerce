@@ -17,7 +17,7 @@ Acceptance criteria:
 - [x] We know where supplier payable amounts are calculated.
 - [x] We know every current gap before adding new finance tables.
 
-### Phase 1 Audit Findings
+### Phase 1 Audit   
 
 Current checkout and payment flow:
 - Basket item add/update creates or adjusts stock reservations through `sync_basket_line_reservation`.
@@ -39,7 +39,7 @@ Current payment records:
   - Pesapal
   - Airtel Money
   - Card
-  - generic configured payment initialization
+  - generic configured payment initialization  
 - Offline methods can be initialized as `authorized` depending on payment method configuration.
 
 Current payment statuses:

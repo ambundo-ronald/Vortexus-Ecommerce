@@ -50,12 +50,21 @@ export default function PaymentPage() {
   const remainingSeconds = confirmationStartedAt && !paymentTimedOut
     ? Math.max(0, Math.ceil((PAYMENT_CONFIRMATION_TIMEOUT_MS - elapsedMs) / 1000))
     : 0;
+  const userPaymentStateKey = [
+    user?.id || "guest",
+    user?.cash_on_delivery_allowed ? "cod-allowed" : "cod-default",
+    user?.payment_permissions?.cash_on_delivery_available ? "cod-available" : "cod-unavailable"
+  ].join(":");
 
   useEffect(() => {
     if (!activePayment || !confirmationStartedAt || isPaymentComplete(activePayment) || isPaymentFailed(activePayment)) return undefined;
     const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [activePayment, confirmationStartedAt]);
+
+  useEffect(() => {
+    void paymentState.loadMethods();
+  }, [paymentState.loadMethods, userPaymentStateKey]);
 
   function continueToReview(payment, method, payerEmail) {
     const reviewPayload = {

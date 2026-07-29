@@ -38,8 +38,6 @@ const productSchema = z.object({
     .optional(),
   chargeTax: z.boolean().default(true),
   taxStatus: z.enum(["taxable", "tax_exempt", "zero_rated"]).default("taxable"),
-  taxProfile: z.string().optional(),
-  taxExemptionReason: z.string().optional(),
   sku: z.string().optional(),
   stock: z
     .number({
@@ -101,8 +99,6 @@ const localFormState = reactive<ProductFormSchema>({
   originalPrice: undefined,
   chargeTax: true,
   taxStatus: "taxable",
-  taxProfile: "standard",
-  taxExemptionReason: "",
   sku: "",
   stock: 0,
   weight: null,
@@ -142,8 +138,6 @@ watch(
       originalPrice: undefined,
       chargeTax: true,
       taxStatus: "taxable",
-      taxProfile: "standard",
-      taxExemptionReason: "",
       sku: "",
       stock: 0,
       weight: null,
@@ -189,14 +183,6 @@ const taxStatusOptions = [
   { label: "Taxable", value: "taxable" },
   { label: "Tax exempt", value: "tax_exempt" },
   { label: "Zero-rated", value: "zero_rated" },
-]
-
-const taxProfileOptions = [
-  { label: "Standard product", value: "standard" },
-  { label: "Accessory", value: "accessory" },
-  { label: "Project equipment", value: "project" },
-  { label: "Water treatment chemical", value: "water_treatment_chemical" },
-  { label: "Service", value: "service" },
 ]
 
 function mergeProductOptions(options: { label: string; value: string }[] = []) {
@@ -270,7 +256,7 @@ const selectedRecommendedProducts = computed(() => {
 })
 const dynamicAttributeDefinitions = computed(() =>
   (props.attributeDefinitions || [])
-    .filter(attribute => !['brand', 'tags', 'dimensions', 'weight_grams'].includes(attribute.code))
+    .filter(attribute => !['brand', 'tags', 'dimensions', 'weight_grams', 'tax_status', 'charge_tax', 'tax_profile', 'tax_exemption_reason'].includes(attribute.code))
     .sort((a, b) => {
       const parentA = a.parent_attribute_id || 0
       const parentB = b.parent_attribute_id || 0
@@ -759,28 +745,6 @@ function onSubmit(e: FormSubmitEvent<ProductFormSchema>) {
                     size="lg"
                     class="w-full"
                     @update:model-value="(value) => { localFormState.chargeTax = value === 'taxable' }"
-                  />
-                </UFormField>
-                <UFormField label="Tax profile" name="taxProfile">
-                  <USelect
-                    v-model="localFormState.taxProfile"
-                    :items="taxProfileOptions"
-                    value-attribute="value"
-                    option-attribute="label"
-                    size="lg"
-                    class="w-full"
-                  />
-                </UFormField>
-                <UFormField
-                  v-if="localFormState.taxStatus !== 'taxable'"
-                  label="Exemption reason"
-                  name="taxExemptionReason"
-                  class="sm:col-span-2"
-                >
-                  <UInput
-                    v-model="localFormState.taxExemptionReason"
-                    placeholder="e.g. VAT exempt product, zero-rated supply"
-                    size="lg"
                   />
                 </UFormField>
               </div>

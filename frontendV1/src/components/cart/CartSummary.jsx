@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
+import { basketTaxStatuses, checkoutTaxTotal, normalizeCheckoutTotals } from "../../utils/checkoutTotals";
 import { formatCurrency } from "../../utils/currency";
 
 export default function CartSummary({ basket }) {
@@ -10,16 +11,16 @@ export default function CartSummary({ basket }) {
   const applyVoucher = useCartStore((state) => state.applyVoucher);
   const removeVoucher = useCartStore((state) => state.removeVoucher);
   const loading = useCartStore((state) => state.loading);
-  const totals = basket?.totals || {};
+  const rawTotals = basket?.totals || {};
+  const totals = normalizeCheckoutTotals({ basket });
   const vouchers = basket?.vouchers || [];
-  const currency = totals.currency || basket?.currency || "KES";
-  const subtotal = totals.subtotal ?? 0;
+  const currency = totals.currency;
+  const subtotal = totals.subtotal;
   const discount = Number(totals.discount || 0);
-  const orderTotal =
-    totals.order_total ??
-    totals.total ??
-    totals.total_incl_tax ??
-    Math.max(0, Number(subtotal || 0) - discount);
+  const tax = checkoutTaxTotal(rawTotals);
+  const taxStatusLabels = basketTaxStatuses(basket);
+  const explicitOrderTotal = rawTotals.order_total ?? rawTotals.total ?? rawTotals.total_incl_tax;
+  const orderTotal = explicitOrderTotal ?? Math.max(0, Number(subtotal || 0) - discount + tax);
 
   async function handleApplyCoupon(event) {
     event.preventDefault();
@@ -56,6 +57,18 @@ export default function CartSummary({ basket }) {
           <div className="summary-row summary-row--discount">
             <span>Coupon savings</span>
             <strong>-{formatCurrency(discount, currency)}</strong>
+          </div>
+        ) : null}
+        {tax || taxStatusLabels.length ? (
+          <div className="summary-row">
+            <span>Tax</span>
+            <strong>{formatCurrency(tax, currency)}</strong>
+          </div>
+        ) : null}
+        {taxStatusLabels.length ? (
+          <div className="summary-row summary-row--muted">
+            <span>Tax state</span>
+            <strong>{taxStatusLabels.join(" / ")}</strong>
           </div>
         ) : null}
         <div className="summary-row summary-row--muted">

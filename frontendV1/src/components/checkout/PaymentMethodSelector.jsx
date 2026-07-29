@@ -33,7 +33,11 @@ export default function PaymentMethodSelector({
   const [holderName, setHolderName] = useState("");
 
   useEffect(() => {
-    if (!method && sortedMethods.length) {
+    if (!sortedMethods.length) {
+      if (method) setMethod("");
+      return;
+    }
+    if (!method || !sortedMethods.some((item) => item.code === method)) {
       setMethod(sortedMethods[0].code);
     }
   }, [method, sortedMethods]);

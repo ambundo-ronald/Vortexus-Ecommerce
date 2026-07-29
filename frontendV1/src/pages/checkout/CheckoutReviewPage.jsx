@@ -10,6 +10,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
+import { normalizeCheckoutTotals } from "../../utils/checkoutTotals";
 import { formatCurrency } from "../../utils/currency";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
@@ -27,16 +28,9 @@ import "./CheckoutFlow.css";
 
 function previewShipping(preview) {
   const shipping = preview?.shipping || {};
-  const totals = preview?.totals || shipping.totals || {};
   return {
     ...shipping,
-    totals: {
-      ...(shipping.totals || {}),
-      shipping: totals.shipping ?? shipping.totals?.shipping ?? 0,
-      tax: totals.taxes?.total_tax ?? totals.tax ?? shipping.totals?.tax ?? 0,
-      order_total: totals.order_total ?? shipping.totals?.order_total ?? preview?.basket?.totals?.subtotal ?? 0,
-      currency: totals.currency || shipping.totals?.currency || preview?.basket?.currency
-    }
+    totals: normalizeCheckoutTotals({ basket: preview?.basket, shipping, preview })
   };
 }
 

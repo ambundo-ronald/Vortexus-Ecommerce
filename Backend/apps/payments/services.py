@@ -39,16 +39,32 @@ def customer_can_use_cash_on_delivery(user, basket=None) -> bool:
     return bool(profile and profile.cash_on_delivery_allowed)
 
 
+def cash_on_delivery_state(user, basket=None) -> dict:
+    requires_customer_approval = bool(get_payment_setting('cash_on_delivery', 'requires_customer_approval', True))
+    customer_approved = customer_can_use_cash_on_delivery(user, basket)
+    provider_available = _payment_method_is_available('cash_on_delivery')
+    return {
+        'requires_customer_approval': requires_customer_approval,
+        'customer_approved': customer_approved,
+        'provider_available': provider_available,
+        'available': bool(provider_available and customer_approved),
+    }
+
+
 def available_payment_methods(*, user=None, basket=None) -> list[dict]:
     methods = []
     for method in settings.PAYMENT_METHODS:
-        if method.get('code') == 'cash_on_delivery' and not customer_can_use_cash_on_delivery(user, basket):
+        is_cash_on_delivery = method.get('code') == 'cash_on_delivery'
+        cod_state = cash_on_delivery_state(user, basket) if is_cash_on_delivery else None
+        if is_cash_on_delivery and not cod_state['available']:
             continue
         provider = method.get('provider') or method.get('code')
         if _payment_method_is_available(provider):
             payload = method.copy()
             payload['is_configured'] = provider_is_configured(provider)
             payload.update(_payment_method_capabilities(method['code'], provider))
+            if cod_state:
+                payload['cash_on_delivery'] = cod_state
             methods.append(payload)
     return methods
 
@@ -57,7 +73,9 @@ def get_payment_method(code: str, *, user=None, basket=None) -> dict | None:
     normalized = (code or '').strip()
     for method in settings.PAYMENT_METHODS:
         if method['code'] == normalized:
-            if method.get('code') == 'cash_on_delivery' and not customer_can_use_cash_on_delivery(user, basket):
+            is_cash_on_delivery = method.get('code') == 'cash_on_delivery'
+            cod_state = cash_on_delivery_state(user, basket) if is_cash_on_delivery else None
+            if is_cash_on_delivery and not cod_state['available']:
                 return None
             provider = method.get('provider') or method.get('code')
             if not _payment_method_is_available(provider):
@@ -65,6 +83,8 @@ def get_payment_method(code: str, *, user=None, basket=None) -> dict | None:
             payload = method.copy()
             payload['is_configured'] = provider_is_configured(provider)
             payload.update(_payment_method_capabilities(method['code'], provider))
+            if cod_state:
+                payload['cash_on_delivery'] = cod_state
             return payload
     return None
 
@@ -115,7 +135,7 @@ def _payment_method_capabilities(method_code: str, provider: str) -> dict:
     }
 
 
-def payment_requires_prepayment(method_code: str) -> bool:
+def payment_requires_prepayment(method_code: str, *, user=None, basket=None) -> bool:
     method = get_payment_method(method_code, user=user, basket=basket)
     return bool(method and method.get('requires_prepayment'))
 

@@ -181,8 +181,6 @@ function mapProductDetailToForm(product: any) {
     originalPrice: undefined,
     chargeTax: product.chargeTax ?? (product.taxStatus === 'taxable'),
     taxStatus: product.taxStatus || (product.chargeTax === false ? 'tax_exempt' : 'taxable'),
-    taxProfile: product.taxProfile || specificationMap.tax_profile || 'standard',
-    taxExemptionReason: product.taxExemptionReason || specificationMap.tax_exemption_reason || '',
     sku: product.sku || '',
     stock: Number(product.stock || 0),
     weight: product.weight ?? (specificationMap.weight_grams ? Number(specificationMap.weight_grams) : null),
@@ -241,18 +239,12 @@ function mapFormToPayload(data: Record<string, any>) {
     num_in_stock: Number(data.stock || 0),
     charge_tax: data.taxStatus ? data.taxStatus === 'taxable' : Boolean(data.chargeTax),
     tax_status: data.taxStatus || (data.chargeTax === false ? 'tax_exempt' : 'taxable'),
-    tax_profile: data.taxProfile || 'standard',
-    tax_exemption_reason: data.taxExemptionReason || '',
     attributes: {
       ...dynamicAttributes,
       weight_grams: data.weight ?? '',
       dimensions: data.dimensions || '',
       brand: data.brand || '',
       tags: data.tags || '',
-      tax_status: data.taxStatus || (data.chargeTax === false ? 'tax_exempt' : 'taxable'),
-      charge_tax: (data.taxStatus || (data.chargeTax === false ? 'tax_exempt' : 'taxable')) === 'taxable' ? 'true' : 'false',
-      tax_profile: data.taxProfile || 'standard',
-      tax_exemption_reason: data.taxExemptionReason || '',
     },
   }
 

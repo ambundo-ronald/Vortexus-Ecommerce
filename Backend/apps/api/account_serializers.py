@@ -13,6 +13,7 @@ from apps.common.currency import (
     normalize_country_code,
     normalize_currency_code,
 )
+from apps.payments.services import customer_can_use_cash_on_delivery
 from .account_manager_scope import can_access_finance_data
 
 User = get_user_model()
@@ -53,10 +54,15 @@ class AccountSummarySerializer(serializers.Serializer):
             'country_code': profile.country_code,
             'preferred_currency': profile.preferred_currency,
             'display_currency': display_currency_for_user(user),
+            'cash_on_delivery_allowed': profile.cash_on_delivery_allowed,
             'settings': {
                 'receive_order_updates': profile.receive_order_updates,
                 'receive_marketing_emails': profile.receive_marketing_emails,
                 'two_factor_email_enabled': profile.two_factor_email_enabled,
+            },
+            'payment_permissions': {
+                'cash_on_delivery_allowed': profile.cash_on_delivery_allowed,
+                'cash_on_delivery_available': customer_can_use_cash_on_delivery(user),
             },
             'email_verification': {
                 'is_verified': profile.email_verified_at is not None,

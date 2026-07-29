@@ -16,8 +16,10 @@ from .pesapal import PesapalGatewayError, handle_transaction_status, request_ref
 from .services import (
     _payment_method_capabilities,
     available_payment_methods,
+    cash_on_delivery_state,
     customer_can_use_cash_on_delivery,
     get_payment_method,
+    payment_requires_prepayment,
     payment_reconciliation,
     sync_payment_reconciliation,
 )
@@ -65,14 +67,29 @@ class CashOnDeliveryAvailabilityTests(TestCase):
 
     def test_cash_on_delivery_requires_customer_approval(self):
         self.assertFalse(customer_can_use_cash_on_delivery(self.user))
+        self.assertFalse(cash_on_delivery_state(self.user)['available'])
         self.assertNotIn('cash_on_delivery', self._method_codes(self.user))
 
         self.user.customer_profile.cash_on_delivery_allowed = True
         self.user.customer_profile.save(update_fields=['cash_on_delivery_allowed'])
 
         self.assertTrue(customer_can_use_cash_on_delivery(self.user))
+        self.assertTrue(cash_on_delivery_state(self.user)['available'])
         self.assertIn('cash_on_delivery', self._method_codes(self.user))
         self.assertEqual(get_payment_method('cash_on_delivery', user=self.user)['code'], 'cash_on_delivery')
+        self.assertFalse(payment_requires_prepayment('cash_on_delivery', user=self.user))
+
+    def test_cash_on_delivery_state_respects_provider_enabled_flag(self):
+        self.user.customer_profile.cash_on_delivery_allowed = True
+        self.user.customer_profile.save(update_fields=['cash_on_delivery_allowed'])
+        PaymentProviderConfiguration.objects.filter(provider='cash_on_delivery').update(is_enabled=False)
+
+        state = cash_on_delivery_state(self.user)
+
+        self.assertTrue(state['customer_approved'])
+        self.assertFalse(state['provider_available'])
+        self.assertFalse(state['available'])
+        self.assertNotIn('cash_on_delivery', self._method_codes(self.user))
 
     def test_staff_can_use_cash_on_delivery_for_admin_operations(self):
         self.assertTrue(customer_can_use_cash_on_delivery(self.staff))
