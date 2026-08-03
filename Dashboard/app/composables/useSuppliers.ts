@@ -77,7 +77,7 @@ export function useSuppliers() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getSuppliers(params: { status?: string } = {}) {
+  async function getSuppliers(params: { status?: string, search?: string } = {}) {
     loading.value = true
     error.value = null
 
@@ -86,6 +86,7 @@ export function useSuppliers() {
         method: 'GET',
         query: {
           status: params.status || '',
+          q: params.search || '',
         },
       })
       return { success: true, data: result }

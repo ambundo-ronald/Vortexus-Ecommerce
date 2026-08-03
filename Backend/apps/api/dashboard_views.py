@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Count, Max, Q, Sum
@@ -70,6 +71,7 @@ class AdminDashboardAPIView(APIView):
         Product = get_model('catalogue', 'Product')
         StockRecord = get_model('partner', 'StockRecord')
         ProductImage = get_model('catalogue', 'ProductImage')
+        PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
         User = get_user_model()
 
         now = timezone.now()
@@ -81,12 +83,32 @@ class AdminDashboardAPIView(APIView):
         products = Product.objects.all()
         users = User.objects.all()
 
-        total_revenue = orders.aggregate(total=Sum('total_incl_tax'))['total'] or Decimal('0')
-        recent_revenue = recent_orders.aggregate(total=Sum('total_incl_tax'))['total'] or Decimal('0')
-
         pending_statuses = ['Pending', 'Processing', 'Packed']
         completed_statuses = ['Paid', 'Shipped', 'Delivered', 'Complete', 'Completed']
-        failed_statuses = ['Failed', 'Cancelled', 'Canceled']
+        failed_statuses = ['Failed', 'Cancelled', 'Canceled', 'Refunded', 'Returned']
+        excluded_revenue_statuses = failed_statuses
+        revenue_orders = orders.exclude(status__in=excluded_revenue_statuses)
+        recent_revenue_orders = recent_orders.exclude(status__in=excluded_revenue_statuses)
+        revenue_refund_statuses = [
+            PaymentRefundLedger.STATUS_SUBMITTED,
+            PaymentRefundLedger.STATUS_SUCCEEDED,
+        ]
+        revenue_refunds = PaymentRefundLedger.objects.filter(
+            order__in=revenue_orders,
+            status__in=revenue_refund_statuses,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        recent_revenue_refunds = PaymentRefundLedger.objects.filter(
+            order__in=recent_revenue_orders,
+            status__in=revenue_refund_statuses,
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        total_revenue = max(
+            Decimal('0.00'),
+            (revenue_orders.aggregate(total=Sum('total_incl_tax'))['total'] or Decimal('0')) - revenue_refunds,
+        )
+        recent_revenue = max(
+            Decimal('0.00'),
+            (recent_revenue_orders.aggregate(total=Sum('total_incl_tax'))['total'] or Decimal('0')) - recent_revenue_refunds,
+        )
 
         stock_summary = StockRecord.objects.aggregate(total=Sum('num_in_stock'))
         low_stock_products = (
@@ -104,20 +126,31 @@ class AdminDashboardAPIView(APIView):
 
         daily_rows = {
             row['day']: row
-            for row in recent_orders.annotate(day=TruncDate('date_placed'))
+            for row in recent_revenue_orders.annotate(day=TruncDate('date_placed'))
             .values('day')
             .annotate(orders=Count('id'), revenue=Sum('total_incl_tax'))
             .order_by('day')
+        }
+        daily_refunds = {
+            row['day']: row['total'] or Decimal('0')
+            for row in PaymentRefundLedger.objects.filter(
+                order__in=recent_revenue_orders,
+                status__in=revenue_refund_statuses,
+            )
+            .annotate(day=TruncDate('order__date_placed'))
+            .values('day')
+            .annotate(total=Sum('amount'))
         }
         daily_series = []
         for offset in range(days):
             day = (start + timedelta(days=offset)).date()
             row = daily_rows.get(day, {})
+            net_revenue = max(Decimal('0.00'), (row.get('revenue') or Decimal('0')) - daily_refunds.get(day, Decimal('0')))
             daily_series.append(
                 {
                     'date': day.isoformat(),
                     'orders': row.get('orders', 0) or 0,
-                    'revenue': _decimal_to_float(row.get('revenue')),
+                    'revenue': _decimal_to_float(net_revenue),
                 }
             )
 
@@ -136,6 +169,7 @@ class AdminDashboardAPIView(APIView):
 
         popular_rows = (
             Line.objects.exclude(product_id=None)
+            .exclude(order__status__in=excluded_revenue_statuses)
             .values('product_id', 'product__title')
             .annotate(quantity=Sum('quantity'))
             .order_by('-quantity')[:8]

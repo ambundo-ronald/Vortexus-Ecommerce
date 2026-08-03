@@ -47,7 +47,13 @@ class ShopperListWriteSerializer(serializers.Serializer):
         return attrs
 
 
-def shopper_list_payload(shopper_list, display_currency=None, include_token=False):
+def shopper_list_payload(
+    shopper_list,
+    display_currency=None,
+    include_token=False,
+    include_tax=False,
+    tax_country_code=None,
+):
     customer = shopper_list.customer
     payload = {
         'id': shopper_list.id,
@@ -73,7 +79,12 @@ def shopper_list_payload(shopper_list, display_currency=None, include_token=Fals
                 'id': item.id,
                 'quantity': item.quantity,
                 'note': item.note,
-                'product': serialize_product_card(item.product, display_currency=display_currency),
+                'product': serialize_product_card(
+                    item.product,
+                    display_currency=display_currency,
+                    include_tax=include_tax,
+                    tax_country_code=tax_country_code,
+                ),
             }
             for item in shopper_list.items.all()
         ],

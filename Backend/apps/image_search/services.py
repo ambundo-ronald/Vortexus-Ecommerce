@@ -114,6 +114,7 @@ class ImageSearchService:
         category: str | None = None,
         brand: str | None = None,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         query_vector = self.embedding_service.embed_image(image_file)
 
@@ -124,6 +125,7 @@ class ImageSearchService:
                 category=category,
                 brand=brand,
                 display_currency=display_currency,
+                tax_country_code=tax_country_code,
             )
         except (OpenSearchException, KeyError):
             return self._search_database_fallback(
@@ -131,6 +133,7 @@ class ImageSearchService:
                 category=category,
                 brand=brand,
                 display_currency=display_currency,
+                tax_country_code=tax_country_code,
             )
 
     def _search_opensearch(
@@ -140,6 +143,7 @@ class ImageSearchService:
         category: str | None = None,
         brand: str | None = None,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         client = get_opensearch_client()
 
@@ -192,6 +196,7 @@ class ImageSearchService:
                 category=category,
                 brand=brand,
                 display_currency=display_currency,
+                tax_country_code=tax_country_code,
             )
             fallback['meta'] = {
                 **fallback.get('meta', {}),
@@ -236,6 +241,8 @@ class ImageSearchService:
                     product=product,
                     score=hit.get('_score'),
                     display_currency=display_currency,
+                    include_tax=True,
+                    tax_country_code=tax_country_code,
                 )
             )
 
@@ -245,6 +252,7 @@ class ImageSearchService:
                 category=category,
                 brand=brand,
                 display_currency=display_currency,
+                tax_country_code=tax_country_code,
             )
             fallback['meta'] = {
                 **fallback.get('meta', {}),
@@ -264,6 +272,7 @@ class ImageSearchService:
         category: str | None = None,
         brand: str | None = None,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
         Review = apps.get_model('reviews', 'ProductReview')
@@ -290,7 +299,15 @@ class ImageSearchService:
             queryset = filter_queryset_by_brand(queryset, brand)
 
         products = queryset.distinct()[:top_k]
-        results = [serialize_product_card(product=product, display_currency=display_currency) for product in products]
+        results = [
+            serialize_product_card(
+                product=product,
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
+            for product in products
+        ]
 
         return {
             'results': results,

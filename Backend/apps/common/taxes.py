@@ -13,6 +13,29 @@ def normalize_country_code(country_code: str | None) -> str:
     return (country_code or '').strip().upper()
 
 
+def resolve_tax_country(request=None, user=None, default: str = 'KE') -> str:
+    if request is not None:
+        params = getattr(request, 'query_params', None)
+        if params is None:
+            params = getattr(request, 'GET', {})
+
+        requested_country = normalize_country_code(params.get('country'))
+        if requested_country:
+            return requested_country
+
+    resolved_user = user
+    if resolved_user is None and request is not None:
+        resolved_user = getattr(request, 'user', None)
+
+    if resolved_user is not None and getattr(resolved_user, 'is_authenticated', False):
+        profile = getattr(resolved_user, 'customer_profile', None)
+        profile_country = normalize_country_code(getattr(profile, 'country_code', '')) if profile else ''
+        if profile_country:
+            return profile_country
+
+    return normalize_country_code(default)
+
+
 def _decimal(value, default: Decimal = ZERO) -> Decimal:
     if value in (None, ''):
         return default

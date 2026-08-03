@@ -27,6 +27,7 @@ from apps.common.currency import (
     resolve_display_currency,
 )
 from apps.common.products import serialize_product_card
+from apps.common.taxes import resolve_tax_country
 from apps.inventory.services import InventoryReservationError, sync_basket_line_reservation
 from apps.notifications.services import queue_password_changed_email, queue_password_reset_email
 from apps.accounts.delivery_locations import (
@@ -76,6 +77,15 @@ def _money_payload(value) -> float:
     if value is None:
         return 0.0
     return float(Decimal(str(value)).quantize(Decimal('0.01')))
+
+
+def _storefront_product_card(product, request=None, display_currency: str | None = None, tax_country_code: str | None = None):
+    return serialize_product_card(
+        product,
+        display_currency=display_currency if display_currency is not None else resolve_display_currency(request),
+        include_tax=True,
+        tax_country_code=tax_country_code or resolve_tax_country(request),
+    )
 
 
 def _user_address_payload(address) -> dict:
@@ -160,13 +170,21 @@ def _sync_order_shipping_addresses_to_book(user):
 
 
 def _saved_items(request, display_currency: str | None = None) -> list[dict]:
+    tax_country_code = resolve_tax_country(request)
     if request.user.is_authenticated:
         wishlist = get_default_wishlist(request.user, create=False)
         if not wishlist:
             return []
         payload = []
         for line in wishlist.lines.select_related('product').all():
-            line_payload = wishlist_line_payload(line, display_currency=display_currency)
+            if line.product and not getattr(line.product, 'is_public', False):
+                continue
+            line_payload = wishlist_line_payload(
+                line,
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
             payload.append(
                 {
                     'id': line.id,
@@ -184,7 +202,9 @@ def _saved_items(request, display_currency: str | None = None) -> list[dict]:
     product_ids = [item.get('product_id') for item in items if item.get('product_id')]
     products = {
         product.id: product
-        for product in Product.objects.filter(id__in=product_ids).prefetch_related('stockrecords', 'images', 'categories')
+        for product in Product.objects.filter(id__in=product_ids, is_public=True)
+        .exclude(structure='parent')
+        .prefetch_related('stockrecords', 'images', 'categories')
     }
     payload = []
     for item in items:
@@ -196,7 +216,12 @@ def _saved_items(request, display_currency: str | None = None) -> list[dict]:
                 'id': item['id'],
                 'quantity': item.get('quantity', 1),
                 'date_saved': item.get('date_saved', ''),
-                'product': serialize_product_card(product, display_currency=display_currency),
+                'product': _storefront_product_card(
+                    product,
+                    request=request,
+                    display_currency=display_currency,
+                    tax_country_code=tax_country_code,
+                ),
             }
         )
     return payload
@@ -339,7 +364,10 @@ class CatalogRangeDetailAPIView(APIView):
         return Response(
             {
                 'range': _range_payload(range_obj),
-                'results': [serialize_product_card(product, display_currency=display_currency) for product in products],
+                'results': [
+                    _storefront_product_card(product, request=request, display_currency=display_currency)
+                    for product in products
+                ],
             }
         )
 
@@ -403,6 +431,8 @@ class SavedItemMoveToCartAPIView(APIView):
             saved_line = get_object_or_404(wishlist.lines.select_related('product'), id=saved_line_id)
             if not saved_line.product:
                 return Response(status=status.HTTP_404_NOT_FOUND)
+            if not getattr(saved_line.product, 'is_public', False):
+                raise serializers.ValidationError({'saved_item': 'This product is no longer available.'})
             try:
                 line, _ = request.basket.add_product(saved_line.product, quantity=saved_line.quantity)
                 sync_basket_line_reservation(line)
@@ -417,7 +447,7 @@ class SavedItemMoveToCartAPIView(APIView):
         if item is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
         Product = apps.get_model('catalogue', 'Product')
-        product = get_object_or_404(Product, id=item['product_id'])
+        product = get_object_or_404(Product, id=item['product_id'], is_public=True)
         try:
             line, _ = request.basket.add_product(product, quantity=item.get('quantity', 1))
             sync_basket_line_reservation(line)
@@ -459,8 +489,20 @@ class WishListItemMoveAPIView(APIView):
         default_wishlist_id = default_wishlist.id if default_wishlist else None
         return Response(
             {
-                'source': wishlist_detail_payload(source, default_wishlist_id=default_wishlist_id),
-                'target': wishlist_detail_payload(target, default_wishlist_id=default_wishlist_id),
+                'source': wishlist_detail_payload(
+                    source,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                    include_tax=True,
+                    tax_country_code=resolve_tax_country(request),
+                ),
+                'target': wishlist_detail_payload(
+                    target,
+                    default_wishlist_id=default_wishlist_id,
+                    display_currency=resolve_display_currency(request),
+                    include_tax=True,
+                    tax_country_code=resolve_tax_country(request),
+                ),
             }
         )
 
@@ -478,7 +520,16 @@ class SharedWishListAPIView(APIView):
             wishlist = get_object_or_404(WishList.objects.select_related('owner'), key=key)
         if wishlist.visibility not in {wishlist.PUBLIC, wishlist.SHARED}:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        return Response({'wishlist': wishlist_detail_payload(wishlist, display_currency=resolve_display_currency(request))})
+        return Response(
+            {
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    display_currency=resolve_display_currency(request),
+                    include_tax=True,
+                    tax_country_code=resolve_tax_country(request),
+                )
+            }
+        )
 
 
 class WishListShareAPIView(APIView):
@@ -497,7 +548,12 @@ class WishListShareAPIView(APIView):
         wishlist.save(update_fields=update_fields)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(wishlist, display_currency=resolve_display_currency(request)),
+                'wishlist': wishlist_detail_payload(
+                    wishlist,
+                    display_currency=resolve_display_currency(request),
+                    include_tax=True,
+                    tax_country_code=resolve_tax_country(request),
+                ),
                 'share_key': wishlist.key,
                 'share_path': f'/api/v1/wishlists/shared/{wishlist.key}/',
             }
@@ -713,7 +769,7 @@ class AccountOrderLineDetailAPIView(APIView):
                     'line_price_before_discounts': _money_payload(line.line_price_before_discounts_incl_tax),
                     'line_price': _money_payload(line.line_price_incl_tax),
                     'currency': line.order.currency,
-                    'product': serialize_product_card(line.product, display_currency=resolve_display_currency(request)) if line.product else None,
+                    'product': _storefront_product_card(line.product, request=request) if line.product else None,
                 }
             }
         )
@@ -797,7 +853,11 @@ class AccountNotificationReadAllAPIView(APIView):
         return Response({'detail': 'Notifications marked as read.'})
 
 
-def _product_alert_payload(alert, display_currency: str | None = None) -> dict:
+def _product_alert_payload(
+    alert,
+    display_currency: str | None = None,
+    tax_country_code: str | None = 'KE',
+) -> dict:
     payload = {
         'id': alert.id,
         'product_id': alert.product_id,
@@ -809,7 +869,12 @@ def _product_alert_payload(alert, display_currency: str | None = None) -> dict:
         'date_cancelled': alert.date_cancelled.isoformat() if alert.date_cancelled else None,
     }
     if getattr(alert, 'product', None):
-        payload['product'] = serialize_product_card(alert.product, display_currency=display_currency)
+        payload['product'] = serialize_product_card(
+            alert.product,
+            display_currency=display_currency,
+            include_tax=True,
+            tax_country_code=tax_country_code,
+        )
     return payload
 
 
@@ -825,7 +890,19 @@ class AccountProductAlertCollectionAPIView(APIView):
             .prefetch_related('product__stockrecords', 'product__images', 'product__reviews')
             .order_by('-date_created')
         )
-        return Response({'results': [_product_alert_payload(alert, display_currency=display_currency) for alert in alerts]})
+        tax_country_code = resolve_tax_country(request)
+        return Response(
+            {
+                'results': [
+                    _product_alert_payload(
+                        alert,
+                        display_currency=display_currency,
+                        tax_country_code=tax_country_code,
+                    )
+                    for alert in alerts
+                ]
+            }
+        )
 
 
 class ProductAlertCreateAPIView(APIView):
@@ -843,7 +920,16 @@ class ProductAlertCreateAPIView(APIView):
             email=email,
             defaults={'user': request.user if request.user.is_authenticated else None},
         )
-        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))}, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                'alert': _product_alert_payload(
+                    alert,
+                    display_currency=resolve_display_currency(request),
+                    tax_country_code=resolve_tax_country(request),
+                )
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ProductAlertConfirmAPIView(APIView):
@@ -854,7 +940,15 @@ class ProductAlertConfirmAPIView(APIView):
         alert = get_object_or_404(ProductAlert, key=key)
         if alert.can_be_confirmed:
             alert.confirm()
-        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))})
+        return Response(
+            {
+                'alert': _product_alert_payload(
+                    alert,
+                    display_currency=resolve_display_currency(request),
+                    tax_country_code=resolve_tax_country(request),
+                )
+            }
+        )
 
 
 class ProductAlertCancelAPIView(APIView):
@@ -865,7 +959,15 @@ class ProductAlertCancelAPIView(APIView):
         alert = get_object_or_404(ProductAlert, key=key)
         if alert.can_be_cancelled:
             alert.cancel()
-        return Response({'alert': _product_alert_payload(alert, display_currency=resolve_display_currency(request))})
+        return Response(
+            {
+                'alert': _product_alert_payload(
+                    alert,
+                    display_currency=resolve_display_currency(request),
+                    tax_country_code=resolve_tax_country(request),
+                )
+            }
+        )
 
 
 class AccountProductAlertDetailAPIView(APIView):
@@ -949,11 +1051,14 @@ class RecentlyViewedAPIView(APIView):
     def get(self, request):
         Product = apps.get_model('catalogue', 'Product')
         product_ids = request.session.get(RECENTLY_VIEWED_SESSION_KEY, [])
-        products = {product.id: product for product in Product.objects.filter(id__in=product_ids)}
+        products = {
+            product.id: product
+            for product in Product.objects.filter(id__in=product_ids, is_public=True).exclude(structure='parent')
+        }
         return Response(
             {
                 'results': [
-                    serialize_product_card(products[product_id], display_currency=resolve_display_currency(request))
+                    _storefront_product_card(products[product_id], request=request)
                     for product_id in product_ids
                     if product_id in products
                 ]
@@ -1014,7 +1119,7 @@ class RecentlyBoughtAPIView(APIView):
                 'strategy': 'recently_bought',
                 'results': [
                     {
-                        **serialize_product_card(products[product_id], display_currency=display_currency),
+                        **_storefront_product_card(products[product_id], request=request, display_currency=display_currency),
                         'recent_order_quantity': quantities.get(product_id, 1),
                     }
                     for product_id in product_ids

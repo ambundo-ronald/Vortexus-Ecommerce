@@ -1,9 +1,11 @@
 from typing import Any
+from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
 
 from apps.common.catalog import brand_slug, product_brand
-from apps.common.currency import convert_product_payload, default_currency
+from apps.common.currency import convert_amount, convert_product_payload, default_currency
+from apps.common.taxes import calculate_tax_amount, product_tax_rate, product_tax_status
 
 
 def stockrecord_price(stockrecord: Any) -> float | None:
@@ -71,6 +73,37 @@ def stockrecord_count(stockrecord: Any) -> int:
     return max(0, num_in_stock - num_allocated)
 
 
+def _money(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value)).quantize(Decimal('0.01'))
+
+
+def _taxed_price(product: Any, amount: Any, country_code: str | None) -> tuple[float | None, float, float | None]:
+    base = _money(amount)
+    if base is None:
+        return None, 0.0, None
+
+    rate = product_tax_rate(product, country_code)
+    tax_amount = calculate_tax_amount(base, rate)
+    inclusive = (base + tax_amount).quantize(Decimal('0.01'))
+    return float(inclusive), float(tax_amount), float(rate) if rate is not None else None
+
+
+def _convert_extra_price_fields(payload: dict[str, Any], display_currency: str | None) -> dict[str, Any]:
+    field_pairs = (
+        ('base_price_excl_tax', 'price_excl_tax'),
+        ('base_price_incl_tax', 'price_incl_tax'),
+        ('base_tax_amount', 'tax_amount'),
+        ('base_previous_price_excl_tax', 'previous_price_excl_tax'),
+        ('base_previous_price_incl_tax', 'previous_price_incl_tax'),
+    )
+    for base_field, display_field in field_pairs:
+        converted, _ = convert_amount(payload.get(base_field), payload.get('base_currency'), display_currency)
+        payload[display_field] = converted
+    return payload
+
+
 def product_stock_totals(product: Any) -> dict[str, int]:
     stockrecords = list(product.stockrecords.all()) if hasattr(product, 'stockrecords') else []
     return {
@@ -85,12 +118,18 @@ def serialize_product_card(
     score: float | None = None,
     reason: str | None = None,
     display_currency: str | None = None,
+    include_tax: bool = False,
+    tax_country_code: str | None = None,
 ) -> dict[str, Any]:
     stockrecord = product.stockrecords.first() if hasattr(product, 'stockrecords') else None
     base_price = stockrecord_price(stockrecord)
     base_currency = stockrecord_currency(stockrecord)
     base_previous_price = stockrecord_previous_price(stockrecord)
     base_previous_currency = stockrecord_previous_currency(stockrecord)
+    base_price_incl_tax, base_tax_amount, tax_rate = _taxed_price(product, base_price, tax_country_code)
+    base_previous_price_incl_tax, _, _ = _taxed_price(product, base_previous_price, tax_country_code)
+    display_base_price = base_price_incl_tax if include_tax else base_price
+    display_previous_price = base_previous_price_incl_tax if include_tax else base_previous_price
     stock_count = product_stock_totals(product)['available']
     brand = product_brand(product)
     categories = list(product.categories.all()) if hasattr(product, 'categories') else []
@@ -108,14 +147,28 @@ def serialize_product_card(
         'id': product.id,
         'title': product.title,
         'sku': product.upc,
-        'price': base_price,
+        'price': display_base_price,
         'currency': base_currency,
-        'base_price': base_price,
+        'base_price': display_base_price,
         'base_currency': base_currency,
-        'previous_price': base_previous_price,
+        'price_excl_tax': base_price,
+        'price_incl_tax': base_price_incl_tax,
+        'base_price_excl_tax': base_price,
+        'base_price_incl_tax': base_price_incl_tax,
+        'tax_amount': base_tax_amount,
+        'base_tax_amount': base_tax_amount,
+        'tax_rate': tax_rate,
+        'tax_status': product_tax_status(product),
+        'tax_country_code': tax_country_code or '',
+        'prices_include_tax': include_tax,
+        'previous_price': display_previous_price,
         'previous_currency': base_previous_currency,
-        'base_previous_price': base_previous_price,
+        'base_previous_price': display_previous_price,
         'base_previous_currency': base_previous_currency,
+        'previous_price_excl_tax': base_previous_price,
+        'previous_price_incl_tax': base_previous_price_incl_tax,
+        'base_previous_price_excl_tax': base_previous_price,
+        'base_previous_price_incl_tax': base_previous_price_incl_tax,
         'thumbnail': image_url,
         'brand': brand,
         'brand_slug': brand_slug(brand),
@@ -142,7 +195,8 @@ def serialize_product_card(
     if reason:
         payload['reason'] = reason
 
-    return convert_product_payload(payload, display_currency)
+    payload = convert_product_payload(payload, display_currency)
+    return _convert_extra_price_fields(payload, display_currency)
 
 
 def _product_rating(product: Any) -> float | None:

@@ -5,6 +5,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
+from apps.common.taxes import resolve_tax_country
 
 from .serializers import ImageSearchRequestSerializer
 from .services import ImageSearchService
@@ -28,6 +29,7 @@ class ImageSearchAPIView(APIView):
                 category=data.get('category') or None,
                 brand=data.get('brand') or None,
                 display_currency=resolve_display_currency(request),
+                tax_country_code=resolve_tax_country(request),
             )
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

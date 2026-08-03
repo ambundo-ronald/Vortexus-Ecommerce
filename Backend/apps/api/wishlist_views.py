@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
+from apps.common.taxes import resolve_tax_country
 
 from .wishlist_serializers import (
     WishListAddItemSerializer,
@@ -15,6 +16,16 @@ from .wishlist_serializers import (
     wishlist_detail_payload,
     wishlist_summary_payload,
 )
+
+
+def _wishlist_detail_for_storefront(request, wishlist, default_wishlist_id=None):
+    return wishlist_detail_payload(
+        wishlist,
+        default_wishlist_id=default_wishlist_id,
+        display_currency=resolve_display_currency(request),
+        include_tax=True,
+        tax_country_code=resolve_tax_country(request),
+    )
 
 
 class WishListCollectionAPIView(APIView):
@@ -53,11 +64,7 @@ class DefaultWishListAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
-                    wishlist,
-                    default_wishlist_id=wishlist.id,
-                    display_currency=resolve_display_currency(request),
-                )
+                'wishlist': _wishlist_detail_for_storefront(request, wishlist, default_wishlist_id=wishlist.id)
             }
         )
 
@@ -74,10 +81,10 @@ class WishListDetailAPIView(APIView):
         default_wishlist_id = default_wishlist.id if default_wishlist else None
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
+                'wishlist': _wishlist_detail_for_storefront(
+                    request,
                     wishlist,
                     default_wishlist_id=default_wishlist_id,
-                    display_currency=resolve_display_currency(request),
                 )
             }
         )
@@ -92,10 +99,10 @@ class WishListDetailAPIView(APIView):
         wishlist = self.get_object(request, wishlist.id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
+                'wishlist': _wishlist_detail_for_storefront(
+                    request,
                     wishlist,
                     default_wishlist_id=default_wishlist_id,
-                    display_currency=resolve_display_currency(request),
                 )
             }
         )
@@ -126,10 +133,10 @@ class WishListItemCollectionAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
+                'wishlist': _wishlist_detail_for_storefront(
+                    request,
                     wishlist,
                     default_wishlist_id=default_wishlist_id,
-                    display_currency=resolve_display_currency(request),
                 ),
                 'item_id': line.id,
             },
@@ -154,11 +161,7 @@ class DefaultWishListItemCollectionAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
-                    wishlist,
-                    default_wishlist_id=wishlist.id,
-                    display_currency=resolve_display_currency(request),
-                ),
+                'wishlist': _wishlist_detail_for_storefront(request, wishlist, default_wishlist_id=wishlist.id),
                 'item_id': line.id,
             },
             status=status.HTTP_201_CREATED,
@@ -178,10 +181,10 @@ class WishListItemDetailAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist_id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
+                'wishlist': _wishlist_detail_for_storefront(
+                    request,
                     wishlist,
                     default_wishlist_id=default_wishlist_id,
-                    display_currency=resolve_display_currency(request),
                 )
             }
         )
@@ -202,11 +205,7 @@ class DefaultWishListItemDetailAPIView(APIView):
         wishlist = get_object_or_404(user_wishlist_queryset(request.user), id=wishlist.id)
         return Response(
             {
-                'wishlist': wishlist_detail_payload(
-                    wishlist,
-                    default_wishlist_id=wishlist.id,
-                    display_currency=resolve_display_currency(request),
-                )
+                'wishlist': _wishlist_detail_for_storefront(request, wishlist, default_wishlist_id=wishlist.id)
             }
         )
 

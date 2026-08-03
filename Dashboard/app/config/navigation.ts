@@ -155,19 +155,59 @@ export const navSections: NavSection[] = [
         to: '/email-logs',
       },
       {
+        label: 'Email Suppressions',
+        icon: 'i-lucide-mail-x',
+        to: '/email-suppressions',
+      },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      {
+        label: 'Overview',
+        icon: 'i-lucide-layout-dashboard',
+        to: '/finance',
+      },
+      {
+        label: 'Accounting',
+        icon: 'i-lucide-book-open-check',
+        to: '/accounting',
+      },
+      {
         label: 'Payment Logs',
         icon: 'i-lucide-credit-card',
         to: '/payment-logs',
       },
       {
-        label: 'Finance',
-        icon: 'i-lucide-chart-no-axes-combined',
-        to: '/finance',
+        label: 'Reconciliation',
+        icon: 'i-lucide-shield-check',
+        to: '/finance?view=reconciliation',
       },
       {
-        label: 'Email Suppressions',
-        icon: 'i-lucide-mail-x',
-        to: '/email-suppressions',
+        label: 'Supplier Payables',
+        icon: 'i-lucide-store',
+        to: '/finance?view=supplier-payables',
+      },
+      {
+        label: 'Payout Batches',
+        icon: 'i-lucide-wallet-cards',
+        to: '/finance?view=payout-batches',
+      },
+      {
+        label: 'Refunds',
+        icon: 'i-lucide-undo-2',
+        to: '/finance?view=refunds',
+      },
+      {
+        label: 'Returns',
+        icon: 'i-lucide-rotate-ccw-square',
+        to: '/finance?view=returns',
+      },
+      {
+        label: 'Order Lookup',
+        icon: 'i-lucide-file-search',
+        to: '/finance?view=order',
       },
     ],
   },
@@ -253,11 +293,6 @@ export const accountManagerNavSections: NavSection[] = [
         label: 'Orders',
         icon: 'i-lucide-receipt',
         to: '/orders',
-      },
-      {
-        label: 'Payment Logs',
-        icon: 'i-lucide-credit-card',
-        to: '/payment-logs',
       },
     ],
   },

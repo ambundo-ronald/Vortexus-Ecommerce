@@ -2,6 +2,7 @@ from django.apps import apps
 from django.core.files.base import ContentFile
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 from rest_framework import permissions, status
@@ -849,7 +850,17 @@ class SupplierAdminCollectionAPIView(APIView):
 
     def get(self, request):
         queryset = assigned_supplier_queryset(request.user).order_by('company_name', 'id')
+        search = (request.query_params.get('q') or '').strip()
         status_filter = (request.query_params.get('status') or '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(company_name__icontains=search)
+                | Q(contact_name__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(user__email__icontains=search)
+                | Q(partner__name__icontains=search)
+                | Q(partner__code__icontains=search)
+            )
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         return Response({'results': SupplierProfileSerializer(queryset, many=True).data})

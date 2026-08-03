@@ -11,6 +11,7 @@ from apps.personal_shopper.models import ShopperList
 from apps.recommendations.services import RecommendationService
 
 from apps.common.currency import resolve_display_currency
+from apps.common.taxes import resolve_tax_country
 from .personal_shopper_serializers import (
     ShopperListWriteSerializer,
     replace_shopper_list_items,
@@ -26,13 +27,18 @@ def _shopper_queryset():
     )
 
 
-def _recommendations(shopper_list, display_currency):
+def _recommendations(shopper_list, display_currency, tax_country_code):
     excluded = set(shopper_list.items.values_list('product_id', flat=True))
     results = []
     seen = set(excluded)
     service = RecommendationService()
     for product_id in excluded:
-        for item in service.recommend_for_product(product_id, limit=6, display_currency=display_currency):
+        for item in service.recommend_for_product(
+            product_id,
+            limit=6,
+            display_currency=display_currency,
+            tax_country_code=tax_country_code,
+        ):
             if item['id'] in seen:
                 continue
             seen.add(item['id'])
@@ -40,7 +46,7 @@ def _recommendations(shopper_list, display_currency):
             if len(results) >= 8:
                 return results
     if len(results) < 8:
-        for item in service.trending(limit=16, display_currency=display_currency):
+        for item in service.trending(limit=16, display_currency=display_currency, tax_country_code=tax_country_code):
             if item['id'] in seen:
                 continue
             seen.add(item['id'])
@@ -129,7 +135,21 @@ class ShopperListCollectionAPIView(APIView):
 
     def get(self, request):
         queryset = _shopper_queryset().filter(customer=request.user).exclude(status=ShopperList.Status.DRAFT)
-        return Response({'results': [shopper_list_payload(item, resolve_display_currency(request)) for item in queryset]})
+        display_currency = resolve_display_currency(request)
+        tax_country_code = resolve_tax_country(request)
+        return Response(
+            {
+                'results': [
+                    shopper_list_payload(
+                        item,
+                        display_currency,
+                        include_tax=True,
+                        tax_country_code=tax_country_code,
+                    )
+                    for item in queryset
+                ]
+            }
+        )
 
 
 class ShopperHubAPIView(APIView):
@@ -152,9 +172,15 @@ class ShopperHubAPIView(APIView):
             shopper_list.viewed_at = timezone.now()
             shopper_list.save(update_fields=['status', 'viewed_at', 'date_updated'])
         display_currency = resolve_display_currency(request)
+        tax_country_code = resolve_tax_country(request)
         return Response({
-            'shopper_list': shopper_list_payload(shopper_list, display_currency),
-            'recommendations': _recommendations(shopper_list, display_currency),
+            'shopper_list': shopper_list_payload(
+                shopper_list,
+                display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            ),
+            'recommendations': _recommendations(shopper_list, display_currency, tax_country_code),
         })
 
 

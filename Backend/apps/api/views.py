@@ -16,7 +16,7 @@ from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
 from apps.common.products import product_stock_totals, serialize_product_card, stockrecord_count
-from apps.common.taxes import product_tax_status
+from apps.common.taxes import product_tax_status, resolve_tax_country
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
@@ -74,8 +74,18 @@ def _product_queryset(include_hidden: bool = False):
     return queryset.filter(is_public=True)
 
 
-def _build_product_detail(product, display_currency: str | None = None) -> dict:
-    card = serialize_product_card(product=product, display_currency=display_currency)
+def _build_product_detail(
+    product,
+    display_currency: str | None = None,
+    include_tax: bool = False,
+    tax_country_code: str | None = None,
+) -> dict:
+    card = serialize_product_card(
+        product=product,
+        display_currency=display_currency,
+        include_tax=include_tax,
+        tax_country_code=tax_country_code,
+    )
     brand = product_brand(product)
     specs = []
     for attribute_value in product.attribute_values.all():
@@ -277,15 +287,12 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         serializer.is_valid(raise_exception=True)
         params = serializer.validated_data
         display_currency = resolve_display_currency(request)
+        tax_country_code = resolve_tax_country(request)
 
         Product = apps.get_model("catalogue", "Product")
         Review = apps.get_model("reviews", "ProductReview")
-        product_queryset = Product.objects.all()
-        if not (request.user and request.user.is_staff):
-            product_queryset = product_queryset.filter(is_public=True)
-
         queryset = (
-            product_queryset
+            Product.objects.filter(is_public=True)
             .exclude(structure="parent")
             .prefetch_related("stockrecords", "images", "categories", "attribute_values__attribute")
             .annotate(
@@ -349,7 +356,12 @@ class ProductListAPIView(StaffWritePermissionMixin, APIView):
         return Response(
             {
                 "results": [
-                    serialize_product_card(product=item, display_currency=display_currency)
+                    serialize_product_card(
+                        product=item,
+                        display_currency=display_currency,
+                        include_tax=True,
+                        tax_country_code=tax_country_code,
+                    )
                     for item in page_obj.object_list
                 ],
                 "pagination": {
@@ -391,14 +403,20 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
     recommendation_service = RecommendationService()
 
     def get(self, request, product_id: int):
-        include_hidden = bool(request.user and request.user.is_staff)
         display_currency = resolve_display_currency(request)
-        product = get_object_or_404(_product_queryset(include_hidden=include_hidden), id=product_id)
-        detail = _build_product_detail(product, display_currency=display_currency)
+        tax_country_code = resolve_tax_country(request)
+        product = get_object_or_404(_product_queryset(), id=product_id)
+        detail = _build_product_detail(
+            product,
+            display_currency=display_currency,
+            include_tax=True,
+            tax_country_code=tax_country_code,
+        )
         related = self.recommendation_service.recommend_for_product(
             product_id=product.id,
             limit=8,
             display_currency=display_currency,
+            tax_country_code=tax_country_code,
         )
 
         return Response({"product": detail, "related": related})

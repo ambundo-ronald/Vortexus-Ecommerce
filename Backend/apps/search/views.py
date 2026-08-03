@@ -3,6 +3,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.common.currency import resolve_display_currency
+from apps.common.taxes import resolve_tax_country
 
 from .serializers import SearchQuerySerializer, SearchSuggestionQuerySerializer
 from .services import ProductSearchService
@@ -31,6 +32,7 @@ class ProductSearchAPIView(APIView):
             page=params.get('page', 1),
             page_size=params.get('page_size', 24),
             display_currency=resolve_display_currency(request),
+            tax_country_code=resolve_tax_country(request),
         )
         return Response(response)
 

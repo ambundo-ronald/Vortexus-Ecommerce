@@ -2,7 +2,7 @@
 import type { AdminPaymentLogItem } from '~/composables/usePaymentConfig'
 
 const toast = useToast()
-const { getPaymentLogs, requestPaymentRefund } = usePaymentConfig()
+const { cancelPaymentSession, getPaymentLogs, requestPaymentRefund } = usePaymentConfig()
 
 const logs = ref<AdminPaymentLogItem[]>([])
 const selectedLog = ref<AdminPaymentLogItem | null>(null)
@@ -14,11 +14,15 @@ const numPages = ref(1)
 const isLoading = ref(false)
 const detailOpen = ref(false)
 const refundSubmitting = ref(false)
+const cancelSubmitting = ref(false)
 const refundForm = reactive({
   amount: '',
   reason: '',
   refundReference: '',
   submitGatewayRefund: true,
+})
+const cancelForm = reactive({
+  reason: 'Manual bank payment was not received and is not linked to an order.',
 })
 const ALL_METHODS = '__all_methods__'
 const ALL_STATUSES = '__all_statuses__'
@@ -124,6 +128,12 @@ const canRefundSelectedPayment = computed(() => {
   return ['paid', 'authorized'].includes(selectedLog.value.status) && Boolean(selectedLog.value.order_number)
 })
 
+const canCancelSelectedPayment = computed(() => {
+  if (!selectedLog.value)
+    return false
+  return !selectedLog.value.order_number && ['initialized', 'pending', 'authorized', 'paid'].includes(selectedLog.value.status)
+})
+
 function refundDisabledReason() {
   if (!selectedLog.value)
     return 'Select a payment first.'
@@ -131,6 +141,18 @@ function refundDisabledReason() {
     return 'Only paid or authorized payments can be refunded.'
   if (!selectedLog.value.order_number)
     return 'Payment must be linked to an order before refund accounting.'
+  return ''
+}
+
+function cancelDisabledReason() {
+  if (!selectedLog.value)
+    return 'Select a payment first.'
+  if (selectedLog.value.order_number)
+    return 'Linked payments must be handled from the order cancellation or refund workflow.'
+  if (selectedLog.value.status === 'cancelled')
+    return 'Payment is already cancelled.'
+  if (selectedLog.value.status === 'failed')
+    return 'Failed payments do not need cancellation.'
   return ''
 }
 
@@ -186,7 +208,7 @@ async function submitRefund() {
   if (result.success) {
     toast.add({
       title: 'Refund queued',
-      description: result.data?.refund_reference || 'ERPNext credit note export queued.',
+      description: result.data?.refund_reference || 'Refund workflow queued.',
       color: 'success',
     })
     await loadLogs()
@@ -198,6 +220,28 @@ async function submitRefund() {
     return
   }
   toast.add({ title: 'Refund failed', description: result.error || 'Please review the payment logs.', color: 'error' })
+}
+
+async function cancelSelectedPayment() {
+  if (!selectedLog.value || !canCancelSelectedPayment.value)
+    return
+  cancelSubmitting.value = true
+  const result = await cancelPaymentSession(selectedLog.value.reference, {
+    reason: cancelForm.reason,
+  })
+  cancelSubmitting.value = false
+  if (result.success) {
+    toast.add({
+      title: 'Payment cancelled',
+      description: result.data?.payment?.reference || selectedLog.value.reference,
+      color: 'success',
+    })
+    await loadLogs()
+    const refreshed = logs.value.find(log => log.reference === selectedLog.value?.reference)
+    selectedLog.value = refreshed || result.data?.payment || selectedLog.value
+    return
+  }
+  toast.add({ title: 'Could not cancel payment', description: result.error || 'Please review this payment.', color: 'error' })
 }
 
 function applyFilters() {
@@ -366,7 +410,7 @@ onMounted(loadLogs)
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <h3 class="text-sm font-bold text-slate-950">Refund accounting</h3>
-                  <p class="mt-1 text-xs text-slate-500">Submit gateway refund request and queue ERPNext credit note export.</p>
+                  <p class="mt-1 text-xs text-slate-500">Submit the refund request and keep the payment ledger in sync.</p>
                 </div>
                 <UBadge :color="canRefundSelectedPayment ? 'success' : 'neutral'" variant="soft">
                   {{ canRefundSelectedPayment ? 'Available' : 'Unavailable' }}
@@ -391,6 +435,31 @@ onMounted(loadLogs)
                 <UButton color="error" :loading="refundSubmitting" :disabled="!canRefundSelectedPayment" @click="submitRefund">
                   <UIcon name="i-lucide-undo-2" />
                   Queue Refund
+                </UButton>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-950">Cancel unlinked payment</h3>
+                  <p class="mt-1 text-xs text-slate-500">Use this for manual/bank payment records that were not actually received and have no order.</p>
+                </div>
+                <UBadge :color="canCancelSelectedPayment ? 'warning' : 'neutral'" variant="soft">
+                  {{ canCancelSelectedPayment ? 'Available' : 'Unavailable' }}
+                </UBadge>
+              </div>
+              <p v-if="!canCancelSelectedPayment" class="mt-3 rounded-md bg-slate-50 p-2 text-xs text-slate-500">
+                {{ cancelDisabledReason() }}
+              </p>
+              <div class="mt-3">
+                <UFormField label="Cancellation reason">
+                  <UTextarea v-model="cancelForm.reason" :rows="3" :disabled="!canCancelSelectedPayment || cancelSubmitting" />
+                </UFormField>
+              </div>
+              <div class="mt-3 flex justify-end">
+                <UButton color="error" variant="outline" :loading="cancelSubmitting" :disabled="!canCancelSelectedPayment" @click="cancelSelectedPayment">
+                  <UIcon name="i-lucide-ban" />
+                  Cancel Payment
                 </UButton>
               </div>
             </div>

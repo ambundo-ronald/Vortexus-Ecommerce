@@ -2,6 +2,9 @@ export interface FinanceSummaryResponse {
   collections: {
     count: number
     total: number
+    gross_total: number
+    refund_impact_total: number
+    excluded_count: number
     matched_total: number
     by_status: Array<{ status: string, count: number, total: number | string | null }>
     by_method: Array<{ method: string, count: number, total: number | string | null }>
@@ -118,6 +121,13 @@ export interface FinanceRefundLedgerItem {
   erpnext_reference: string
   erpnext_sync_message: string
   erpnext_synced_at: string | null
+  notes: string
+  document_references: {
+    credit_note: string
+    refund_payment: string
+    provider: string
+  }
+  next_actions: string[]
   created_at: string
   updated_at: string
 }
@@ -148,6 +158,14 @@ export interface FinanceReturnCaseItem {
   received_at: string | null
   completed_at: string | null
   restocked_at: string | null
+  document_references: {
+    return_authorization: string
+    return_receipt: string
+    credit_note: string
+    refund_payment: string
+  }
+  next_actions: string[]
+  supplier_adjustment_count: number
   created_at: string
   updated_at: string
 }
@@ -384,6 +402,25 @@ export function useFinance() {
     }
   }
 
+  async function updateFinanceRefund(refundId: number | string, payload: { action: string, provider_reference?: string, notes?: string }) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ refund: FinanceRefundLedgerItem }>(`/admin/finance/refunds/${refundId}/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result.refund }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   async function getFinanceReturns(params: FinanceListParams = {}) {
     loading.value = true
     error.value = null
@@ -558,6 +595,7 @@ export function useFinance() {
     updateFinanceReconciliation,
     getFinanceSupplierPayables,
     getFinanceRefunds,
+    updateFinanceRefund,
     getFinanceReturns,
     createFinanceReturn,
     updateFinanceReturn,

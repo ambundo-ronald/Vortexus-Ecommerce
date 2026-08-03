@@ -405,8 +405,17 @@ def serialize_shipping_method(method, basket, selected: bool = False, display_cu
     }
 
 
-def serialize_basket_line(line, display_currency: str | None = None) -> dict:
-    product = serialize_product_card(line.product, display_currency=display_currency)
+def serialize_basket_line(
+    line,
+    display_currency: str | None = None,
+    tax_country_code: str | None = 'KE',
+) -> dict:
+    product = serialize_product_card(
+        line.product,
+        display_currency=display_currency,
+        include_tax=True,
+        tax_country_code=tax_country_code,
+    )
     unit_price = line.unit_price_incl_tax
     if unit_price is None:
         unit_price = line.unit_price_excl_tax
@@ -452,8 +461,15 @@ def serialize_basket_line(line, display_currency: str | None = None) -> dict:
     }
 
 
-def serialize_basket(basket, display_currency: str | None = None) -> dict:
-    lines = [serialize_basket_line(line, display_currency=display_currency) for line in basket.all_lines()]
+def serialize_basket(
+    basket,
+    display_currency: str | None = None,
+    tax_country_code: str | None = 'KE',
+) -> dict:
+    lines = [
+        serialize_basket_line(line, display_currency=display_currency, tax_country_code=tax_country_code)
+        for line in basket.all_lines()
+    ]
     subtotal = basket_subtotal(basket)
     subtotal_before_discount = _money(getattr(basket, 'total_excl_tax_excl_discounts', subtotal))
     discount_total = _money(getattr(basket, 'total_discount', ZERO))
@@ -537,7 +553,7 @@ def build_checkout_payload(request) -> dict:
             missing.append('shipping_method')
 
     return {
-        'basket': serialize_basket(basket, display_currency=display_currency),
+        'basket': serialize_basket(basket, display_currency=display_currency, tax_country_code=country_code),
         'shipping': {
             'countries': available_shipping_countries(),
             'address': serialize_shipping_address(shipping_address, location=get_session_location(request)),

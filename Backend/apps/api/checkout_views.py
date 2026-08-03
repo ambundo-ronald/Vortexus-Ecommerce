@@ -510,6 +510,7 @@ class OrderPlacementAPIView(APIView):
         upsert_shipping_address_location(order.shipping_address, delivery_location)
         link_payment_to_order(payment_session, order)
         ensure_supplier_order_groups(order)
+        _post_order_accounting(order, request.user)
         basket.submit()
         checkout_session.flush()
 
@@ -543,3 +544,12 @@ class OrderPlacementAPIView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+def _post_order_accounting(order, user=None) -> None:
+    try:
+        from apps.accounting.services import post_sales_order
+
+        post_sales_order(order, user=user)
+    except Exception:
+        logger.exception('Failed to post sales order accounting for %s', getattr(order, 'number', ''))

@@ -31,8 +31,13 @@ class RecommendationService:
     PRODUCT_CACHE_LIMITS = (4, 8, 12, 16, 24)
 
     @staticmethod
-    def product_cache_key(product_id: int, limit: int, display_currency: str | None = None) -> str:
-        return f'recommendations:v2:product:{product_id}:{limit}:{display_currency or "default"}'
+    def product_cache_key(
+        product_id: int,
+        limit: int,
+        display_currency: str | None = None,
+        tax_country_code: str | None = None,
+    ) -> str:
+        return f'recommendations:v3:product:{product_id}:{limit}:{display_currency or "default"}:{tax_country_code or "no-tax-country"}'
 
     @classmethod
     def clear_product_cache(cls, product_id: int) -> None:
@@ -52,6 +57,7 @@ class RecommendationService:
         user_id: int | None = None,
         limit: int = 12,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         if product_id:
             return {
@@ -59,6 +65,7 @@ class RecommendationService:
                     product_id=product_id,
                     limit=limit,
                     display_currency=display_currency,
+                    tax_country_code=tax_country_code,
                 ),
                 'strategy': 'similar-products',
             }
@@ -69,12 +76,13 @@ class RecommendationService:
                     user_id=user_id,
                     limit=limit,
                     display_currency=display_currency,
+                    tax_country_code=tax_country_code,
                 ),
                 'strategy': 'user-history',
             }
 
         return {
-            'results': self.trending(limit=limit, display_currency=display_currency),
+            'results': self.trending(limit=limit, display_currency=display_currency, tax_country_code=tax_country_code),
             'strategy': 'trending',
         }
 
@@ -83,8 +91,9 @@ class RecommendationService:
         product_id: int,
         limit: int,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> list[dict[str, Any]]:
-        cache_key = self.product_cache_key(product_id, limit, display_currency)
+        cache_key = self.product_cache_key(product_id, limit, display_currency, tax_country_code)
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -111,7 +120,13 @@ class RecommendationService:
             Product.objects.filter(id__in=manual_ids, is_public=True)
         ).distinct().order_by(manual_order, 'title')
         results = [
-            serialize_product_card(product=item, reason='admin-recommended', display_currency=display_currency)
+            serialize_product_card(
+                product=item,
+                reason='admin-recommended',
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
             for item in manual_queryset[:limit]
         ]
 
@@ -125,20 +140,32 @@ class RecommendationService:
 
             for item in queryset[: limit - len(results)]:
                 results.append(
-                    serialize_product_card(product=item, reason='similar-category', display_currency=display_currency)
+                    serialize_product_card(
+                        product=item,
+                        reason='similar-category',
+                        display_currency=display_currency,
+                        include_tax=True,
+                        tax_country_code=tax_country_code,
+                    )
                 )
 
         cache.set(cache_key, results, timeout=60 * 30)
         return results
 
-    def recommend_for_user(self, user_id: int, limit: int, display_currency: str | None = None) -> list[dict[str, Any]]:
+    def recommend_for_user(
+        self,
+        user_id: int,
+        limit: int,
+        display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
+    ) -> list[dict[str, Any]]:
         OrderLine = apps.get_model('order', 'Line')
         user_product_ids = list(
             OrderLine.objects.filter(order__user_id=user_id).values_list('product_id', flat=True).distinct()[:100]
         )
 
         if not user_product_ids:
-            return self.trending(limit=limit, display_currency=display_currency)
+            return self.trending(limit=limit, display_currency=display_currency, tax_country_code=tax_country_code)
 
         Product = apps.get_model('catalogue', 'Product')
         queryset = _product_card_queryset(
@@ -146,12 +173,22 @@ class RecommendationService:
         ).order_by('-date_updated')
 
         results = [
-            serialize_product_card(product=item, reason='history-based', display_currency=display_currency)
+            serialize_product_card(
+                product=item,
+                reason='history-based',
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
             for item in queryset[:limit]
         ]
         if len(results) < limit:
             seen_ids = {item['id'] for item in results}
-            for candidate in self.trending(limit=limit * 2, display_currency=display_currency):
+            for candidate in self.trending(
+                limit=limit * 2,
+                display_currency=display_currency,
+                tax_country_code=tax_country_code,
+            ):
                 if candidate['id'] in seen_ids:
                     continue
                 results.append(candidate)
@@ -160,8 +197,13 @@ class RecommendationService:
 
         return results
 
-    def trending(self, limit: int, display_currency: str | None = None) -> list[dict[str, Any]]:
-        cache_key = f'recommendations:trending:{limit}:{display_currency or "default"}'
+    def trending(
+        self,
+        limit: int,
+        display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
+    ) -> list[dict[str, Any]]:
+        cache_key = f'recommendations:v3:trending:{limit}:{display_currency or "default"}:{tax_country_code or "no-tax-country"}'
         cached = cache.get(cache_key)
         if cached:
             return cached
@@ -181,7 +223,13 @@ class RecommendationService:
             queryset = queryset.filter(id__in=trending_ids)
 
         results = [
-            serialize_product_card(product=item, reason='trending', display_currency=display_currency)
+            serialize_product_card(
+                product=item,
+                reason='trending',
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
             for item in queryset[:limit]
         ]
         cache.set(cache_key, results, timeout=60 * 15)

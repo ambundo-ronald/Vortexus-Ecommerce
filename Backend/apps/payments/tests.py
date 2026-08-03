@@ -2,16 +2,17 @@ from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.api.payment_serializers import PesapalNotificationSerializer
 from apps.api.payment_config_views import _refund_request_summary
 from apps.accounts.models import CustomerProfile
 
-from .models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentSession
+from .models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentRefundLedger, PaymentReturnCase, PaymentSession
 from .pesapal import PesapalGatewayError, handle_transaction_status, request_refund
 from .services import (
     _payment_method_capabilities,
@@ -21,7 +22,10 @@ from .services import (
     get_payment_method,
     payment_requires_prepayment,
     payment_reconciliation,
+    record_payment_refund_ledger,
     sync_payment_reconciliation,
+    update_payment_refund_ledger_status,
+    update_payment_return_case,
 )
 
 
@@ -276,12 +280,251 @@ class PaymentReconciliationTests(TestCase):
     def test_refund_summary_handles_select_related_payment_queryset(self):
         self._payment(
             status=PaymentSession.STATUS_PAID,
-            metadata={'refund_requests': [{'amount': '250.00'}]},
+            metadata={'refund_requests': [{'amount': '250.00', 'status': PaymentRefundLedger.STATUS_SUBMITTED}]},
         )
 
         summary = _refund_request_summary(PaymentSession.objects.select_related('order').all())
 
         self.assertEqual(summary, {'count': 1, 'total': 250.0})
+
+    def test_finance_summary_excludes_unlinked_cancelled_and_refunded_collections(self):
+        User = get_user_model()
+        admin = User.objects.create_superuser(
+            username='finance-admin',
+            email='finance-admin@example.com',
+            password='password',
+        )
+        Order = apps.get_model('order', 'Order')
+        order = Order.objects.create(
+            number='100500',
+            currency='KES',
+            total_incl_tax=Decimal('25000.00'),
+            total_excl_tax=Decimal('25000.00'),
+            status='Placed',
+            date_placed=timezone.now(),
+        )
+        collectible = self._payment(
+            reference='PAY-COLLECTIBLE',
+            status=PaymentSession.STATUS_AUTHORIZED,
+            amount=Decimal('25000.00'),
+            order=order,
+        )
+        self._payment(
+            reference='PAY-NO-ORDER',
+            status=PaymentSession.STATUS_AUTHORIZED,
+            amount=Decimal('51000.00'),
+        )
+        cancelled = self._payment(
+            reference='PAY-CANCELLED',
+            status=PaymentSession.STATUS_AUTHORIZED,
+            amount=Decimal('8000.00'),
+            order=order,
+        )
+        PaymentReconciliation.objects.create(
+            payment_session=cancelled,
+            order=order,
+            provider=cancelled.provider,
+            method=cancelled.method,
+            merchant_reference=cancelled.reference,
+            expected_amount=cancelled.amount,
+            paid_amount=cancelled.amount,
+            currency=cancelled.currency,
+            status=PaymentReconciliation.STATUS_CANCELLED,
+        )
+        PaymentRefundLedger.objects.create(
+            payment_session=collectible,
+            order=order,
+            refund_reference='REFUND-COLLECTIBLE',
+            amount=Decimal('25000.00'),
+            currency='KES',
+            gateway='bank_transfer',
+            status=PaymentRefundLedger.STATUS_SUCCEEDED,
+            completion_state=PaymentRefundLedger.COMPLETION_FULL_COMPLETED,
+        )
+        client = APIClient()
+        client.force_authenticate(admin)
+
+        response = client.get('/api/v1/admin/finance/summary/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['collections']['gross_total'], 25000.0)
+        self.assertEqual(response.data['collections']['total'], 0.0)
+        self.assertEqual(response.data['collections']['excluded_count'], 2)
+        self.assertEqual(response.data['refunds'], {'count': 1, 'total': 25000.0})
+
+
+class AdminPaymentCancellationTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username='admin',
+            email='admin@example.com',
+            password='password',
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def _payment(self, **overrides):
+        defaults = {
+            'method': 'bank_transfer',
+            'provider': 'bank_transfer',
+            'reference': 'PAY-BANK123',
+            'amount': Decimal('2500.00'),
+            'currency': 'KES',
+            'status': PaymentSession.STATUS_AUTHORIZED,
+        }
+        defaults.update(overrides)
+        return PaymentSession.objects.create(**defaults)
+
+    def test_platform_admin_can_cancel_unlinked_payment(self):
+        payment = self._payment()
+
+        response = self.client.post(
+            f'/api/v1/admin/payments/{payment.reference}/cancel/',
+            {'reason': 'Manual bank payment was not received.'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentSession.STATUS_CANCELLED)
+        self.assertTrue(payment.metadata['admin_cancelled'])
+        self.assertEqual(payment.metadata['previous_status'], PaymentSession.STATUS_AUTHORIZED)
+        self.assertTrue(
+            PaymentEvent.objects.filter(
+                payment_session=payment,
+                kind=PaymentEvent.KIND_STATUS_APPLIED,
+                status_after=PaymentSession.STATUS_CANCELLED,
+            ).exists()
+        )
+
+    def test_linked_payment_must_use_order_refund_or_cancel_workflow(self):
+        Order = apps.get_model('order', 'Order')
+        order = Order.objects.create(
+            number='100001',
+            currency='KES',
+            total_incl_tax=Decimal('2500.00'),
+            total_excl_tax=Decimal('2500.00'),
+            status='Placed',
+            date_placed=timezone.now(),
+        )
+        payment = self._payment(order=order)
+
+        response = self.client.post(
+            f'/api/v1/admin/payments/{payment.reference}/cancel/',
+            {'reason': 'Should not be allowed.'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentSession.STATUS_AUTHORIZED)
+
+
+class RefundAndReturnWorkflowTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username='refund-admin',
+            email='refund-admin@example.com',
+            password='password',
+        )
+
+    def _payment(self, **overrides):
+        defaults = {
+            'method': PaymentSession.METHOD_BANK_TRANSFER,
+            'provider': 'bank_transfer',
+            'reference': 'PAY-REFUND123',
+            'amount': Decimal('1000.00'),
+            'currency': 'KES',
+            'status': PaymentSession.STATUS_AUTHORIZED,
+        }
+        defaults.update(overrides)
+        return PaymentSession.objects.create(**defaults)
+
+    def test_refund_can_be_submitted_and_completed_with_accounting_entry(self):
+        payment = self._payment()
+        refund = record_payment_refund_ledger(
+            payment,
+            amount=Decimal('400.00'),
+            reason='Customer refund',
+            refund_reference='REFUND-TEST-001',
+            requested_by=self.admin,
+        )
+
+        refund = update_payment_refund_ledger_status(
+            refund,
+            action='submit',
+            provider_reference='BANK-REF-1',
+            reviewed_by=self.admin,
+        )
+        self.assertEqual(refund.status, PaymentRefundLedger.STATUS_SUBMITTED)
+        self.assertEqual(refund.provider_reference, 'BANK-REF-1')
+
+        refund = update_payment_refund_ledger_status(
+            refund,
+            action='succeed',
+            provider_reference='BANK-REF-2',
+            reviewed_by=self.admin,
+        )
+        self.assertEqual(refund.status, PaymentRefundLedger.STATUS_SUCCEEDED)
+        self.assertEqual(refund.completion_state, PaymentRefundLedger.COMPLETION_PARTIAL_COMPLETED)
+        self.assertIsNotNone(refund.processed_at)
+
+        AccountingJournalEntry = apps.get_model('accounting', 'AccountingJournalEntry')
+        self.assertTrue(AccountingJournalEntry.objects.filter(reference='REFUND-REFUND-TEST-001').exists())
+
+    def test_refund_completion_requires_submit_first(self):
+        payment = self._payment(reference='PAY-REFUND456')
+        refund = record_payment_refund_ledger(
+            payment,
+            amount=Decimal('200.00'),
+            reason='Customer refund',
+            refund_reference='REFUND-TEST-002',
+            requested_by=self.admin,
+        )
+
+        with self.assertRaises(ValueError):
+            update_payment_refund_ledger_status(refund, action='succeed', reviewed_by=self.admin)
+
+    def test_full_refund_marks_order_refunded(self):
+        Order = apps.get_model('order', 'Order')
+        OrderStatusChange = apps.get_model('order', 'OrderStatusChange')
+        order = Order.objects.create(
+            number='100902',
+            currency='KES',
+            total_incl_tax=Decimal('1000.00'),
+            total_excl_tax=Decimal('1000.00'),
+            status='Delivered',
+            date_placed=timezone.now(),
+        )
+        payment = self._payment(reference='PAY-FULL-REFUND', order=order, amount=Decimal('1000.00'))
+        refund = record_payment_refund_ledger(
+            payment,
+            amount=Decimal('1000.00'),
+            reason='Full refund',
+            refund_reference='REFUND-FULL-001',
+            status=PaymentRefundLedger.STATUS_SUBMITTED,
+            requested_by=self.admin,
+        )
+
+        update_payment_refund_ledger_status(refund, action='succeed', reviewed_by=self.admin)
+
+        order.refresh_from_db()
+        self.assertEqual(order.status, 'Refunded')
+        self.assertTrue(
+            OrderStatusChange.objects.filter(
+                order=order,
+                old_status='Delivered',
+                new_status='Refunded',
+            ).exists()
+        )
+
+    def test_return_workflow_prevents_skipping_to_receive(self):
+        return_case = PaymentReturnCase(status=PaymentReturnCase.STATUS_REQUESTED)
+
+        with self.assertRaises(ValueError):
+            update_payment_return_case(return_case, action='receive', reviewed_by=self.admin)
 
 
 class PesapalNotificationSerializerTests(TestCase):

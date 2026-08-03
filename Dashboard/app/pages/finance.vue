@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import type { FinanceOrderDetail, FinancePayoutBatch, FinanceReconciliationItem, FinanceRefundLedgerItem, FinanceReturnCaseItem, FinanceSupplierPayableItem } from '~/composables/useFinance'
+import type { SupplierItem } from '~/composables/useSuppliers'
+import type { UserTableRow } from '~/types/UserTableRow'
 
 const toast = useToast()
+const route = useRoute()
 const {
   createFinanceReturn,
   createPayoutBatch,
@@ -15,12 +18,53 @@ const {
   getPayoutBatches,
   payoutBatchCsvUrl,
   updateFinanceReturn,
+  updateFinanceRefund,
   updateFinanceReconciliation,
   updatePayoutBatchStatus,
 } = useFinance()
+const { getSuppliers } = useSuppliers()
+const { getUsers } = useUser()
 
 const ALL_STATUSES = '__all_statuses__'
 const ALL_PROVIDERS = '__all_providers__'
+const FINANCE_VIEW_META: Record<string, { title: string, description: string }> = {
+  overview: {
+    title: 'Finance Overview',
+    description: 'Monitor collections, payment status, fees, supplier totals, refunds, and margin.',
+  },
+  reconciliation: {
+    title: 'Payment Reconciliation',
+    description: 'Match gateway collections against orders, investigate variances, and clear finance rows.',
+  },
+  'supplier-payables': {
+    title: 'Supplier Payables',
+    description: 'Track what each supplier is owed, payout readiness, margins, and account manager ownership.',
+  },
+  'payout-batches': {
+    title: 'Supplier Payout Batches',
+    description: 'Create, approve, export, and mark supplier payout batches as paid.',
+  },
+  refunds: {
+    title: 'Refund And Reversal Ledger',
+    description: 'Review full and partial refunds, gateway references, completion states, and finance sync.',
+  },
+  returns: {
+    title: 'Return Intake And Restock',
+    description: 'Create return cases, accept quantities, decide restock handling, and trigger refund workflow.',
+  },
+  order: {
+    title: 'Order Finance Lookup',
+    description: 'Inspect payments, payables, reconciliation rows, returns, refunds, fees, and margin for one order.',
+  },
+}
+
+const activeView = computed(() => {
+  const view = typeof route.query.view === 'string' ? route.query.view : 'overview'
+  return FINANCE_VIEW_META[view] ? view : 'overview'
+})
+const activeViewMeta = computed(() => FINANCE_VIEW_META[activeView.value])
+const isOverviewView = computed(() => activeView.value === 'overview')
+const isView = (...views: string[]) => views.includes(activeView.value)
 
 const isLoading = ref(false)
 const isOrderFinanceLoading = ref(false)
@@ -37,6 +81,7 @@ const returns = ref<FinanceReturnCaseItem[]>([])
 const payoutBatches = ref<FinancePayoutBatch[]>([])
 const orderFinance = ref<FinanceOrderDetail | null>(null)
 const orderFinanceNumber = ref('')
+const selectedPayableIds = ref<number[]>([])
 const reconciliationSummary = ref<any>({})
 const payableSummary = ref<any>({})
 const refundSummary = ref<any>({})
@@ -54,6 +99,16 @@ const returnPagination = ref<any>({})
 const payoutPagination = ref<any>({})
 const payoutSummary = ref<any>({})
 const payoutEvidenceFile = ref<File | null>(null)
+const supplierSearch = ref('')
+const supplierOptions = ref<SupplierItem[]>([])
+const supplierPickerOpen = ref(false)
+const isSupplierPickerLoading = ref(false)
+const accountManagerSearch = ref('')
+const accountManagerOptions = ref<UserTableRow[]>([])
+const accountManagerPickerOpen = ref(false)
+const isAccountManagerPickerLoading = ref(false)
+let supplierSearchTimer: ReturnType<typeof setTimeout> | null = null
+let accountManagerSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const reconciliationFilters = reactive({
   search: '',
@@ -124,12 +179,22 @@ const returnCreateForm = reactive({
   restockDecision: 'pending',
   conditionNote: '',
 })
+const returnLookupOrderNumber = ref('')
+const returnLookup = ref<FinanceOrderDetail | null>(null)
+const isReturnLookupLoading = ref(false)
 
 const returnActionForm = reactive({
   returnId: '',
   action: 'approve',
   acceptedQuantity: '',
   restockDecision: 'restock',
+  notes: '',
+})
+
+const refundActionForm = reactive({
+  refundId: '',
+  action: 'submit',
+  providerReference: '',
   notes: '',
 })
 
@@ -151,7 +216,7 @@ const collectionCards = computed(() => [
   {
     label: 'Customer collections',
     value: money(summary.value?.collections?.total),
-    meta: `${summary.value?.collections?.count || 0} confirmed payment(s)`,
+    meta: `${summary.value?.collections?.count || 0} collectible payment(s), ${summary.value?.collections?.excluded_count || 0} excluded`,
     icon: 'i-lucide-banknote',
     tone: 'text-emerald-600',
   },
@@ -179,7 +244,7 @@ const collectionCards = computed(() => [
   {
     label: 'Refunds',
     value: money(summary.value?.refunds?.total),
-    meta: `${summary.value?.refunds?.count || 0} request(s)`,
+    meta: `${summary.value?.refunds?.count || 0} submitted/succeeded`,
     icon: 'i-lucide-undo-2',
     tone: 'text-amber-600',
   },
@@ -191,6 +256,27 @@ const collectionCards = computed(() => [
     tone: 'text-slate-700',
   },
 ])
+
+const selectedReturnLine = computed(() => {
+  const lineId = Number(returnCreateForm.lineId)
+  if (!Number.isInteger(lineId) || !returnLookup.value)
+    return null
+  return returnLookup.value.lines.find(line => Number(line.line_id) === lineId) || null
+})
+
+const returnPaymentOptions = computed(() => {
+  const payments = returnLookup.value?.payments || []
+  return payments.map(payment => ({
+    label: `${formatLabel(payment.method)} - ${payment.reference} - ${money(payment.amount)}`,
+    value: payment.reference,
+  }))
+})
+
+const canCreateReturn = computed(() => Boolean(
+  returnCreateForm.paymentReference.trim()
+  && Number(returnCreateForm.lineId)
+  && Number(returnCreateForm.quantity),
+))
 
 const paymentStatusColumns: TableColumn<any>[] = [
   { accessorKey: 'status', header: 'Status', cell: ({ row }) => formatLabel(row.original.status) },
@@ -231,6 +317,7 @@ const supplierPayableColumns: TableColumn<FinanceSupplierPayableItem>[] = [
 ]
 
 const refundColumns: TableColumn<FinanceRefundLedgerItem>[] = [
+  { accessorKey: 'id', header: 'ID' },
   { accessorKey: 'completion_state', header: 'Completion', cell: ({ row }) => formatLabel(row.original.completion_state || row.original.status) },
   { accessorKey: 'refund_scope', header: 'Scope', cell: ({ row }) => formatLabel(row.original.refund_scope) },
   { accessorKey: 'refund_type', header: 'Type', cell: ({ row }) => formatLabel(row.original.refund_type) },
@@ -239,7 +326,8 @@ const refundColumns: TableColumn<FinanceRefundLedgerItem>[] = [
   { accessorKey: 'payment_reference', header: 'Payment Ref' },
   { accessorKey: 'gateway', header: 'Gateway', cell: ({ row }) => formatLabel(row.original.gateway) },
   { accessorKey: 'amount', header: 'Amount', cell: ({ row }) => money(row.original.amount) },
-  { accessorKey: 'erpnext_sync_status', header: 'ERPNext', cell: ({ row }) => formatLabel(row.original.erpnext_sync_status || 'pending') },
+  { accessorKey: 'erpnext_sync_status', header: 'Sync', cell: ({ row }) => formatLabel(row.original.erpnext_sync_status || 'pending') },
+  { accessorKey: 'next_actions', header: 'Next', cell: ({ row }) => row.original.next_actions?.length ? row.original.next_actions.map(formatLabel).join(', ') : 'Done' },
   { accessorKey: 'reason', header: 'Reason', cell: ({ row }) => row.original.reason || 'No reason recorded' },
   { accessorKey: 'created_at', header: 'Created', cell: ({ row }) => formatDate(row.original.created_at) },
 ]
@@ -254,7 +342,7 @@ const returnColumns: TableColumn<FinanceReturnCaseItem>[] = [
   { accessorKey: 'refund_amount', header: 'Refund', cell: ({ row }) => money(row.original.refund_amount) },
   { accessorKey: 'restock_decision', header: 'Restock', cell: ({ row }) => formatLabel(row.original.restock_decision) },
   { accessorKey: 'refund_reference', header: 'Refund Ref', cell: ({ row }) => row.original.refund_reference || 'Not created' },
-  { accessorKey: 'erpnext_rule', header: 'ERPNext Rule', cell: ({ row }) => formatLabel(row.original.erpnext_rule) },
+  { accessorKey: 'erpnext_rule', header: 'Return Rule', cell: ({ row }) => formatLabel(row.original.erpnext_rule) },
   { accessorKey: 'updated_at', header: 'Updated', cell: ({ row }) => formatDate(row.original.updated_at) },
 ]
 
@@ -282,6 +370,7 @@ const providerOptions = [
 
 const payableStatusOptions = [
   { label: 'All statuses', value: ALL_STATUSES },
+  { label: 'Ready unpaid', value: 'ready' },
   { label: 'Pending', value: 'pending' },
   { label: 'Payable', value: 'payable' },
   { label: 'On hold', value: 'on_hold' },
@@ -298,6 +387,13 @@ const refundStatusOptions = [
   { label: 'Succeeded', value: 'succeeded' },
   { label: 'Failed', value: 'failed' },
   { label: 'Cancelled', value: 'cancelled' },
+]
+
+const refundActionOptions = [
+  { label: 'Submit refund', value: 'submit' },
+  { label: 'Mark succeeded', value: 'succeed' },
+  { label: 'Mark failed', value: 'fail' },
+  { label: 'Cancel request', value: 'cancel' },
 ]
 
 const refundTypeOptions = [
@@ -370,6 +466,34 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function formatSupplierOption(supplier: SupplierItem) {
+  const company = supplier.company_name || supplier.partner?.name || 'Unnamed supplier'
+  const contact = supplier.contact_name || supplier.user?.email || ''
+  return contact ? `${company} - ${contact}` : company
+}
+
+function formatAccountManagerOption(manager: UserTableRow | { email?: string, name?: string }) {
+  const email = manager.email || ''
+  const name = manager.name && manager.name !== email ? manager.name : ''
+  return name ? `${name} (${email})` : email || 'Unassigned'
+}
+
+function syncSupplierPickerFromPayables() {
+  if (supplierSearch.value || !payableFilters.supplierId)
+    return
+  const row = payables.value.find(payable => String(payable.supplier_id || '') === String(payableFilters.supplierId))
+  if (row)
+    supplierSearch.value = row.supplier_name || row.partner_name || ''
+}
+
+function syncAccountManagerPickerFromPayables() {
+  if (accountManagerSearch.value || !payableFilters.accountManagerId)
+    return
+  const row = payables.value.find(payable => String(payable.account_manager_id || '') === String(payableFilters.accountManagerId))
+  if (row)
+    accountManagerSearch.value = row.account_manager_email || ''
+}
+
 function reconciliationStatusColor() {
   const unresolved = Number(summary.value?.reconciliation?.unresolved_count || 0)
   const issues = Number(summary.value?.reconciliation?.issues_count || 0)
@@ -396,6 +520,90 @@ async function loadSummary() {
       description: result.error || 'Please try again.',
       color: 'error',
     })
+}
+
+async function loadSupplierOptions(search = '') {
+  isSupplierPickerLoading.value = true
+  const result = await getSuppliers({ search })
+  supplierOptions.value = result.success ? result.data?.results ?? [] : []
+  isSupplierPickerLoading.value = false
+}
+
+async function openSupplierPicker() {
+  supplierPickerOpen.value = true
+  await loadSupplierOptions(supplierSearch.value.trim())
+}
+
+function queueSupplierSearch() {
+  payableFilters.supplierId = ''
+  supplierPickerOpen.value = true
+  if (supplierSearchTimer)
+    clearTimeout(supplierSearchTimer)
+  supplierSearchTimer = setTimeout(() => {
+    loadSupplierOptions(supplierSearch.value.trim())
+  }, 250)
+}
+
+function selectSupplierFilter(supplier: SupplierItem) {
+  payableFilters.supplierId = String(supplier.id)
+  supplierSearch.value = formatSupplierOption(supplier)
+  supplierPickerOpen.value = false
+  if (supplier.account_manager?.id) {
+    payableFilters.accountManagerId = String(supplier.account_manager.id)
+    accountManagerSearch.value = formatAccountManagerOption(supplier.account_manager)
+  }
+  else {
+    payableFilters.accountManagerId = ''
+    accountManagerSearch.value = ''
+  }
+  applyPayableFilters()
+}
+
+function clearSupplierFilter() {
+  payableFilters.supplierId = ''
+  supplierSearch.value = ''
+  supplierPickerOpen.value = false
+}
+
+async function loadAccountManagerOptions(search = '') {
+  isAccountManagerPickerLoading.value = true
+  const result = await getUsers({
+    role: 'staff',
+    status: 'active',
+    search,
+    pageSize: 20,
+    sortBy: 'name',
+  })
+  accountManagerOptions.value = result.success ? result.data?.results ?? [] : []
+  isAccountManagerPickerLoading.value = false
+}
+
+async function openAccountManagerPicker() {
+  accountManagerPickerOpen.value = true
+  await loadAccountManagerOptions(accountManagerSearch.value.trim())
+}
+
+function queueAccountManagerSearch() {
+  payableFilters.accountManagerId = ''
+  accountManagerPickerOpen.value = true
+  if (accountManagerSearchTimer)
+    clearTimeout(accountManagerSearchTimer)
+  accountManagerSearchTimer = setTimeout(() => {
+    loadAccountManagerOptions(accountManagerSearch.value.trim())
+  }, 250)
+}
+
+function selectAccountManagerFilter(manager: UserTableRow) {
+  payableFilters.accountManagerId = String(manager.id)
+  accountManagerSearch.value = formatAccountManagerOption(manager)
+  accountManagerPickerOpen.value = false
+  applyPayableFilters()
+}
+
+function clearAccountManagerFilter() {
+  payableFilters.accountManagerId = ''
+  accountManagerSearch.value = ''
+  accountManagerPickerOpen.value = false
 }
 
 async function loadReconciliations() {
@@ -444,6 +652,8 @@ async function loadPayables() {
     payables.value = result.data?.results ?? []
     payableSummary.value = result.data?.summary ?? {}
     payablePagination.value = result.data?.pagination ?? {}
+    syncSupplierPickerFromPayables()
+    syncAccountManagerPickerFromPayables()
   }
   else {
     payables.value = []
@@ -555,6 +765,57 @@ async function loadOrderFinance() {
   isOrderFinanceLoading.value = false
 }
 
+async function loadReturnOrder() {
+  const orderNumber = returnLookupOrderNumber.value.trim()
+  if (!orderNumber) {
+    toast.add({ title: 'Enter an order number', description: 'Use the order number from Orders, Payment Logs, or the customer request.', color: 'warning' })
+    return
+  }
+  isReturnLookupLoading.value = true
+  const result = await getFinanceOrderDetail(orderNumber)
+  if (result.success && result.data) {
+    returnLookup.value = result.data
+    returnFilters.orderNumber = result.data.number
+    const firstPayment = result.data.payments.find(payment => ['authorized', 'paid', 'succeeded', 'confirmed'].includes((payment.status || '').toLowerCase())) || result.data.payments[0]
+    if (firstPayment)
+      returnCreateForm.paymentReference = firstPayment.reference
+    if (result.data.lines.length === 1)
+      useReturnLine(result.data.lines[0])
+    toast.add({ title: 'Order loaded', description: `Choose the item being returned from order #${result.data.number}.`, color: 'success' })
+  }
+  else {
+    returnLookup.value = null
+    toast.add({ title: 'Could not load order', description: result.error || 'Please confirm the order number.', color: 'error' })
+  }
+  isReturnLookupLoading.value = false
+}
+
+async function refreshReturnLookup() {
+  const orderNumber = returnLookup.value?.number || returnLookupOrderNumber.value.trim()
+  if (!orderNumber)
+    return
+  const result = await getFinanceOrderDetail(orderNumber)
+  if (result.success && result.data)
+    returnLookup.value = result.data
+}
+
+function useReturnLine(line: FinanceOrderDetail['lines'][number]) {
+  returnCreateForm.lineId = String(line.line_id)
+  returnCreateForm.quantity = '1'
+  const unitAmount = Number(line.line_price_incl_tax || 0) / Math.max(Number(line.quantity || 1), 1)
+  returnCreateForm.refundAmount = unitAmount > 0 ? unitAmount.toFixed(2) : ''
+  returnCreateForm.reason ||= 'Customer return request'
+}
+
+function autofillReturnAmount() {
+  const line = selectedReturnLine.value
+  if (!line)
+    return
+  const quantity = Math.max(Number(returnCreateForm.quantity || 1), 1)
+  const unitAmount = Number(line.line_price_incl_tax || 0) / Math.max(Number(line.quantity || 1), 1)
+  returnCreateForm.refundAmount = (unitAmount * quantity).toFixed(2)
+}
+
 function applyReconciliationFilters() {
   reconciliationPage.value = 1
   loadReconciliations()
@@ -595,6 +856,17 @@ async function updateReconciliationFromForm() {
   isReconLoading.value = false
 }
 
+async function reviewReconciliation(row: FinanceReconciliationItem, status = 'matched') {
+  reconciliationActionForm.reconciliationId = String(row.id)
+  reconciliationActionForm.status = status
+  reconciliationActionForm.note = row.issues?.length ? `Reviewed: ${row.issues.join(', ')}` : 'Reviewed from finance table.'
+  await updateReconciliationFromForm()
+}
+
+function canQuickMatchReconciliation(row: FinanceReconciliationItem) {
+  return Boolean(row.order_number) && !row.issues?.length && row.status !== 'matched'
+}
+
 function applyPayableFilters() {
   payablePage.value = 1
   loadPayables()
@@ -609,7 +881,36 @@ function resetPayableFilters() {
   payableFilters.orderNumber = ''
   payableFilters.dateFrom = ''
   payableFilters.dateTo = ''
+  supplierSearch.value = ''
+  accountManagerSearch.value = ''
+  supplierPickerOpen.value = false
+  accountManagerPickerOpen.value = false
   applyPayableFilters()
+}
+
+function fetchReadyUnpaidPayables() {
+  payableFilters.status = 'ready'
+  payableFilters.orderNumber = ''
+  payablePage.value = 1
+  selectedPayableIds.value = []
+  loadPayables()
+}
+
+function togglePayableSelection(payableId: number, checked: boolean) {
+  const selected = new Set(selectedPayableIds.value)
+  if (checked)
+    selected.add(payableId)
+  else
+    selected.delete(payableId)
+  selectedPayableIds.value = [...selected]
+}
+
+function isPayableSelected(payableId: number) {
+  return selectedPayableIds.value.includes(payableId)
+}
+
+function selectablePayable(payable: FinanceSupplierPayableItem) {
+  return ['payable', 'approved'].includes(payable.status)
 }
 
 function applyRefundFilters() {
@@ -689,7 +990,7 @@ async function createReturnFromForm() {
     returnCreateForm.refundAmount = ''
     returnCreateForm.reason = ''
     returnCreateForm.conditionNote = ''
-    await Promise.all([loadReturns(), loadRefunds(), loadPayables(), loadSummary()])
+    await Promise.all([loadReturns(), loadRefunds(), loadPayables(), loadSummary(), refreshReturnLookup()])
   }
   else {
     toast.add({ title: 'Could not create return', description: result.error || 'Please check the order line.', color: 'error' })
@@ -717,7 +1018,7 @@ async function actionReturnFromForm() {
     returnActionForm.returnId = ''
     returnActionForm.acceptedQuantity = ''
     returnActionForm.notes = ''
-    await Promise.all([loadReturns(), loadRefunds(), loadPayables(), loadSummary()])
+    await Promise.all([loadReturns(), loadRefunds(), loadPayables(), loadSummary(), refreshReturnLookup()])
   }
   else {
     toast.add({ title: 'Could not update return', description: result.error || 'Please review the action.', color: 'error' })
@@ -725,11 +1026,38 @@ async function actionReturnFromForm() {
   isReturnsLoading.value = false
 }
 
+async function actionRefundFromForm() {
+  const refundId = Number(refundActionForm.refundId)
+  if (!Number.isInteger(refundId) || refundId <= 0) {
+    toast.add({ title: 'Refund ID needed', description: 'Enter the refund ID from the table.', color: 'warning' })
+    return
+  }
+  isRefundsLoading.value = true
+  const result = await updateFinanceRefund(refundId, {
+    action: refundActionForm.action,
+    provider_reference: refundActionForm.providerReference.trim(),
+    notes: refundActionForm.notes.trim(),
+  })
+  if (result.success) {
+    toast.add({ title: 'Refund updated', description: result.data?.refund_reference || 'Refund workflow advanced.', color: 'success' })
+    refundActionForm.refundId = ''
+    refundActionForm.providerReference = ''
+    refundActionForm.notes = ''
+    await Promise.all([loadRefunds(), loadReconciliations(), loadSummary(), refreshReturnLookup()])
+  }
+  else {
+    toast.add({ title: 'Could not update refund', description: result.error || 'Please review the action.', color: 'error' })
+  }
+  isRefundsLoading.value = false
+}
+
 async function createBatchFromForm() {
-  const payableIds = payoutForm.payableIds
-    .split(',')
-    .map(value => Number(value.trim()))
-    .filter(value => Number.isInteger(value) && value > 0)
+  const payableIds = selectedPayableIds.value.length
+    ? selectedPayableIds.value
+    : payoutForm.payableIds
+        .split(',')
+        .map(value => Number(value.trim()))
+        .filter(value => Number.isInteger(value) && value > 0)
   if (!payableIds.length) {
     toast.add({ title: 'Add payable IDs', description: 'Enter payable ledger IDs separated by commas.', color: 'warning' })
     return
@@ -743,6 +1071,7 @@ async function createBatchFromForm() {
   if (result.success) {
     toast.add({ title: 'Payout batch created', description: result.data?.batch_reference || 'The batch is ready for review.', color: 'success' })
     payoutForm.payableIds = ''
+    selectedPayableIds.value = []
     payoutForm.payoutMethod = ''
     payoutForm.notes = ''
     await Promise.all([loadPayables(), loadPayoutBatches()])
@@ -847,17 +1176,12 @@ onMounted(loadFinance)
   <div class="min-h-screen bg-default">
     <div class="flex flex-col gap-4 p-8 pb-4 md:flex-row md:items-center md:justify-between">
       <div>
-        <h1 class="text-xl font-semibold">Finance</h1>
+        <h1 class="text-xl font-semibold">{{ activeViewMeta.title }}</h1>
         <p class="text-sm text-toned">
-          Monitor collections, reconciliation, supplier payables, refunds, fees, and margin.
+          {{ activeViewMeta.description }}
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <UInput v-model="orderFinanceNumber" class="w-44" icon="i-lucide-receipt-text" placeholder="Order number" @keyup.enter="loadOrderFinance" />
-        <UButton color="neutral" variant="outline" :loading="isOrderFinanceLoading" @click="loadOrderFinance">
-          <UIcon name="i-lucide-file-search" />
-          Order finance
-        </UButton>
         <USelect v-model="pageSize" :items="pageSizeOptions" class="w-32" />
         <UButton to="/payment-logs" variant="outline">
           <UIcon name="i-lucide-credit-card" />
@@ -874,7 +1198,7 @@ onMounted(loadFinance)
       </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 px-8 md:grid-cols-2 xl:grid-cols-6">
+    <div v-if="isOverviewView" class="grid grid-cols-1 gap-4 px-8 md:grid-cols-2 xl:grid-cols-6">
       <UCard v-for="card in collectionCards" :key="card.label">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
@@ -888,7 +1212,7 @@ onMounted(loadFinance)
     </div>
 
     <div class="grid grid-cols-1 gap-6 p-8 xl:grid-cols-2">
-      <UCard>
+      <UCard v-if="isOverviewView">
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h3 class="text-base font-semibold">Payment Status</h3>
@@ -898,7 +1222,7 @@ onMounted(loadFinance)
         <UTable :columns="paymentStatusColumns" :data="summary?.collections?.by_status || []" :loading="isLoading" />
       </UCard>
 
-      <UCard>
+      <UCard v-if="isOverviewView">
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h3 class="text-base font-semibold">Payment Methods</h3>
@@ -908,7 +1232,7 @@ onMounted(loadFinance)
         <UTable :columns="paymentMethodColumns" :data="summary?.collections?.by_method || []" :loading="isLoading" />
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isView('returns')" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -921,34 +1245,125 @@ onMounted(loadFinance)
           </div>
         </template>
 
-        <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <UFormField label="Payment ref"><UInput v-model="returnCreateForm.paymentReference" placeholder="PAY-..." /></UFormField>
-          <UFormField label="Line ID"><UInput v-model="returnCreateForm.lineId" placeholder="Order line ID" /></UFormField>
-          <UFormField label="Quantity"><UInput v-model="returnCreateForm.quantity" type="number" min="1" /></UFormField>
-          <UFormField label="Refund amount"><UInput v-model="returnCreateForm.refundAmount" placeholder="Auto from line" /></UFormField>
-          <UFormField label="Restock decision"><USelect v-model="returnCreateForm.restockDecision" :items="restockDecisionOptions" /></UFormField>
-          <UFormField label="Condition"><UInput v-model="returnCreateForm.conditionNote" placeholder="Sealed, damaged, missing parts" /></UFormField>
-          <UFormField label="Reason"><UInput v-model="returnCreateForm.reason" placeholder="Customer return reason" /></UFormField>
-          <div class="flex items-end">
-            <UButton class="w-full justify-center" :loading="isReturnsLoading" @click="createReturnFromForm">
-              <UIcon name="i-lucide-rotate-ccw-square" />
-              Create return
-            </UButton>
+        <div class="mb-4 rounded-lg border border-default p-4">
+          <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p class="text-sm font-semibold">1. Load the order</p>
+              <p class="text-xs text-toned">Enter the order number. Payment, item lines, quantities, and refund amount will be filled from the order.</p>
+            </div>
+            <div class="flex flex-col gap-2 md:flex-row md:items-end">
+              <UFormField label="Order number" class="md:w-56">
+                <UInput v-model="returnLookupOrderNumber" icon="i-lucide-receipt-text" placeholder="100017" @keyup.enter="loadReturnOrder" />
+              </UFormField>
+              <UButton :loading="isReturnLookupLoading" @click="loadReturnOrder">
+                <UIcon name="i-lucide-file-search" />
+                Load order
+              </UButton>
+            </div>
+          </div>
+
+          <div v-if="returnLookup" class="space-y-4">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <div class="rounded-md border border-default p-3">
+                <p class="text-xs font-semibold uppercase text-toned">Order</p>
+                <p class="mt-1 font-semibold">#{{ returnLookup.number }}</p>
+                <p class="text-xs text-toned">{{ formatLabel(returnLookup.status) }}</p>
+              </div>
+              <div class="rounded-md border border-default p-3">
+                <p class="text-xs font-semibold uppercase text-toned">Customer</p>
+                <p class="mt-1 truncate font-semibold">{{ returnLookup.customer_email || 'Guest customer' }}</p>
+              </div>
+              <div class="rounded-md border border-default p-3">
+                <p class="text-xs font-semibold uppercase text-toned">Paid</p>
+                <p class="mt-1 font-semibold">{{ money(returnLookup.totals?.paid_total) }}</p>
+              </div>
+              <div class="rounded-md border border-default p-3">
+                <p class="text-xs font-semibold uppercase text-toned">Existing returns</p>
+                <p class="mt-1 font-semibold">{{ returnLookup.returns?.length || 0 }}</p>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-lg border border-default">
+              <table class="min-w-full divide-y divide-default text-sm">
+                <thead class="bg-muted">
+                  <tr>
+                    <th class="px-4 py-3 text-left font-semibold">Item</th>
+                    <th class="px-4 py-3 text-left font-semibold">Qty bought</th>
+                    <th class="px-4 py-3 text-left font-semibold">Line total</th>
+                    <th class="px-4 py-3 text-left font-semibold">Supplier payable</th>
+                    <th class="px-4 py-3 text-right font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-default">
+                  <tr v-for="line in returnLookup.lines" :key="line.line_id" :class="Number(returnCreateForm.lineId) === line.line_id ? 'bg-primary/10' : ''">
+                    <td class="px-4 py-3">
+                      <p class="font-semibold">{{ line.title }}</p>
+                      <p class="text-xs text-toned">{{ line.sku || 'No SKU' }}</p>
+                    </td>
+                    <td class="px-4 py-3">{{ line.quantity }}</td>
+                    <td class="px-4 py-3">{{ money(line.line_price_incl_tax) }}</td>
+                    <td class="px-4 py-3">{{ money(line.supplier_payable_total) }}</td>
+                    <td class="px-4 py-3 text-right">
+                      <UButton size="xs" color="neutral" variant="outline" @click="useReturnLine(line)">
+                        Select
+                      </UButton>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
-        <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <UFormField label="Return ID"><UInput v-model="returnActionForm.returnId" placeholder="ID from table" /></UFormField>
-          <UFormField label="Action"><USelect v-model="returnActionForm.action" :items="returnActionOptions" /></UFormField>
-          <UFormField label="Accepted qty"><UInput v-model="returnActionForm.acceptedQuantity" placeholder="Defaults to requested" /></UFormField>
-          <UFormField label="Restock decision"><USelect v-model="returnActionForm.restockDecision" :items="restockDecisionOptions" /></UFormField>
-          <UFormField label="Notes"><UInput v-model="returnActionForm.notes" placeholder="Review notes" @keyup.enter="actionReturnFromForm" /></UFormField>
+        <div class="mb-4 rounded-lg border border-default p-4">
+          <div class="mb-4">
+            <p class="text-sm font-semibold">2. Create the return case</p>
+            <p class="text-xs text-toned">After selecting an item, only adjust quantity, reason, and restock decision if needed.</p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <UFormField label="Payment">
+              <USelect v-if="returnPaymentOptions.length" v-model="returnCreateForm.paymentReference" :items="returnPaymentOptions" />
+              <UInput v-else v-model="returnCreateForm.paymentReference" placeholder="PAY-..." />
+            </UFormField>
+            <UFormField label="Selected item">
+              <UInput :model-value="selectedReturnLine?.title || 'Load order and select an item'" disabled />
+            </UFormField>
+            <UFormField label="Quantity">
+              <UInput v-model="returnCreateForm.quantity" type="number" min="1" @blur="autofillReturnAmount" @change="autofillReturnAmount" />
+            </UFormField>
+            <UFormField label="Refund amount">
+              <UInput v-model="returnCreateForm.refundAmount" placeholder="Auto from selected item" />
+            </UFormField>
+            <UFormField label="Restock decision"><USelect v-model="returnCreateForm.restockDecision" :items="restockDecisionOptions" /></UFormField>
+            <UFormField label="Condition"><UInput v-model="returnCreateForm.conditionNote" placeholder="Sealed, damaged, missing parts" /></UFormField>
+            <UFormField label="Reason"><UInput v-model="returnCreateForm.reason" placeholder="Customer return reason" /></UFormField>
+            <div class="flex items-end">
+              <UButton class="w-full justify-center" :disabled="!canCreateReturn" :loading="isReturnsLoading" @click="createReturnFromForm">
+                <UIcon name="i-lucide-rotate-ccw-square" />
+                Create return
+              </UButton>
+            </div>
+          </div>
         </div>
-        <div class="mb-4 flex justify-end">
-          <UButton color="neutral" variant="outline" :loading="isReturnsLoading" @click="actionReturnFromForm">
-            <UIcon name="i-lucide-check-check" />
-            Update return
-          </UButton>
+
+        <div class="mb-4 rounded-lg border border-default p-4">
+          <div class="mb-4">
+            <p class="text-sm font-semibold">3. Update return status</p>
+            <p class="text-xs text-toned">Use this after the item is approved, received, accepted, refunded, rejected, or cancelled.</p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <UFormField label="Return ID"><UInput v-model="returnActionForm.returnId" placeholder="ID from table" /></UFormField>
+            <UFormField label="Action"><USelect v-model="returnActionForm.action" :items="returnActionOptions" /></UFormField>
+            <UFormField label="Accepted qty"><UInput v-model="returnActionForm.acceptedQuantity" placeholder="Defaults to requested" /></UFormField>
+            <UFormField label="Restock decision"><USelect v-model="returnActionForm.restockDecision" :items="restockDecisionOptions" /></UFormField>
+            <UFormField label="Notes"><UInput v-model="returnActionForm.notes" placeholder="Review notes" @keyup.enter="actionReturnFromForm" /></UFormField>
+          </div>
+          <div class="mt-4 flex justify-end">
+            <UButton color="neutral" variant="outline" :loading="isReturnsLoading" @click="actionReturnFromForm">
+              <UIcon name="i-lucide-check-check" />
+              Update return
+            </UButton>
+          </div>
         </div>
 
         <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -982,7 +1397,7 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isView('refunds')" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -994,6 +1409,25 @@ onMounted(loadFinance)
             <UBadge color="warning" variant="soft">{{ summary?.refunds?.count || 0 }} refund record(s)</UBadge>
           </div>
         </template>
+
+        <div class="mb-4 rounded-lg border border-default p-4">
+          <div class="mb-4">
+            <p class="text-sm font-semibold">Refund workflow</p>
+            <p class="text-xs text-toned">Use the refund ID from the table. Requested refunds can be submitted or cancelled; submitted refunds can be marked succeeded or failed.</p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <UFormField label="Refund ID"><UInput v-model="refundActionForm.refundId" placeholder="ID from table" /></UFormField>
+            <UFormField label="Action"><USelect v-model="refundActionForm.action" :items="refundActionOptions" /></UFormField>
+            <UFormField label="Provider reference"><UInput v-model="refundActionForm.providerReference" placeholder="Gateway or bank ref" /></UFormField>
+            <UFormField label="Notes"><UInput v-model="refundActionForm.notes" placeholder="Review notes" @keyup.enter="actionRefundFromForm" /></UFormField>
+            <div class="flex items-end">
+              <UButton class="w-full justify-center" :loading="isRefundsLoading" @click="actionRefundFromForm">
+                <UIcon name="i-lucide-check-check" />
+                Update refund
+              </UButton>
+            </div>
+          </div>
+        </div>
 
         <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           <UFormField label="Search"><UInput v-model="refundFilters.search" icon="i-lucide-search" placeholder="Refund, payment, reason" @keyup.enter="applyRefundFilters" /></UFormField>
@@ -1025,7 +1459,7 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isView('reconciliation')" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1060,24 +1494,48 @@ onMounted(loadFinance)
             Apply
           </UButton>
         </div>
-        <div class="mb-4 grid grid-cols-1 gap-3 rounded-md border border-default p-3 md:grid-cols-4">
-          <UFormField label="Review row ID">
-            <UInput v-model="reconciliationActionForm.reconciliationId" placeholder="18" />
-          </UFormField>
-          <UFormField label="Reviewed status">
-            <USelect v-model="reconciliationActionForm.status" :items="reconciliationStatusOptions.filter(item => item.value !== ALL_STATUSES)" />
-          </UFormField>
-          <UFormField label="Finance note" class="md:col-span-2">
-            <UInput v-model="reconciliationActionForm.note" placeholder="Reason for clearing or holding this payment" @keyup.enter="updateReconciliationFromForm" />
-          </UFormField>
-          <div class="md:col-span-4 flex justify-end">
-            <UButton :loading="isReconLoading" @click="updateReconciliationFromForm">
-              <UIcon name="i-lucide-shield-check" />
-              Save review
-            </UButton>
-          </div>
+        <div class="overflow-x-auto rounded-lg border border-default">
+          <table class="min-w-full divide-y divide-default text-sm">
+            <thead class="bg-muted">
+              <tr>
+                <th class="px-4 py-3 text-left font-semibold">Payment</th>
+                <th class="px-4 py-3 text-left font-semibold">Order</th>
+                <th class="px-4 py-3 text-left font-semibold">Provider</th>
+                <th class="px-4 py-3 text-left font-semibold">Expected</th>
+                <th class="px-4 py-3 text-left font-semibold">Paid</th>
+                <th class="px-4 py-3 text-left font-semibold">Status</th>
+                <th class="px-4 py-3 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr v-for="row in reconciliations" :key="row.id">
+                <td class="px-4 py-3">
+                  <p class="font-semibold">{{ row.payment_reference }}</p>
+                  <p class="text-xs text-toned">{{ row.provider_reference || row.merchant_reference || 'No provider ref' }}</p>
+                </td>
+                <td class="px-4 py-3">{{ row.order_number || 'Unlinked' }}</td>
+                <td class="px-4 py-3">{{ formatLabel(row.provider) }}</td>
+                <td class="px-4 py-3">{{ money(row.expected_amount) }}</td>
+                <td class="px-4 py-3">{{ money(row.paid_amount) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold">{{ formatLabel(row.status) }}</p>
+                  <p class="max-w-xs truncate text-xs text-toned">{{ row.issues?.length ? row.issues.join(', ') : 'No issues' }}</p>
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex justify-end gap-2">
+                    <UTooltip :text="canQuickMatchReconciliation(row) ? 'Confirm this row as reconciled' : 'Unlinked or issue rows should stay in review until fixed'">
+                      <UButton size="xs" color="success" variant="outline" :disabled="!canQuickMatchReconciliation(row)" @click="reviewReconciliation(row, 'matched')">Mark matched</UButton>
+                    </UTooltip>
+                    <UButton size="xs" color="warning" variant="outline" :disabled="row.status === 'manual_review'" @click="reviewReconciliation(row, 'manual_review')">Review</UButton>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!isReconLoading && !reconciliations.length">
+                <td class="px-4 py-8 text-center text-toned" colspan="7">No reconciliation rows found.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <UTable :columns="reconciliationColumns" :data="reconciliations" :loading="isReconLoading" />
         <div class="mt-4 flex items-center justify-between gap-3 text-sm text-toned">
           <span>Page {{ reconciliationPagination.page || reconciliationPage }} of {{ reconciliationPagination.num_pages || 1 }}</span>
           <div class="flex gap-2">
@@ -1087,7 +1545,7 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isView('supplier-payables')" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1105,8 +1563,85 @@ onMounted(loadFinance)
           <UFormField label="Status"><USelect v-model="payableFilters.status" :items="payableStatusOptions" /></UFormField>
           <UFormField label="Currency"><UInput v-model="payableFilters.currency" placeholder="KES" @keyup.enter="applyPayableFilters" /></UFormField>
           <UFormField label="Order"><UInput v-model="payableFilters.orderNumber" placeholder="100017" @keyup.enter="applyPayableFilters" /></UFormField>
-          <UFormField label="Supplier ID"><UInput v-model="payableFilters.supplierId" placeholder="12" @keyup.enter="applyPayableFilters" /></UFormField>
-          <UFormField label="Account Manager ID"><UInput v-model="payableFilters.accountManagerId" placeholder="5" @keyup.enter="applyPayableFilters" /></UFormField>
+          <UFormField label="Supplier">
+            <div class="relative">
+              <UInput
+                v-model="supplierSearch"
+                icon="i-lucide-store"
+                placeholder="Search supplier name"
+                autocomplete="off"
+                @focus="openSupplierPicker"
+                @input="queueSupplierSearch"
+                @keyup.enter="applyPayableFilters"
+                @keydown.esc="supplierPickerOpen = false"
+              >
+                <template v-if="payableFilters.supplierId || supplierSearch" #trailing>
+                  <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click.stop="clearSupplierFilter" />
+                </template>
+              </UInput>
+              <div
+                v-if="supplierPickerOpen"
+                class="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-md border border-default bg-default shadow-lg"
+              >
+                <button
+                  v-for="supplier in supplierOptions"
+                  :key="supplier.id"
+                  type="button"
+                  class="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                  @mousedown.prevent="selectSupplierFilter(supplier)"
+                >
+                  <span class="block font-semibold">{{ supplier.company_name || supplier.partner?.name || 'Unnamed supplier' }}</span>
+                  <span class="block text-xs text-toned">
+                    {{ supplier.contact_name || supplier.user?.email || 'No contact' }}
+                    <span v-if="supplier.account_manager"> · Manager: {{ supplier.account_manager.name || supplier.account_manager.email }}</span>
+                  </span>
+                </button>
+                <div v-if="isSupplierPickerLoading" class="px-3 py-2 text-sm text-toned">
+                  <UIcon name="i-lucide-loader-circle" class="mr-2 animate-spin" />
+                  Loading suppliers
+                </div>
+                <div v-else-if="!supplierOptions.length" class="px-3 py-2 text-sm text-toned">No suppliers found.</div>
+              </div>
+            </div>
+          </UFormField>
+          <UFormField label="Account Manager">
+            <div class="relative">
+              <UInput
+                v-model="accountManagerSearch"
+                icon="i-lucide-user-round"
+                placeholder="Search account manager"
+                autocomplete="off"
+                @focus="openAccountManagerPicker"
+                @input="queueAccountManagerSearch"
+                @keyup.enter="applyPayableFilters"
+                @keydown.esc="accountManagerPickerOpen = false"
+              >
+                <template v-if="payableFilters.accountManagerId || accountManagerSearch" #trailing>
+                  <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-x" @click.stop="clearAccountManagerFilter" />
+                </template>
+              </UInput>
+              <div
+                v-if="accountManagerPickerOpen"
+                class="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-md border border-default bg-default shadow-lg"
+              >
+                <button
+                  v-for="manager in accountManagerOptions"
+                  :key="manager.id"
+                  type="button"
+                  class="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                  @mousedown.prevent="selectAccountManagerFilter(manager)"
+                >
+                  <span class="block font-semibold">{{ manager.name || manager.email }}</span>
+                  <span class="block text-xs text-toned">{{ manager.email }}</span>
+                </button>
+                <div v-if="isAccountManagerPickerLoading" class="px-3 py-2 text-sm text-toned">
+                  <UIcon name="i-lucide-loader-circle" class="mr-2 animate-spin" />
+                  Loading account managers
+                </div>
+                <div v-else-if="!accountManagerOptions.length" class="px-3 py-2 text-sm text-toned">No account managers found.</div>
+              </div>
+            </div>
+          </UFormField>
           <UFormField label="From"><UInput v-model="payableFilters.dateFrom" type="date" /></UFormField>
           <UFormField label="To"><UInput v-model="payableFilters.dateTo" type="date" /></UFormField>
         </div>
@@ -1115,12 +1650,78 @@ onMounted(loadFinance)
             <UIcon name="i-lucide-rotate-ccw" />
             Reset
           </UButton>
+          <UButton color="primary" variant="soft" :loading="isPayablesLoading" @click="fetchReadyUnpaidPayables">
+            <UIcon name="i-lucide-wallet-cards" />
+            Fetch unpaid payouts
+          </UButton>
           <UButton :loading="isPayablesLoading" @click="applyPayableFilters">
             <UIcon name="i-lucide-filter" />
             Apply
           </UButton>
         </div>
-        <UTable :columns="supplierPayableColumns" :data="payables" :loading="isPayablesLoading" />
+        <div class="mb-4 flex flex-col gap-3 rounded-lg border border-default p-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-sm font-semibold">Create payout from selected rows</p>
+            <p class="text-xs text-toned">{{ selectedPayableIds.length }} payable row(s) selected. Only payable or approved rows can be selected.</p>
+          </div>
+          <div class="grid w-full grid-cols-1 gap-2 md:w-auto md:grid-cols-3">
+            <UInput v-model="payoutForm.payoutMethod" placeholder="Payout method" />
+            <UInput v-model="payoutForm.notes" placeholder="Notes" />
+            <UButton :disabled="!selectedPayableIds.length" :loading="isPayoutLoading" @click="createBatchFromForm">
+              <UIcon name="i-lucide-folder-plus" />
+              Create batch
+            </UButton>
+          </div>
+        </div>
+        <div class="overflow-x-auto rounded-lg border border-default">
+          <table class="min-w-full divide-y divide-default text-sm">
+            <thead class="bg-muted">
+              <tr>
+                <th class="px-4 py-3 text-left font-semibold">Select</th>
+                <th class="px-4 py-3 text-left font-semibold">Supplier</th>
+                <th class="px-4 py-3 text-left font-semibold">Order</th>
+                <th class="px-4 py-3 text-left font-semibold">Product</th>
+                <th class="px-4 py-3 text-left font-semibold">Qty</th>
+                <th class="px-4 py-3 text-left font-semibold">Payable</th>
+                <th class="px-4 py-3 text-left font-semibold">Margin</th>
+                <th class="px-4 py-3 text-left font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-default">
+              <tr v-for="payable in payables" :key="payable.id">
+                <td class="px-4 py-3">
+                  <UCheckbox
+                    :model-value="isPayableSelected(payable.id)"
+                    :disabled="!selectablePayable(payable)"
+                    @update:model-value="togglePayableSelection(payable.id, Boolean($event))"
+                  />
+                </td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold">{{ payable.supplier_name || payable.partner_name || 'Unknown supplier' }}</p>
+                  <p class="text-xs text-toned">{{ payable.account_manager_email || 'Unassigned' }}</p>
+                </td>
+                <td class="px-4 py-3">{{ payable.order_number }}</td>
+                <td class="px-4 py-3">{{ payable.product_title }}</td>
+                <td class="px-4 py-3">{{ payable.quantity }}</td>
+                <td class="px-4 py-3">{{ money(payable.payable_total) }}</td>
+                <td class="px-4 py-3">{{ money(payable.gross_margin) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold">{{ formatLabel(payable.status) }}</p>
+                  <p v-if="payable.reversal_reason" class="max-w-xs truncate text-xs text-toned">{{ payable.reversal_reason }}</p>
+                </td>
+              </tr>
+              <tr v-if="!isPayablesLoading && !payables.length">
+                <td class="px-4 py-8 text-center text-toned" colspan="8">No supplier payable rows found.</td>
+              </tr>
+              <tr v-if="isPayablesLoading">
+                <td class="px-4 py-8 text-center text-toned" colspan="8">
+                  <UIcon name="i-lucide-loader-circle" class="mr-2 animate-spin" />
+                  Loading supplier payables
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <div class="mt-4 flex items-center justify-between gap-3 text-sm text-toned">
           <span>Page {{ payablePagination.page || payablePage }} of {{ payablePagination.num_pages || 1 }}</span>
           <div class="flex gap-2">
@@ -1130,7 +1731,7 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isView('payout-batches')" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1247,7 +1848,7 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard class="xl:col-span-2">
+      <UCard v-if="isOverviewView" class="xl:col-span-2">
         <template #header>
           <h3 class="text-base font-semibold">Finance Controls</h3>
         </template>
@@ -1267,7 +1868,27 @@ onMounted(loadFinance)
         </div>
       </UCard>
 
-      <UCard v-if="orderFinance" class="xl:col-span-2">
+      <UCard v-if="activeView === 'order'" class="xl:col-span-2">
+        <template #header>
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 class="text-base font-semibold">Find Order Finance</h3>
+              <p class="text-xs text-toned">Enter an order number to load its payment, refund, payable, return, and margin rows.</p>
+            </div>
+          </div>
+        </template>
+        <div class="flex flex-col gap-3 md:flex-row md:items-end">
+          <UFormField label="Order number" class="w-full md:max-w-xs">
+            <UInput v-model="orderFinanceNumber" icon="i-lucide-receipt-text" placeholder="100017" @keyup.enter="loadOrderFinance" />
+          </UFormField>
+          <UButton :loading="isOrderFinanceLoading" @click="loadOrderFinance">
+            <UIcon name="i-lucide-file-search" />
+            Load order finance
+          </UButton>
+        </div>
+      </UCard>
+
+      <UCard v-if="orderFinance && activeView === 'order'" class="xl:col-span-2">
         <template #header>
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>

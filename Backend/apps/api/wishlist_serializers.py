@@ -1,5 +1,5 @@
 from django.apps import apps
-from django.db.models import Count
+from django.db.models import Count, Q
 from rest_framework import serializers
 
 from apps.common.products import serialize_product_card
@@ -30,9 +30,7 @@ def get_default_wishlist(user, create: bool = False):
 
 
 def wishlist_summary_payload(wishlist, default_wishlist_id: int | None = None):
-    line_count = getattr(wishlist, 'line_count', None)
-    if line_count is None:
-        line_count = wishlist.lines.count()
+    line_count = wishlist.lines.filter(product__is_public=True).exclude(product__structure='parent').count()
     return {
         'id': wishlist.id,
         'name': wishlist.name,
@@ -44,21 +42,47 @@ def wishlist_summary_payload(wishlist, default_wishlist_id: int | None = None):
     }
 
 
-def wishlist_line_payload(line, display_currency: str | None = None):
+def wishlist_line_payload(
+    line,
+    display_currency: str | None = None,
+    include_tax: bool = False,
+    tax_country_code: str | None = None,
+):
     product = line.product
+    is_visible_product = bool(product and getattr(product, 'is_public', False) and getattr(product, 'structure', '') != 'parent')
     return {
         'id': line.id,
         'quantity': line.quantity,
         'title': line.get_title(),
-        'product_id': product.id if product else None,
-        'product': serialize_product_card(product, display_currency=display_currency) if product else None,
+        'product_id': product.id if is_visible_product else None,
+        'product': serialize_product_card(
+            product,
+            display_currency=display_currency,
+            include_tax=include_tax,
+            tax_country_code=tax_country_code,
+        ) if is_visible_product else None,
     }
 
 
-def wishlist_detail_payload(wishlist, default_wishlist_id: int | None = None, display_currency: str | None = None):
+def wishlist_detail_payload(
+    wishlist,
+    default_wishlist_id: int | None = None,
+    display_currency: str | None = None,
+    include_tax: bool = False,
+    tax_country_code: str | None = None,
+):
     return {
         **wishlist_summary_payload(wishlist, default_wishlist_id=default_wishlist_id),
-        'items': [wishlist_line_payload(line, display_currency=display_currency) for line in wishlist.lines.all()],
+        'items': [
+            wishlist_line_payload(
+                line,
+                display_currency=display_currency,
+                include_tax=include_tax,
+                tax_country_code=tax_country_code,
+            )
+            for line in wishlist.lines.all()
+            if line.product and getattr(line.product, 'is_public', False) and getattr(line.product, 'structure', '') != 'parent'
+        ],
     }
 
 
@@ -158,7 +182,12 @@ def user_wishlist_queryset(user):
     WishList = get_wishlist_model()
     return (
         WishList.objects.filter(owner=user)
-        .annotate(line_count=Count('lines'))
+        .annotate(
+            line_count=Count(
+                'lines',
+                filter=Q(lines__product__is_public=True) & ~Q(lines__product__structure='parent'),
+            )
+        )
         .prefetch_related('lines__product__stockrecords', 'lines__product__images')
         .order_by('-date_created', '-id')
     )

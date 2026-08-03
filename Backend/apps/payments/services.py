@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 from datetime import timedelta
 from uuid import uuid4
@@ -11,6 +12,7 @@ from django.utils import timezone
 from .config import get_payment_setting, provider_is_configured, provider_is_enabled
 
 
+logger = logging.getLogger(__name__)
 OFFLINE_PAYMENT_PROVIDERS = {'bank_transfer', 'cash_on_delivery'}
 SUCCESS_PAYMENT_STATUSES = {'authorized', 'paid'}
 PAYMENT_ATTENTION_SEVERITIES = {'critical', 'error'}
@@ -218,6 +220,7 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
             payload={'requested_success': success, 'requested_status': next_status, 'metadata': metadata or {}},
         )
         if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
+            _post_payment_accounting(payment_session)
             _queue_paid_order_accounting_export(payment_session)
         sync_payment_reconciliation(payment_session)
         return payment_session
@@ -244,6 +247,7 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
     _notify_admin_payment_status(payment_session, previous_status=previous_status)
     sync_payment_reconciliation(payment_session)
     if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
+        _post_payment_accounting(payment_session)
         _queue_paid_order_accounting_export(payment_session)
     elif payment_session.status == payment_session.STATUS_FAILED and payment_session.order_id:
         handle_failed_payment_linked_order(payment_session)
@@ -418,6 +422,7 @@ def link_payment_to_order(payment_session, order):
     )
     if payment_session.status in SUCCESS_PAYMENT_STATUSES:
         _notify_admin_paid_order(payment_session)
+        _post_payment_accounting(payment_session)
         _queue_paid_order_accounting_export(payment_session)
 
     sync_payment_reconciliation(payment_session)
@@ -633,8 +638,14 @@ def record_payment_refund_ledger(
     if amount <= Decimal('0.00'):
         raise ValueError('Refund amount must be greater than zero.')
 
-    existing_refund_total = refund_total_for_payment(payment_session)
+    reference = (refund_reference or f'REFUND-{payment_session.reference}').strip()
+    existing_ledger = PaymentRefundLedger.objects.filter(refund_reference=reference).first()
+    existing_refund_total = refund_total_for_payment(payment_session, include_requested=True)
+    if existing_ledger:
+        existing_refund_total -= Decimal(str(existing_ledger.amount or '0')).quantize(Decimal('0.01'))
     payment_amount = Decimal(str(payment_session.amount or '0')).quantize(Decimal('0.01'))
+    if existing_refund_total + amount > payment_amount:
+        raise ValueError('Refund amount exceeds the remaining refundable payment amount.')
     refund_scope = _refund_scope(payment_amount=payment_amount, cumulative_refund_amount=existing_refund_total + amount)
     completion_state = _refund_completion_state(refund_scope=refund_scope, status=status)
 
@@ -643,7 +654,6 @@ def record_payment_refund_ledger(
     except Exception:
         reconciliation = sync_payment_reconciliation(payment_session)
 
-    reference = (refund_reference or f'REFUND-{payment_session.reference}').strip()
     ledger, created = PaymentRefundLedger.objects.get_or_create(
         refund_reference=reference,
         defaults={
@@ -677,6 +687,8 @@ def record_payment_refund_ledger(
             if reviewed_by and getattr(reviewed_by, 'is_authenticated', False):
                 ledger.reviewed_by = reviewed_by
             ledger.save(update_fields=['status', 'refund_scope', 'completion_state', 'processed_at', 'reviewed_by', 'updated_at'])
+            if status == PaymentRefundLedger.STATUS_SUCCEEDED:
+                _post_refund_accounting(ledger)
         return ledger
 
     total_refunded = refund_total_for_payment(payment_session)
@@ -687,7 +699,138 @@ def record_payment_refund_ledger(
         reconciliation.status = PaymentReconciliation.STATUS_MANUAL_REVIEW
         reconciliation.issues = list(dict.fromkeys([*(reconciliation.issues or []), 'Payment has a partial refund.']))
     reconciliation.save(update_fields=['status', 'issues', 'updated_at'])
+    if ledger.status == PaymentRefundLedger.STATUS_SUCCEEDED:
+        _post_refund_accounting(ledger)
     return ledger
+
+
+@transaction.atomic
+def update_payment_refund_ledger_status(
+    refund_ledger,
+    *,
+    action: str,
+    provider_reference: str = '',
+    gateway_payload: dict | None = None,
+    notes: str = '',
+    reviewed_by=None,
+):
+    PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
+    action = (action or '').strip().lower()
+    status_by_action = {
+        'submit': PaymentRefundLedger.STATUS_SUBMITTED,
+        'succeed': PaymentRefundLedger.STATUS_SUCCEEDED,
+        'complete': PaymentRefundLedger.STATUS_SUCCEEDED,
+        'fail': PaymentRefundLedger.STATUS_FAILED,
+        'cancel': PaymentRefundLedger.STATUS_CANCELLED,
+    }
+    if action not in status_by_action:
+        raise ValueError('Unsupported refund action.')
+    if refund_ledger.status in {PaymentRefundLedger.STATUS_SUCCEEDED, PaymentRefundLedger.STATUS_FAILED, PaymentRefundLedger.STATUS_CANCELLED}:
+        raise ValueError('This refund is already in a terminal state.')
+
+    next_status = status_by_action[action]
+    if refund_ledger.status == PaymentRefundLedger.STATUS_REQUESTED and next_status == PaymentRefundLedger.STATUS_SUCCEEDED:
+        raise ValueError('Submit the refund before marking it complete.')
+    if refund_ledger.status == PaymentRefundLedger.STATUS_SUBMITTED and next_status == PaymentRefundLedger.STATUS_CANCELLED:
+        raise ValueError('Submitted refunds should be marked succeeded or failed, not cancelled.')
+
+    refund_ledger.status = next_status
+    refund_ledger.completion_state = _refund_completion_state(
+        refund_scope=refund_ledger.refund_scope,
+        status=next_status,
+    )
+    if provider_reference:
+        refund_ledger.provider_reference = provider_reference.strip()
+    if gateway_payload:
+        refund_ledger.gateway_payload = {**(refund_ledger.gateway_payload or {}), **gateway_payload}
+    if notes:
+        refund_ledger.notes = f'{refund_ledger.notes}\n{notes}'.strip()
+    if reviewed_by and getattr(reviewed_by, 'is_authenticated', False):
+        refund_ledger.reviewed_by = reviewed_by
+    if next_status in {PaymentRefundLedger.STATUS_SUCCEEDED, PaymentRefundLedger.STATUS_FAILED, PaymentRefundLedger.STATUS_CANCELLED}:
+        refund_ledger.processed_at = timezone.now()
+    refund_ledger.save(update_fields=[
+        'status',
+        'completion_state',
+        'provider_reference',
+        'gateway_payload',
+        'notes',
+        'reviewed_by',
+        'processed_at',
+        'updated_at',
+    ])
+
+    _refresh_refund_reconciliation(refund_ledger.payment_session)
+    if next_status == PaymentRefundLedger.STATUS_SUCCEEDED:
+        _post_refund_accounting(refund_ledger)
+    return refund_ledger
+
+
+def _refresh_refund_reconciliation(payment_session):
+    PaymentReconciliation = apps.get_model('payments', 'PaymentReconciliation')
+    PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
+    try:
+        reconciliation = payment_session.reconciliation
+    except Exception:
+        reconciliation = sync_payment_reconciliation(payment_session)
+
+    total_refunded = refund_total_for_payment(payment_session)
+    payment_amount = Decimal(str(payment_session.amount or '0')).quantize(Decimal('0.01'))
+    issues = [
+        issue
+        for issue in (reconciliation.issues or [])
+        if issue not in {'Payment has been fully refunded.', 'Payment has a partial refund.'}
+    ]
+    if total_refunded >= payment_amount and payment_amount > Decimal('0.00'):
+        reconciliation.status = PaymentReconciliation.STATUS_REFUNDED
+        issues.append('Payment has been fully refunded.')
+        _mark_order_fully_refunded(payment_session.order if payment_session.order_id else None)
+    elif PaymentRefundLedger.objects.filter(
+        payment_session=payment_session,
+        status__in={
+            PaymentRefundLedger.STATUS_REQUESTED,
+            PaymentRefundLedger.STATUS_SUBMITTED,
+            PaymentRefundLedger.STATUS_SUCCEEDED,
+        },
+    ).exists():
+        reconciliation.status = PaymentReconciliation.STATUS_MANUAL_REVIEW
+        issues.append('Payment has a partial refund.')
+    else:
+        reconciliation = sync_payment_reconciliation(payment_session)
+        return reconciliation
+    reconciliation.issues = list(dict.fromkeys(issues))
+    reconciliation.save(update_fields=['status', 'issues', 'updated_at'])
+    return reconciliation
+
+
+def _mark_order_fully_refunded(order) -> None:
+    if not order:
+        return
+    previous_status = order.status or ''
+    if previous_status.strip().lower() in {'refunded', 'cancelled', 'canceled'}:
+        return
+    OrderStatusChange = apps.get_model('order', 'OrderStatusChange')
+    OrderStatusChange.objects.create(order=order, old_status=previous_status, new_status='Refunded')
+    order.status = 'Refunded'
+    order.save(update_fields=['status'])
+
+
+def _post_payment_accounting(payment_session) -> None:
+    try:
+        from apps.accounting.services import post_payment_received
+
+        post_payment_received(payment_session)
+    except Exception:
+        logger.exception('Failed to post payment accounting for %s', getattr(payment_session, 'reference', ''))
+
+
+def _post_refund_accounting(refund_ledger) -> None:
+    try:
+        from apps.accounting.services import post_refund
+
+        post_refund(refund_ledger, user=getattr(refund_ledger, 'reviewed_by', None) or getattr(refund_ledger, 'requested_by', None))
+    except Exception:
+        logger.exception('Failed to post refund accounting for %s', getattr(refund_ledger, 'refund_reference', ''))
 
 
 def _refund_scope(*, payment_amount: Decimal, cumulative_refund_amount: Decimal) -> str:
@@ -722,13 +865,14 @@ def _refund_completion_state(*, refund_scope: str, status: str) -> str:
     )
 
 
-def refund_total_for_payment(payment_session) -> Decimal:
+def refund_total_for_payment(payment_session, *, include_requested: bool = False) -> Decimal:
     PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
     terminal_statuses = {
-        PaymentRefundLedger.STATUS_REQUESTED,
         PaymentRefundLedger.STATUS_SUBMITTED,
         PaymentRefundLedger.STATUS_SUCCEEDED,
     }
+    if include_requested:
+        terminal_statuses.add(PaymentRefundLedger.STATUS_REQUESTED)
     total = (
         PaymentRefundLedger.objects.filter(payment_session=payment_session, status__in=terminal_statuses)
         .aggregate(total=Sum('amount'))
@@ -816,6 +960,10 @@ def update_payment_return_case(
         raise ValueError('Unsupported return action.')
     if return_case.status in {PaymentReturnCase.STATUS_REFUNDED, PaymentReturnCase.STATUS_REJECTED, PaymentReturnCase.STATUS_CANCELLED}:
         raise ValueError('This return case is already in a terminal state.')
+    allowed_actions = _allowed_return_actions(return_case)
+    if action not in allowed_actions:
+        allowed = ', '.join(sorted(allowed_actions)) or 'none'
+        raise ValueError(f'Return action {action} is not allowed from {return_case.status}. Allowed actions: {allowed}.')
 
     if condition_note:
         return_case.condition_note = condition_note.strip()
@@ -825,9 +973,20 @@ def update_payment_return_case(
 
     if action == 'approve':
         return_case.status = PaymentReturnCase.STATUS_APPROVED
+        metadata = return_case.metadata or {}
+        return_case.metadata = {
+            **metadata,
+            'return_authorization_reference': metadata.get('return_authorization_reference') or f'RMA-{return_case.return_reference}',
+            'approved_at': timezone.now().isoformat(),
+        }
     elif action == 'receive':
         return_case.status = PaymentReturnCase.STATUS_RECEIVED
         return_case.received_at = timezone.now()
+        metadata = return_case.metadata or {}
+        return_case.metadata = {
+            **metadata,
+            'return_receipt_reference': metadata.get('return_receipt_reference') or f'RRCPT-{return_case.return_reference}',
+        }
     elif action == 'reject':
         return_case.status = PaymentReturnCase.STATUS_REJECTED
         return_case.restock_decision = PaymentReturnCase.RESTOCK_REJECTED
@@ -867,11 +1026,27 @@ def update_payment_return_case(
             'supplier_adjustment_count': len(adjustments) if adjustments else metadata.get('supplier_adjustment_count', 0),
             'refund_ledger_id': refund_ledger.id,
             'refund_reference': refund_ledger.refund_reference,
+            'credit_note_reference': metadata.get('credit_note_reference') or f'CN-{return_case.return_reference}',
+            'refund_payment_reference': (
+                metadata.get('refund_payment_reference')
+                or (f'PE-{return_case.return_reference}' if action == 'refund' else '')
+            ),
         }
         _queue_return_credit_note_export(refund_ledger)
 
     return_case.save()
     return return_case
+
+
+def _allowed_return_actions(return_case) -> set[str]:
+    PaymentReturnCase = apps.get_model('payments', 'PaymentReturnCase')
+    transitions = {
+        PaymentReturnCase.STATUS_REQUESTED: {'approve', 'reject', 'cancel'},
+        PaymentReturnCase.STATUS_APPROVED: {'receive', 'reject', 'cancel'},
+        PaymentReturnCase.STATUS_RECEIVED: {'accept', 'reject', 'cancel'},
+        PaymentReturnCase.STATUS_ACCEPTED: {'refund'},
+    }
+    return transitions.get(return_case.status, set())
 
 
 def _ensure_return_refund_ledger(return_case, *, reviewed_by=None):

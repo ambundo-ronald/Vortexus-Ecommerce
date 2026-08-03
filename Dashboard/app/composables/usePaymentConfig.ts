@@ -244,6 +244,25 @@ export function usePaymentConfig() {
     }
   }
 
+  async function cancelPaymentSession(reference: string, payload: { reason?: string } = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, payment: AdminPaymentLogItem }>(`/admin/payments/${reference}/cancel/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -251,5 +270,6 @@ export function usePaymentConfig() {
     updatePaymentConfig,
     getPaymentLogs,
     requestPaymentRefund,
+    cancelPaymentSession,
   }
 }

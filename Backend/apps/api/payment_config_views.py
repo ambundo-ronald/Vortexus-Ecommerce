@@ -48,6 +48,7 @@ from apps.payments.services import (
     payment_reconciliation,
     record_payment_refund_ledger,
     update_payment_return_case,
+    update_payment_refund_ledger_status,
     serialize_payment_session,
 )
 
@@ -152,6 +153,16 @@ class FinanceReturnStatusSerializer(serializers.Serializer):
     restock_decision = serializers.ChoiceField(required=False, choices=[choice[0] for choice in PaymentReturnCase.RESTOCK_CHOICES])
     condition_note = serializers.CharField(required=False, allow_blank=True, max_length=255)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
+class FinanceRefundStatusSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=['submit', 'succeed', 'complete', 'fail', 'cancel'])
+    provider_reference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
+class AdminPaymentCancelSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=500)
 
 
 class AdminCodMpesaPromptSerializer(serializers.Serializer):
@@ -543,7 +554,13 @@ def _money_total(queryset, field: str) -> float:
 
 def _refund_request_summary(payments) -> dict:
     payment_ids = list(payments.values_list('id', flat=True))
-    ledger_queryset = PaymentRefundLedger.objects.filter(payment_session_id__in=payment_ids)
+    ledger_queryset = PaymentRefundLedger.objects.filter(
+        payment_session_id__in=payment_ids,
+        status__in=[
+            PaymentRefundLedger.STATUS_SUBMITTED,
+            PaymentRefundLedger.STATUS_SUCCEEDED,
+        ],
+    )
     ledger_count = ledger_queryset.count()
     ledger_total = Decimal(str(ledger_queryset.aggregate(total=Sum('amount')).get('total') or '0')).quantize(Decimal('0.01'))
     payments_with_ledger = set(ledger_queryset.values_list('payment_session_id', flat=True))
@@ -553,6 +570,8 @@ def _refund_request_summary(payments) -> dict:
     metadata_payments = payments.exclude(id__in=payments_with_ledger).select_related(None).only('metadata', 'amount')
     for payment in metadata_payments:
         for refund in (payment.metadata or {}).get('refund_requests', []):
+            if (refund.get('status') or '').strip().lower() not in {'submitted', 'succeeded'}:
+                continue
             refund_count += 1
             refund_total += Decimal(str(refund.get('amount') or payment.amount or 0))
     return {'count': ledger_count + refund_count, 'total': float(ledger_total + refund_total)}
@@ -727,6 +746,7 @@ def _finance_payment_payload(payment: PaymentSession) -> dict:
 
 
 def _finance_refund_payload(refund) -> dict:
+    metadata = refund.gateway_payload or {}
     return {
         'id': getattr(refund, 'id', None),
         'payment_reference': refund.payment_session.reference if getattr(refund, 'payment_session_id', None) else '',
@@ -749,12 +769,20 @@ def _finance_refund_payload(refund) -> dict:
         'erpnext_reference': getattr(refund, 'erpnext_reference', ''),
         'erpnext_sync_message': getattr(refund, 'erpnext_sync_message', ''),
         'erpnext_synced_at': getattr(refund, 'erpnext_synced_at', None),
+        'notes': getattr(refund, 'notes', ''),
+        'document_references': {
+            'credit_note': getattr(refund, 'erpnext_reference', '') or metadata.get('credit_note_reference', ''),
+            'refund_payment': metadata.get('refund_payment_reference', ''),
+            'provider': refund.provider_reference,
+        },
+        'next_actions': _refund_next_actions(refund),
         'created_at': refund.created_at,
         'updated_at': refund.updated_at,
     }
 
 
 def _finance_return_payload(return_case) -> dict:
+    metadata = return_case.metadata or {}
     return {
         'id': return_case.id,
         'return_reference': return_case.return_reference,
@@ -781,9 +809,37 @@ def _finance_return_payload(return_case) -> dict:
         'received_at': return_case.received_at,
         'completed_at': return_case.completed_at,
         'restocked_at': return_case.restocked_at,
+        'document_references': {
+            'return_authorization': metadata.get('return_authorization_reference', ''),
+            'return_receipt': metadata.get('return_receipt_reference', ''),
+            'credit_note': metadata.get('credit_note_reference', ''),
+            'refund_payment': metadata.get('refund_payment_reference', ''),
+        },
+        'next_actions': _return_next_actions(return_case),
+        'supplier_adjustment_count': metadata.get('supplier_adjustment_count', 0),
         'created_at': return_case.created_at,
         'updated_at': return_case.updated_at,
     }
+
+
+def _refund_next_actions(refund) -> list[str]:
+    if refund.status == PaymentRefundLedger.STATUS_REQUESTED:
+        return ['submit', 'cancel']
+    if refund.status == PaymentRefundLedger.STATUS_SUBMITTED:
+        return ['succeed', 'fail']
+    return []
+
+
+def _return_next_actions(return_case) -> list[str]:
+    if return_case.status == PaymentReturnCase.STATUS_REQUESTED:
+        return ['approve', 'reject', 'cancel']
+    if return_case.status == PaymentReturnCase.STATUS_APPROVED:
+        return ['receive', 'reject', 'cancel']
+    if return_case.status == PaymentReturnCase.STATUS_RECEIVED:
+        return ['accept', 'reject', 'cancel']
+    if return_case.status == PaymentReturnCase.STATUS_ACCEPTED:
+        return ['refund']
+    return []
 
 
 def _finance_order_line_payload(line, payables_by_line: dict) -> dict:
@@ -853,6 +909,21 @@ def _finance_refund_summary(payments) -> dict:
                 }
             )
     return {'count': refund_count, 'total': float(refund_total), 'requests': requests}
+
+
+def _finance_refund_impact_summary(payments) -> dict:
+    payment_ids = list(payments.values_list('id', flat=True))
+    queryset = PaymentRefundLedger.objects.filter(
+        payment_session_id__in=payment_ids,
+        status__in=[
+            PaymentRefundLedger.STATUS_SUBMITTED,
+            PaymentRefundLedger.STATUS_SUCCEEDED,
+        ],
+    )
+    return {
+        'count': queryset.count(),
+        'total': float(Decimal(str(queryset.aggregate(total=Sum('amount')).get('total') or '0')).quantize(Decimal('0.01'))),
+    }
 
 
 def _finance_order_payload(order) -> dict:
@@ -940,6 +1011,14 @@ class AdminFinanceSummaryAPIView(APIView):
         allocations = SupplierOrderLineAllocation.objects.all()
 
         confirmed_payments = payments.filter(status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID])
+        collectible_payments = confirmed_payments.filter(order__isnull=False).exclude(
+            reconciliation__status__in=[
+                PaymentReconciliation.STATUS_CANCELLED,
+                PaymentReconciliation.STATUS_FAILED,
+                PaymentReconciliation.STATUS_REFUNDED,
+                PaymentReconciliation.STATUS_REVERSED,
+            ]
+        )
         matched_reconciliations = reconciliations.filter(status=PaymentReconciliation.STATUS_MATCHED)
         unresolved_reconciliations = reconciliations.exclude(
             status__in=[
@@ -952,15 +1031,29 @@ class AdminFinanceSummaryAPIView(APIView):
         payable_ready = payables.filter(status__in=[SupplierPayableLedger.STATUS_PAYABLE, SupplierPayableLedger.STATUS_APPROVED])
         supplier_paid = payables.filter(status=SupplierPayableLedger.STATUS_PAID)
         supplier_pending = payables.filter(status=SupplierPayableLedger.STATUS_PENDING)
-        fee_total = _money_total(reconciliations, 'fee_amount')
-        gross_margin_total = _money_total(allocations, 'gross_margin')
-        refund_summary = _refund_request_summary(payments)
+        fee_total = _money_total(
+            reconciliations.filter(
+                payment_session_id__in=collectible_payments.values('id'),
+            ),
+            'fee_amount',
+        )
+        gross_margin_total = Decimal(str(sum(
+            Decimal(str(getattr(payable.allocation, 'gross_margin', 0) or 0))
+            for payable in active_payables.select_related('allocation')
+        )))
+        refund_summary = _refund_request_summary(collectible_payments)
+        refund_impact = _finance_refund_impact_summary(collectible_payments)
+        gross_collection_total = Decimal(str(_money_total(collectible_payments, 'amount')))
+        net_collection_total = max(Decimal('0.00'), gross_collection_total - Decimal(str(refund_impact['total'])))
 
         return Response(
             {
                 'collections': {
-                    'count': confirmed_payments.count(),
-                    'total': _money_total(confirmed_payments, 'amount'),
+                    'count': collectible_payments.count(),
+                    'total': float(net_collection_total),
+                    'gross_total': float(gross_collection_total),
+                    'refund_impact_total': refund_impact['total'],
+                    'excluded_count': confirmed_payments.exclude(id__in=collectible_payments.values('id')).count(),
                     'matched_total': _money_total(matched_reconciliations, 'paid_amount'),
                     'by_status': list(payments.values('status').annotate(count=Count('id'), total=Sum('amount')).order_by('status')),
                     'by_method': list(payments.values('method').annotate(count=Count('id'), total=Sum('amount')).order_by('method')),
@@ -983,8 +1076,8 @@ class AdminFinanceSummaryAPIView(APIView):
                     'gateway_fee_total': fee_total,
                 },
                 'margin': {
-                    'gross_margin_total': gross_margin_total,
-                    'net_margin_before_overheads': float(Decimal(str(gross_margin_total)) - Decimal(str(fee_total)) - Decimal(str(refund_summary['total']))),
+                    'gross_margin_total': float(gross_margin_total),
+                    'net_margin_before_overheads': float(gross_margin_total - Decimal(str(fee_total)) - Decimal(str(refund_impact['total']))),
                 },
             }
         )
@@ -1018,7 +1111,14 @@ class AdminFinanceReconciliationCollectionAPIView(APIView):
             )
         if provider:
             queryset = queryset.filter(provider=provider)
-        if status_filter:
+        if status_filter == 'ready':
+            queryset = queryset.filter(
+                status__in=[
+                    SupplierPayableLedger.STATUS_PAYABLE,
+                    SupplierPayableLedger.STATUS_APPROVED,
+                ]
+            )
+        elif status_filter:
             queryset = queryset.filter(status=status_filter)
         if currency:
             queryset = queryset.filter(currency=currency)
@@ -1230,6 +1330,67 @@ class AdminFinanceRefundLedgerCollectionAPIView(APIView):
                 },
             }
         )
+
+
+class AdminFinanceRefundLedgerDetailAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, refund_id: int):
+        if not can_access_finance_data(request.user):
+            return Response({'detail': 'Finance access is required to view refund ledger.'}, status=status.HTTP_403_FORBIDDEN)
+        refund = get_object_or_404(
+            PaymentRefundLedger.objects.select_related(
+                'payment_session',
+                'reconciliation',
+                'order',
+                'line',
+                'requested_by',
+                'reviewed_by',
+            ),
+            id=refund_id,
+        )
+        return Response({'refund': _finance_refund_payload(refund)})
+
+    def post(self, request, refund_id: int):
+        if not can_access_finance_data(request.user):
+            return Response({'detail': 'Finance access is required to update refunds.'}, status=status.HTTP_403_FORBIDDEN)
+        refund = get_object_or_404(
+            PaymentRefundLedger.objects.select_related(
+                'payment_session',
+                'payment_session__order',
+                'reconciliation',
+                'order',
+                'line',
+                'requested_by',
+                'reviewed_by',
+            ),
+            id=refund_id,
+        )
+        serializer = FinanceRefundStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            refund = update_payment_refund_ledger_status(
+                refund,
+                action=serializer.validated_data['action'],
+                provider_reference=serializer.validated_data.get('provider_reference', ''),
+                notes=serializer.validated_data.get('notes', ''),
+                reviewed_by=request.user,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        record_audit_event(
+            event_type='finance.refund_status_changed',
+            request=request,
+            actor=request.user,
+            target=refund,
+            message='Finance refund status changed.',
+            metadata={
+                'refund_reference': refund.refund_reference,
+                'action': serializer.validated_data['action'],
+                'status': refund.status,
+            },
+        )
+        return Response({'refund': _finance_refund_payload(refund)})
 
 
 class AdminFinanceReturnCaseCollectionAPIView(APIView):
@@ -1648,6 +1809,59 @@ class AdminPaymentSessionLogCollectionAPIView(APIView):
                 'summary': summary,
             }
         )
+
+
+class AdminPaymentCancelAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, reference: str):
+        if not can_access_all_admin_data(request.user):
+            return Response({'detail': 'Only a platform admin can cancel payment sessions.'}, status=status.HTTP_403_FORBIDDEN)
+
+        payment = get_payment_or_404(reference)
+        if payment.order_id:
+            return Response(
+                {'detail': 'Linked payments must be handled from the order cancellation or refund workflow.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if payment.status == PaymentSession.STATUS_CANCELLED:
+            return Response({'payment': _payment_session_payload(payment), 'detail': 'Payment is already cancelled.'})
+        if payment.status == PaymentSession.STATUS_FAILED:
+            return Response({'detail': 'Failed payments do not need cancellation.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AdminPaymentCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data.get('reason') or 'Cancelled by staff because payment is not linked to an order.'
+        old_status = payment.status
+        metadata = payment.metadata or {}
+        payment.status = PaymentSession.STATUS_CANCELLED
+        payment.metadata = {
+            **metadata,
+            'admin_cancelled': True,
+            'admin_cancel_reason': reason,
+            'admin_cancelled_by': request.user.id,
+            'admin_cancelled_at': timezone.now().isoformat(),
+            'previous_status': old_status,
+        }
+        payment.save(update_fields=['status', 'metadata', 'updated_at'])
+        log_payment_event(
+            payment,
+            kind=PaymentEvent.KIND_STATUS_APPLIED,
+            status_before=old_status,
+            status_after=payment.status,
+            external_reference=payment.external_reference,
+            message=reason,
+            payload={'admin_action': 'cancel_unlinked_payment', 'reason': reason},
+        )
+        record_audit_event(
+            event_type='payments.session_cancelled',
+            request=request,
+            actor=request.user,
+            target=payment,
+            message='Admin cancelled an unlinked payment session.',
+            metadata={'payment_reference': payment.reference, 'old_status': old_status, 'reason': reason},
+        )
+        return Response({'payment': _payment_session_payload(payment), 'detail': 'Payment cancelled.'})
 
 
 class AdminPaymentRefundAPIView(APIView):

@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 
 from django.apps import apps
 from django.db import transaction
@@ -9,6 +10,7 @@ from apps.payments.services import ensure_order_finance_clear_for_payout
 
 SUCCESS_PAYMENT_STATUSES = {'authorized', 'paid'}
 ZERO = Decimal('0.00')
+logger = logging.getLogger(__name__)
 
 
 def sync_supplier_payable_for_allocation(allocation):
@@ -43,6 +45,7 @@ def sync_supplier_payable_for_allocation(allocation):
         allocation=allocation,
         defaults=defaults,
     )
+    _post_supplier_payable_accounting(ledger)
     return ledger
 
 
@@ -233,13 +236,33 @@ def mark_supplier_payout_batch_paid(batch, *, user=None, payout_reference='', ev
             status=SupplierPayableLedger.STATUS_PAID,
             payout_reference=reference,
         )
+        batch.refresh_from_db()
     try:
         from apps.notifications.services import queue_supplier_payout_paid_email
 
         queue_supplier_payout_paid_email(batch)
     except Exception:
         pass
+    _post_supplier_payout_accounting(batch, user=user)
     return batch
+
+
+def _post_supplier_payable_accounting(ledger) -> None:
+    try:
+        from apps.accounting.services import post_supplier_payable
+
+        post_supplier_payable(ledger)
+    except Exception:
+        logger.exception('Failed to post supplier payable accounting for %s', getattr(ledger, 'id', ''))
+
+
+def _post_supplier_payout_accounting(batch, *, user=None) -> None:
+    try:
+        from apps.accounting.services import post_supplier_payout
+
+        post_supplier_payout(batch, user=user)
+    except Exception:
+        logger.exception('Failed to post supplier payout accounting for %s', getattr(batch, 'batch_reference', ''))
 
 
 def cancel_supplier_payout_batch(batch, *, user=None, reason=''):

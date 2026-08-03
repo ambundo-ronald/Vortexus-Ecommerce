@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'django_filters',
     'apps.auditlog',
     'apps.accounts',
+    'apps.accounting',
     'apps.inventory',
     'apps.integrations',
     'apps.marketplace',

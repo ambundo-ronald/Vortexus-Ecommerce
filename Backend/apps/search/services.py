@@ -20,6 +20,7 @@ class ProductSearchService:
         page_size: int,
         sort_by: str = 'relevance',
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         if query.strip():
             try:
@@ -30,6 +31,7 @@ class ProductSearchService:
                     page_size=page_size,
                     sort_by=sort_by,
                     display_currency=display_currency,
+                    tax_country_code=tax_country_code,
                 )
             except (OpenSearchException, ValueError, KeyError):
                 pass
@@ -41,6 +43,7 @@ class ProductSearchService:
             page_size=page_size,
             sort_by=sort_by,
             display_currency=display_currency,
+            tax_country_code=tax_country_code,
         )
 
     def suggest(self, query: str, category: str | None = None, brand: str | None = None, limit: int = 8) -> dict[str, Any]:
@@ -79,6 +82,7 @@ class ProductSearchService:
         page_size: int,
         sort_by: str,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         client = get_opensearch_client()
         os_filters = []
@@ -167,6 +171,8 @@ class ProductSearchService:
                 product=product,
                 score=hit.get('_score'),
                 display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
             )
             payload['rating'] = stats.get('rating', payload.get('rating'))
             payload['review_count'] = stats.get('review_count', payload.get('review_count', 0))
@@ -193,6 +199,7 @@ class ProductSearchService:
         page_size: int,
         sort_by: str,
         display_currency: str | None = None,
+        tax_country_code: str | None = 'KE',
     ) -> dict[str, Any]:
         Product = apps.get_model('catalogue', 'Product')
         Review = apps.get_model('reviews', 'ProductReview')
@@ -244,7 +251,15 @@ class ProductSearchService:
         paginator = Paginator(queryset, page_size)
         page_obj = paginator.get_page(page)
 
-        results = [serialize_product_card(product=product, display_currency=display_currency) for product in page_obj.object_list]
+        results = [
+            serialize_product_card(
+                product=product,
+                display_currency=display_currency,
+                include_tax=True,
+                tax_country_code=tax_country_code,
+            )
+            for product in page_obj.object_list
+        ]
 
         return {
             'results': results,
