@@ -57,6 +57,12 @@ PROVIDER_SETTINGS = {
         },
         'secret': {},
     },
+    'bank_transfer': {
+        'public': {
+            'requires_customer_approval': 'BANK_TRANSFER_REQUIRES_CUSTOMER_APPROVAL',
+        },
+        'secret': {},
+    },
 }
 
 

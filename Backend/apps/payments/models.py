@@ -108,6 +108,7 @@ class PaymentProviderConfiguration(models.Model):
     PROVIDER_PESAPAL = 'pesapal'
     PROVIDER_AIRTEL_MONEY = 'airtel_money'
     PROVIDER_CARD = 'card'
+    PROVIDER_BANK_TRANSFER = 'bank_transfer'
     PROVIDER_CASH_ON_DELIVERY = 'cash_on_delivery'
 
     PROVIDER_CHOICES = [
@@ -115,6 +116,7 @@ class PaymentProviderConfiguration(models.Model):
         (PROVIDER_PESAPAL, 'Pesapal'),
         (PROVIDER_AIRTEL_MONEY, 'Airtel Money'),
         (PROVIDER_CARD, 'Card'),
+        (PROVIDER_BANK_TRANSFER, 'Bank Transfer'),
         (PROVIDER_CASH_ON_DELIVERY, 'Cash on Delivery'),
     ]
 

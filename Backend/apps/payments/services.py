@@ -41,6 +41,17 @@ def customer_can_use_cash_on_delivery(user, basket=None) -> bool:
     return bool(profile and profile.cash_on_delivery_allowed)
 
 
+def customer_can_use_bank_transfer(user, basket=None) -> bool:
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_staff', False):
+        return True
+    if not bool(get_payment_setting('bank_transfer', 'requires_customer_approval', True)):
+        return True
+    profile = getattr(user, 'customer_profile', None)
+    return bool(profile and profile.bank_transfer_allowed)
+
+
 def cash_on_delivery_state(user, basket=None) -> dict:
     requires_customer_approval = bool(get_payment_setting('cash_on_delivery', 'requires_customer_approval', True))
     customer_approved = customer_can_use_cash_on_delivery(user, basket)
@@ -53,12 +64,28 @@ def cash_on_delivery_state(user, basket=None) -> dict:
     }
 
 
+def bank_transfer_state(user, basket=None) -> dict:
+    requires_customer_approval = bool(get_payment_setting('bank_transfer', 'requires_customer_approval', True))
+    customer_approved = customer_can_use_bank_transfer(user, basket)
+    provider_available = _payment_method_is_available('bank_transfer')
+    return {
+        'requires_customer_approval': requires_customer_approval,
+        'customer_approved': customer_approved,
+        'provider_available': provider_available,
+        'available': bool(provider_available and customer_approved),
+    }
+
+
 def available_payment_methods(*, user=None, basket=None) -> list[dict]:
     methods = []
     for method in settings.PAYMENT_METHODS:
         is_cash_on_delivery = method.get('code') == 'cash_on_delivery'
+        is_bank_transfer = method.get('code') == 'bank_transfer'
         cod_state = cash_on_delivery_state(user, basket) if is_cash_on_delivery else None
+        bank_state = bank_transfer_state(user, basket) if is_bank_transfer else None
         if is_cash_on_delivery and not cod_state['available']:
+            continue
+        if is_bank_transfer and not bank_state['available']:
             continue
         provider = method.get('provider') or method.get('code')
         if _payment_method_is_available(provider):
@@ -67,6 +94,8 @@ def available_payment_methods(*, user=None, basket=None) -> list[dict]:
             payload.update(_payment_method_capabilities(method['code'], provider))
             if cod_state:
                 payload['cash_on_delivery'] = cod_state
+            if bank_state:
+                payload['bank_transfer'] = bank_state
             methods.append(payload)
     return methods
 
@@ -76,8 +105,12 @@ def get_payment_method(code: str, *, user=None, basket=None) -> dict | None:
     for method in settings.PAYMENT_METHODS:
         if method['code'] == normalized:
             is_cash_on_delivery = method.get('code') == 'cash_on_delivery'
+            is_bank_transfer = method.get('code') == 'bank_transfer'
             cod_state = cash_on_delivery_state(user, basket) if is_cash_on_delivery else None
+            bank_state = bank_transfer_state(user, basket) if is_bank_transfer else None
             if is_cash_on_delivery and not cod_state['available']:
+                return None
+            if is_bank_transfer and not bank_state['available']:
                 return None
             provider = method.get('provider') or method.get('code')
             if not _payment_method_is_available(provider):
@@ -87,6 +120,8 @@ def get_payment_method(code: str, *, user=None, basket=None) -> dict | None:
             payload.update(_payment_method_capabilities(method['code'], provider))
             if cod_state:
                 payload['cash_on_delivery'] = cod_state
+            if bank_state:
+                payload['bank_transfer'] = bank_state
             return payload
     return None
 
@@ -100,7 +135,7 @@ def payment_method_definition(code: str) -> dict | None:
 
 
 def _payment_method_is_available(provider: str) -> bool:
-    default_enabled = provider != 'cash_on_delivery'
+    default_enabled = provider not in {'cash_on_delivery', 'bank_transfer'}
     if not provider_is_enabled(provider, default=default_enabled):
         return False
     if provider in OFFLINE_PAYMENT_PROVIDERS:
@@ -161,7 +196,7 @@ def initialize_payment_session(
 ):
     PaymentSession = apps.get_model('payments', 'PaymentSession')
 
-    method = get_payment_method(method_code)
+    method = get_payment_method(method_code, user=user, basket=basket)
     if method is None:
         raise ValueError('Unsupported payment method.')
 

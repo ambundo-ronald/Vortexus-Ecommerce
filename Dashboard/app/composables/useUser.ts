@@ -19,6 +19,7 @@ export interface UserFormPayload {
   status?: string
   password?: string
   cash_on_delivery_allowed?: boolean
+  bank_transfer_allowed?: boolean
 }
 
 export interface UserProductAlert {
@@ -91,6 +92,7 @@ function mapUserDetailToForm(user: any) {
     receiveOrderUpdates: !!user.receive_order_updates,
     receiveMarketingEmails: !!user.receive_marketing_emails,
     cashOnDeliveryAllowed: !!user.cash_on_delivery_allowed,
+    bankTransferAllowed: !!user.bank_transfer_allowed,
     isSupplier: user.supplier?.is_supplier || false,
     supplierStatus: user.supplier?.status || '',
     supplierCompanyName: user.supplier?.company_name || '',

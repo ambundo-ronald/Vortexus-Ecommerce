@@ -113,6 +113,13 @@ const paymentConfig = ref({
     provider_name: "sandbox_card",
     sandbox_enabled: false,
   },
+  bank_transfer: {
+    is_enabled: false,
+    is_configured: true,
+    checkout_visible: false,
+    missing_requirements: [] as string[],
+    requires_customer_approval: true,
+  },
   cash_on_delivery: {
     is_enabled: false,
     is_configured: true,
@@ -215,6 +222,10 @@ async function loadPaymentConfig() {
       card: {
         ...paymentConfig.value.card,
         ...result.data.card,
+      },
+      bank_transfer: {
+        ...paymentConfig.value.bank_transfer,
+        ...result.data.bank_transfer,
       },
       cash_on_delivery: {
         ...paymentConfig.value.cash_on_delivery,
@@ -353,6 +364,10 @@ async function savePaymentConfig() {
       is_enabled: paymentConfig.value.card.is_enabled,
       provider_name: paymentConfig.value.card.provider_name,
     },
+    bank_transfer: {
+      is_enabled: paymentConfig.value.bank_transfer.is_enabled,
+      requires_customer_approval: paymentConfig.value.bank_transfer.requires_customer_approval,
+    },
     cash_on_delivery: {
       is_enabled: paymentConfig.value.cash_on_delivery.is_enabled,
       requires_customer_approval: paymentConfig.value.cash_on_delivery.requires_customer_approval,
@@ -382,6 +397,10 @@ async function savePaymentConfig() {
       card: {
         ...paymentConfig.value.card,
         ...result.data.card,
+      },
+      bank_transfer: {
+        ...paymentConfig.value.bank_transfer,
+        ...result.data.bank_transfer,
       },
       cash_on_delivery: {
         ...paymentConfig.value.cash_on_delivery,
@@ -871,7 +890,27 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="rounded-lg border border-default p-4 xl:col-span-2">
+          <div class="rounded-lg border border-default p-4">
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h4 class="font-semibold">Bank Transfer</h4>
+                <p class="text-xs text-(--ui-text-muted)">Controlled offline payment option for approved customers.</p>
+              </div>
+              <UBadge :color="paymentVisibilityBadge('bank_transfer').color" variant="soft">
+                {{ paymentVisibilityBadge('bank_transfer').label }}
+              </UBadge>
+            </div>
+
+            <div class="space-y-4">
+              <UCheckbox v-model="paymentConfig.bank_transfer.is_enabled" label="Enable Bank Transfer provider" :disabled="isPaymentLoading" />
+              <UCheckbox v-model="paymentConfig.bank_transfer.requires_customer_approval" label="Require customer approval" :disabled="isPaymentLoading" />
+              <p class="text-xs text-(--ui-text-muted)">
+                Bank Transfer is hidden from guests and ordinary customers. Enable it per customer from Users before it appears at checkout.
+              </p>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-default p-4">
             <div class="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h4 class="font-semibold">Cash on Delivery</h4>

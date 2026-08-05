@@ -19,10 +19,16 @@ class CashOnDeliveryStorefrontStateTests(APITestCase):
             is_enabled=True,
             public_config={'requires_customer_approval': True, 'prompt_before_dispatch': True},
         )
+        PaymentProviderConfiguration.objects.create(
+            provider='bank_transfer',
+            is_enabled=True,
+            public_config={'requires_customer_approval': True},
+        )
 
     def test_account_me_exposes_cash_on_delivery_permission(self):
         self.profile.cash_on_delivery_allowed = True
-        self.profile.save(update_fields=['cash_on_delivery_allowed'])
+        self.profile.bank_transfer_allowed = True
+        self.profile.save(update_fields=['cash_on_delivery_allowed', 'bank_transfer_allowed'])
         self.client.force_authenticate(self.user)
 
         response = self.client.get(reverse('account-profile'))
@@ -32,6 +38,9 @@ class CashOnDeliveryStorefrontStateTests(APITestCase):
         self.assertTrue(user_payload['cash_on_delivery_allowed'])
         self.assertTrue(user_payload['payment_permissions']['cash_on_delivery_allowed'])
         self.assertTrue(user_payload['payment_permissions']['cash_on_delivery_available'])
+        self.assertTrue(user_payload['bank_transfer_allowed'])
+        self.assertTrue(user_payload['payment_permissions']['bank_transfer_allowed'])
+        self.assertTrue(user_payload['payment_permissions']['bank_transfer_available'])
 
     def test_payment_methods_include_cash_on_delivery_after_customer_approval(self):
         self.client.force_authenticate(self.user)
@@ -39,9 +48,11 @@ class CashOnDeliveryStorefrontStateTests(APITestCase):
         response = self.client.get(reverse('checkout-payment-methods'))
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('cash_on_delivery', {method['code'] for method in response.data['results']})
+        self.assertNotIn('bank_transfer', {method['code'] for method in response.data['results']})
 
         self.profile.cash_on_delivery_allowed = True
-        self.profile.save(update_fields=['cash_on_delivery_allowed'])
+        self.profile.bank_transfer_allowed = True
+        self.profile.save(update_fields=['cash_on_delivery_allowed', 'bank_transfer_allowed'])
 
         response = self.client.get(reverse('checkout-payment-methods'))
 
@@ -49,3 +60,5 @@ class CashOnDeliveryStorefrontStateTests(APITestCase):
         methods = {method['code']: method for method in response.data['results']}
         self.assertIn('cash_on_delivery', methods)
         self.assertTrue(methods['cash_on_delivery']['cash_on_delivery']['customer_approved'])
+        self.assertIn('bank_transfer', methods)
+        self.assertTrue(methods['bank_transfer']['bank_transfer']['customer_approved'])

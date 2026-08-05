@@ -17,9 +17,12 @@ from .pesapal import PesapalGatewayError, handle_transaction_status, request_ref
 from .services import (
     _payment_method_capabilities,
     available_payment_methods,
+    bank_transfer_state,
     cash_on_delivery_state,
+    customer_can_use_bank_transfer,
     customer_can_use_cash_on_delivery,
     get_payment_method,
+    initialize_payment_session,
     payment_requires_prepayment,
     payment_reconciliation,
     record_payment_refund_ledger,
@@ -106,6 +109,82 @@ class CashOnDeliveryAvailabilityTests(TestCase):
 
         self.assertTrue(customer_can_use_cash_on_delivery(self.user))
         self.assertIn('cash_on_delivery', self._method_codes(self.user))
+
+    def test_approved_customer_can_initialize_cash_on_delivery_session(self):
+        self.user.customer_profile.cash_on_delivery_allowed = True
+        self.user.customer_profile.save(update_fields=['cash_on_delivery_allowed'])
+
+        payment = initialize_payment_session(
+            basket=None,
+            user=self.user,
+            method_code='cash_on_delivery',
+            amount=Decimal('1250.00'),
+            currency='KES',
+            payer_email=self.user.email,
+        )
+
+        self.assertEqual(payment.method, 'cash_on_delivery')
+        self.assertEqual(payment.provider, 'cash_on_delivery')
+        self.assertEqual(payment.status, PaymentSession.STATUS_AUTHORIZED)
+
+
+class BankTransferAvailabilityTests(TestCase):
+    def setUp(self):
+        self.User = get_user_model()
+        self.user = self.User.objects.create_user(username='bank-customer', email='bank@example.com', password='password')
+        self.staff = self.User.objects.create_user(username='bank-staff', email='bank-staff@example.com', password='password', is_staff=True)
+        CustomerProfile.objects.create(user=self.user)
+        PaymentProviderConfiguration.objects.create(
+            provider='bank_transfer',
+            is_enabled=True,
+            public_config={'requires_customer_approval': True},
+        )
+
+    def _method_codes(self, user=None):
+        return {method['code'] for method in available_payment_methods(user=user)}
+
+    def test_bank_transfer_is_not_enabled_without_provider_config(self):
+        PaymentProviderConfiguration.objects.filter(provider='bank_transfer').delete()
+
+        self.user.customer_profile.bank_transfer_allowed = True
+        self.user.customer_profile.save(update_fields=['bank_transfer_allowed'])
+
+        self.assertNotIn('bank_transfer', self._method_codes(self.user))
+
+    def test_bank_transfer_requires_customer_approval(self):
+        self.assertFalse(customer_can_use_bank_transfer(self.user))
+        self.assertFalse(bank_transfer_state(self.user)['available'])
+        self.assertNotIn('bank_transfer', self._method_codes(self.user))
+
+        self.user.customer_profile.bank_transfer_allowed = True
+        self.user.customer_profile.save(update_fields=['bank_transfer_allowed'])
+
+        self.assertTrue(customer_can_use_bank_transfer(self.user))
+        self.assertTrue(bank_transfer_state(self.user)['available'])
+        self.assertIn('bank_transfer', self._method_codes(self.user))
+        self.assertEqual(get_payment_method('bank_transfer', user=self.user)['code'], 'bank_transfer')
+        self.assertFalse(payment_requires_prepayment('bank_transfer', user=self.user))
+
+    def test_staff_can_use_bank_transfer_for_admin_operations(self):
+        self.assertTrue(customer_can_use_bank_transfer(self.staff))
+        self.assertIn('bank_transfer', self._method_codes(self.staff))
+
+    def test_approved_customer_can_initialize_bank_transfer_session(self):
+        self.user.customer_profile.bank_transfer_allowed = True
+        self.user.customer_profile.save(update_fields=['bank_transfer_allowed'])
+
+        payment = initialize_payment_session(
+            basket=None,
+            user=self.user,
+            method_code='bank_transfer',
+            amount=Decimal('1250.00'),
+            currency='KES',
+            payer_email=self.user.email,
+        )
+
+        self.assertEqual(payment.method, 'bank_transfer')
+        self.assertEqual(payment.provider, 'bank_transfer')
+        self.assertEqual(payment.status, PaymentSession.STATUS_AUTHORIZED)
 
 
 class PesapalStatusHandlingTests(TestCase):

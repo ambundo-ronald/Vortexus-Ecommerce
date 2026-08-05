@@ -15,6 +15,7 @@ class CustomerProfile(models.Model):
     receive_order_updates = models.BooleanField(default=True)
     receive_marketing_emails = models.BooleanField(default=False)
     cash_on_delivery_allowed = models.BooleanField(default=False)
+    bank_transfer_allowed = models.BooleanField(default=False)
     email_verified_at = models.DateTimeField(blank=True, null=True)
     two_factor_email_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

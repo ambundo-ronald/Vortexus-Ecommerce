@@ -105,6 +105,11 @@ class CashOnDeliveryConfigSerializer(serializers.Serializer):
     prompt_before_dispatch = serializers.BooleanField(required=False)
 
 
+class BankTransferConfigSerializer(serializers.Serializer):
+    is_enabled = serializers.BooleanField(required=False)
+    requires_customer_approval = serializers.BooleanField(required=False)
+
+
 class PaymentRefundRequestSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, min_value=0)
     reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
@@ -230,6 +235,16 @@ def _serialize_provider(provider: str) -> dict:
             'missing_requirements': [],
             'requires_customer_approval': requires_customer_approval,
             'prompt_before_dispatch': prompt_before_dispatch,
+        }
+    if provider == 'bank_transfer':
+        is_enabled = provider_is_enabled('bank_transfer', default=False)
+        requires_customer_approval = bool(get_payment_setting('bank_transfer', 'requires_customer_approval', True))
+        return {
+            'is_enabled': is_enabled,
+            'is_configured': True,
+            'checkout_visible': bool(is_enabled),
+            'missing_requirements': [],
+            'requires_customer_approval': requires_customer_approval,
         }
     is_enabled = provider_is_enabled('card', default=True)
     is_configured = provider_is_configured('card')
@@ -361,6 +376,23 @@ def _update_payment_configuration(request) -> Response:
         )
         changed.append('cash_on_delivery')
 
+    if 'bank_transfer' in request.data:
+        serializer = BankTransferConfigSerializer(data=request.data.get('bank_transfer') or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        _upsert_provider(
+            'bank_transfer',
+            is_enabled=data.get('is_enabled'),
+            public_config={
+                key: data[key]
+                for key in ['requires_customer_approval']
+                if key in data
+            },
+            secret_config={},
+            user=request.user,
+        )
+        changed.append('bank_transfer')
+
     if changed:
         record_audit_event(
             event_type='payments.configuration_updated',
@@ -377,6 +409,7 @@ def _update_payment_configuration(request) -> Response:
             'pesapal': _serialize_provider('pesapal'),
             'airtel_money': _serialize_provider('airtel_money'),
             'card': _serialize_provider('card'),
+            'bank_transfer': _serialize_provider('bank_transfer'),
             'cash_on_delivery': _serialize_provider('cash_on_delivery'),
         }
     )
@@ -394,6 +427,7 @@ class AdminPaymentConfigurationAPIView(APIView):
                 'pesapal': _serialize_provider('pesapal'),
                 'airtel_money': _serialize_provider('airtel_money'),
                 'card': _serialize_provider('card'),
+                'bank_transfer': _serialize_provider('bank_transfer'),
                 'cash_on_delivery': _serialize_provider('cash_on_delivery'),
             }
         )

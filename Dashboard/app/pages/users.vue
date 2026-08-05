@@ -48,6 +48,7 @@ const userForm = reactive({
   password: "",
   isSupplier: false,
   cashOnDeliveryAllowed: false,
+  bankTransferAllowed: false,
 });
 
 const roleOptions = [
@@ -106,6 +107,7 @@ function resetForm() {
   userForm.password = "";
   userForm.isSupplier = false;
   userForm.cashOnDeliveryAllowed = false;
+  userForm.bankTransferAllowed = false;
 }
 
 function normalizeSelectedUser(value: any): UserTableRow {
@@ -197,6 +199,7 @@ async function openEditUser(user: UserTableRow) {
     userForm.status = data.status;
     userForm.isSupplier = data.isSupplier;
     userForm.cashOnDeliveryAllowed = data.cashOnDeliveryAllowed;
+    userForm.bankTransferAllowed = data.bankTransferAllowed;
     await loadUserProductAlerts(rowUser.id);
   }
   else {
@@ -273,6 +276,7 @@ async function submitUserForm() {
     status: userForm.status,
     password: userForm.password || undefined,
     cash_on_delivery_allowed: userForm.cashOnDeliveryAllowed,
+    bank_transfer_allowed: userForm.bankTransferAllowed,
   };
   const result = editingUserId.value
     ? await updateUser(editingUserId.value, payload)
@@ -518,8 +522,13 @@ watch([roleFilter, statusFilter, pageSize], () => {
               v-model="userForm.cashOnDeliveryAllowed"
               label="Allow Cash on Delivery for this customer"
             />
+            <UCheckbox
+              v-model="userForm.bankTransferAllowed"
+              class="mt-3"
+              label="Allow Bank Transfer for this customer"
+            />
             <p class="mt-2 text-xs text-slate-500">
-              COD is hidden at checkout unless it is enabled in payment settings and this customer is approved.
+              Offline payment methods are hidden at checkout unless enabled in payment settings and this customer is approved.
             </p>
           </div>
         </div>
