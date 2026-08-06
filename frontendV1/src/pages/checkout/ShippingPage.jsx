@@ -60,7 +60,6 @@ export default function ShippingPage() {
   const deliveryFeeAboveLimit = shippingMethods.some((method) => !isDispatchHubPickup(method) && Number(method.charge || 0) > LOGISTICS_DELIVERY_LIMIT_KES);
   const visibleShippingMethods = deliveryFeeAboveLimit && dispatchHubPickup ? [dispatchHubPickup] : shippingMethods;
   const canContinue = Boolean(shipping?.ready_for_checkout && !editingDeliveryDetails && hasPinnedAddress(shipping?.address));
-  const summaryShipping = editingDeliveryDetails ? null : shipping;
   const baseOrderTotal = Number(shipping?.totals?.base_order_total ?? basket?.totals?.base_subtotal ?? 0);
   const exceedsMpesaLimit = baseOrderTotal > MPESA_TRANSACTION_LIMIT_KES;
 
@@ -271,7 +270,7 @@ export default function ShippingPage() {
             Continue to payment
           </button>
         </div>
-        <OrderSummaryPanel basket={basket} shipping={summaryShipping} loading={saving} />
+        <OrderSummaryPanel basket={basket} shipping={shipping} loading={saving} />
       </div>
 
       {!lines.length ? <Alert>Your cart is empty.</Alert> : null}

@@ -51,6 +51,50 @@ export interface DashboardSummary {
     value: number
     color: string
   }>
+  site_analytics?: {
+    kpis: {
+      sessions: number
+      page_views: number
+      product_views: number
+      cart_sessions: number
+      checkout_started: number
+      checkout_completed: number
+      checkout_rate: number
+      checkout_completion_rate: number
+      checkout_dropoff_rate: number
+      bounce_rate: number
+      voucher_sessions: number
+      avg_session_duration_seconds: number
+    }
+    checkout_funnel: Array<{ step: string, sessions: number }>
+    top_pages: Array<{ path: string, title: string, views: number, sessions: number }>
+    top_product_views: Array<{ product_id: number | string, product_title: string, views: number, sessions: number }>
+    top_referrers: Array<{ referrer: string, visits: number }>
+    activity_heatmap: Array<{ weekday: number, hour: number, sessions: number }>
+    busiest_hours: Array<{ weekday: number, hour: number, sessions: number }>
+    recent_sessions: Array<{
+      session_key: string
+      customer: string
+      first_page: string
+      last_page: string
+      first_seen: string
+      last_seen: string
+      duration_seconds: number
+      page_views: number
+      event_count: number
+      checkout_step: string
+      converted: boolean
+      journey: Array<{
+        event_type: string
+        label: string
+        path: string
+        product_title: string
+        query: string
+        order_number: string
+        created_at: string
+      }>
+    }>
+  }
 }
 
 export function useDashboard() {

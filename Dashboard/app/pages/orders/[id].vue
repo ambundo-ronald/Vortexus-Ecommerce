@@ -623,7 +623,7 @@ onMounted(async () => {
                     <span class="text-slate-950">{{ formatMoney(order.shipping || 0, "KES") }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-slate-500">Tax</span>
+                    <span class="text-slate-500">VAT</span>
                     <span class="text-slate-950">{{ formatMoney(order.tax || 0, "KES") }}</span>
                   </div>
                   <div class="flex justify-between border-t border-slate-200 pt-2 text-lg font-bold text-slate-950">

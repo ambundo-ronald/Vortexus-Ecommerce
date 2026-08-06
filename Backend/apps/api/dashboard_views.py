@@ -12,7 +12,7 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.auditlog.models import SearchAnalyticsEvent
+from apps.auditlog.models import AuditLog, SearchAnalyticsEvent
 from apps.common.products import stockrecord_count
 from apps.notifications.models import CallbackRequest
 
@@ -60,6 +60,309 @@ def _available_stock_for_product(product):
     if not product:
         return 0
     return sum(stockrecord_count(stockrecord) for stockrecord in product.stockrecords.all())
+
+
+def _metadata_value(metadata, key, default=''):
+    if not isinstance(metadata, dict):
+        return default
+    value = metadata.get(key, default)
+    return value if value not in (None, '') else default
+
+
+def _session_key(row):
+    metadata = row.get('metadata') or {}
+    anonymous_id = str(_metadata_value(metadata, 'anonymous_id', '')).strip()
+    if anonymous_id:
+        return f'anon:{anonymous_id}'
+    actor_email = str(row.get('actor_email') or '').strip().lower()
+    if actor_email:
+        return f'user:{actor_email}'
+    return f"event:{row.get('id')}"
+
+
+def _checkout_step_for_path(path):
+    path = str(path or '').split('?', 1)[0].rstrip('/')
+    if path.endswith('/checkout/cart'):
+        return 'cart'
+    if path.endswith('/checkout/shipping'):
+        return 'shipping'
+    if path.endswith('/checkout/payment'):
+        return 'payment'
+    if path.endswith('/checkout/review'):
+        return 'review'
+    if path.endswith('/checkout/confirmation'):
+        return 'confirmation'
+    return ''
+
+
+def _rate(part, whole):
+    return round((part / whole) * 100, 1) if whole else 0
+
+
+def _customer_label(row):
+    actor_email = str(row.get('actor_email') or '').strip()
+    if actor_email:
+        return actor_email
+    metadata = row.get('metadata') or {}
+    anonymous_id = str(_metadata_value(metadata, 'anonymous_id', '')).strip()
+    if anonymous_id:
+        return f'Anonymous {anonymous_id[-8:]}'
+    return 'Anonymous'
+
+
+def _journey_event_payload(row):
+    metadata = row.get('metadata') or {}
+    event_type = str(row.get('event_type') or '').replace('storefront.', '')
+    path = str(_metadata_value(metadata, 'path', '')).strip()
+    product_title = str(_metadata_value(metadata, 'product_title', '')).strip()
+    query = str(_metadata_value(metadata, 'search', _metadata_value(metadata, 'query', ''))).strip()
+    order_number = str(_metadata_value(metadata, 'order_number', '')).strip()
+    label = path or product_title or query or order_number or event_type
+    return {
+        'event_type': event_type,
+        'label': label[:120],
+        'path': path[:255],
+        'product_title': product_title[:255],
+        'query': query[:255],
+        'order_number': order_number[:64],
+        'created_at': row['created_at'],
+    }
+
+
+def _site_analytics_payload(*, start, now):
+    events = AuditLog.objects.filter(
+        event_type__startswith='storefront.',
+        created_at__date__gte=start.date(),
+    )
+    page_rows = list(
+        events.filter(event_type='storefront.page_view')
+        .values('id', 'actor_email', 'metadata', 'created_at')
+        .order_by('-created_at')[:5000]
+    )
+    interaction_rows = list(
+        events.exclude(event_type='storefront.page_view')
+        .values('id', 'event_type', 'actor_email', 'metadata', 'created_at')
+        .order_by('-created_at')[:5000]
+    )
+
+    session_paths = {}
+    checkout_sessions = {step: set() for step in ['cart', 'shipping', 'payment', 'review', 'confirmation']}
+    page_counts = {}
+    referrer_counts = {}
+    activity = {}
+    session_details = {}
+
+    for row in page_rows:
+        metadata = row.get('metadata') or {}
+        key = _session_key(row)
+        path = str(_metadata_value(metadata, 'path', '/')).strip() or '/'
+        title = str(_metadata_value(metadata, 'title', '')).strip()
+        referrer = str(_metadata_value(metadata, 'referrer', '')).strip()
+        session_paths.setdefault(key, set()).add(path)
+        detail = session_details.setdefault(
+            key,
+            {
+                'session_key': key,
+                'customer': _customer_label(row),
+                'first_seen': row['created_at'],
+                'last_seen': row['created_at'],
+                'first_page': path,
+                'last_page': path,
+                'page_views': 0,
+                'event_count': 0,
+                'checkout_step': '',
+                'events': [],
+            },
+        )
+        if row['created_at'] < detail['first_seen']:
+            detail['first_seen'] = row['created_at']
+            detail['first_page'] = path
+        if row['created_at'] > detail['last_seen']:
+            detail['last_seen'] = row['created_at']
+            detail['last_page'] = path
+        detail['page_views'] += 1
+        detail['event_count'] += 1
+        detail['events'].append(_journey_event_payload({'event_type': 'storefront.page_view', **row}))
+        page_counts.setdefault(path, {'path': path, 'title': title, 'views': 0, 'sessions': set()})
+        page_counts[path]['views'] += 1
+        page_counts[path]['sessions'].add(key)
+        if referrer:
+            referrer_counts[referrer] = referrer_counts.get(referrer, 0) + 1
+        step = _checkout_step_for_path(path)
+        if step:
+            checkout_sessions[step].add(key)
+
+        created_at = row['created_at'].astimezone(timezone.get_current_timezone())
+        heat_key = (created_at.weekday(), created_at.hour)
+        activity[heat_key] = activity.get(heat_key, 0) + 1
+
+    product_views = {}
+    product_view_sessions = set()
+    cart_sessions = set()
+    order_sessions = set()
+    voucher_sessions = set()
+    for row in interaction_rows:
+        metadata = row.get('metadata') or {}
+        key = _session_key(row)
+        event_type = row.get('event_type')
+        detail = session_details.setdefault(
+            key,
+            {
+                'session_key': key,
+                'customer': _customer_label(row),
+                'first_seen': row['created_at'],
+                'last_seen': row['created_at'],
+                'first_page': '',
+                'last_page': '',
+                'page_views': 0,
+                'event_count': 0,
+                'checkout_step': '',
+                'events': [],
+            },
+        )
+        if row['created_at'] < detail['first_seen']:
+            detail['first_seen'] = row['created_at']
+        if row['created_at'] > detail['last_seen']:
+            detail['last_seen'] = row['created_at']
+        detail['event_count'] += 1
+        detail['events'].append(_journey_event_payload(row))
+        if event_type == 'storefront.product_view':
+            product_id = _metadata_value(metadata, 'product_id', '')
+            product_title = str(_metadata_value(metadata, 'product_title', f'Product #{product_id}')).strip()
+            product_key = str(product_id or product_title)
+            product_views.setdefault(
+                product_key,
+                {'product_id': product_id, 'product_title': product_title, 'views': 0, 'sessions': set()},
+            )
+            product_views[product_key]['views'] += 1
+            product_views[product_key]['sessions'].add(key)
+            product_view_sessions.add(key)
+        elif event_type == 'storefront.cart_item_added':
+            cart_sessions.add(key)
+        elif event_type == 'storefront.order_confirmation_viewed':
+            order_sessions.add(key)
+            checkout_sessions['confirmation'].add(key)
+            detail['checkout_step'] = 'Completed'
+        elif event_type in {'storefront.voucher_applied', 'storefront.voucher_removed'}:
+            voucher_sessions.add(key)
+
+    all_sessions = set(session_paths.keys()) | product_view_sessions | cart_sessions | order_sessions | voucher_sessions
+    checkout_started = set().union(
+        checkout_sessions['cart'],
+        checkout_sessions['shipping'],
+        checkout_sessions['payment'],
+        checkout_sessions['review'],
+        cart_sessions,
+    )
+    checkout_completed = checkout_sessions['confirmation'] | order_sessions
+    dropped_checkout = checkout_started - checkout_completed
+    bounced_sessions = {key for key, paths in session_paths.items() if len(paths) <= 1 and key not in cart_sessions and key not in order_sessions}
+
+    top_pages = [
+        {
+            'path': row['path'],
+            'title': row['title'],
+            'views': row['views'],
+            'sessions': len(row['sessions']),
+        }
+        for row in sorted(page_counts.values(), key=lambda item: item['views'], reverse=True)[:15]
+    ]
+    top_product_views = [
+        {
+            'product_id': row['product_id'],
+            'product_title': row['product_title'],
+            'views': row['views'],
+            'sessions': len(row['sessions']),
+        }
+        for row in sorted(product_views.values(), key=lambda item: item['views'], reverse=True)[:15]
+    ]
+    top_referrers = [
+        {'referrer': referrer, 'visits': visits}
+        for referrer, visits in sorted(referrer_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+    ]
+
+    heatmap = [
+        {'weekday': weekday, 'hour': hour, 'sessions': activity.get((weekday, hour), 0)}
+        for weekday in range(7)
+        for hour in range(24)
+    ]
+    busiest_hours = sorted(heatmap, key=lambda item: item['sessions'], reverse=True)[:8]
+
+    session_count = len(all_sessions)
+    checkout_started_count = len(checkout_started)
+    checkout_completed_count = len(checkout_completed)
+    session_summaries = []
+    duration_seconds_total = 0
+    duration_session_count = 0
+    checkout_step_labels = [
+        ('confirmation', 'Completed'),
+        ('review', 'Review'),
+        ('payment', 'Payment'),
+        ('shipping', 'Shipping'),
+        ('cart', 'Cart'),
+    ]
+    for key, detail in session_details.items():
+        first_seen = detail['first_seen']
+        last_seen = detail['last_seen']
+        duration_seconds = max(0, int((last_seen - first_seen).total_seconds()))
+        if duration_seconds:
+            duration_seconds_total += duration_seconds
+            duration_session_count += 1
+        if not detail['checkout_step']:
+            for step, label in checkout_step_labels:
+                if key in checkout_sessions[step]:
+                    detail['checkout_step'] = label
+                    break
+        if not detail['checkout_step'] and key in cart_sessions:
+            detail['checkout_step'] = 'Cart'
+        events_for_session = sorted(detail['events'], key=lambda item: item['created_at'])
+        session_summaries.append(
+            {
+                'session_key': key,
+                'customer': detail['customer'],
+                'first_page': detail['first_page'] or '-',
+                'last_page': detail['last_page'] or '-',
+                'first_seen': first_seen,
+                'last_seen': last_seen,
+                'duration_seconds': duration_seconds,
+                'page_views': detail['page_views'],
+                'event_count': detail['event_count'],
+                'checkout_step': detail['checkout_step'] or 'Browsing',
+                'converted': key in checkout_completed,
+                'journey': events_for_session[-10:],
+            }
+        )
+    session_summaries.sort(key=lambda item: item['last_seen'], reverse=True)
+    avg_session_duration = round(duration_seconds_total / duration_session_count) if duration_session_count else 0
+    return {
+        'kpis': {
+            'sessions': session_count,
+            'page_views': len(page_rows),
+            'product_views': sum(row['views'] for row in product_views.values()),
+            'cart_sessions': len(cart_sessions),
+            'checkout_started': checkout_started_count,
+            'checkout_completed': checkout_completed_count,
+            'checkout_rate': _rate(checkout_completed_count, session_count),
+            'checkout_completion_rate': _rate(checkout_completed_count, checkout_started_count),
+            'checkout_dropoff_rate': _rate(len(dropped_checkout), checkout_started_count),
+            'bounce_rate': _rate(len(bounced_sessions), len(session_paths)),
+            'voucher_sessions': len(voucher_sessions),
+            'avg_session_duration_seconds': avg_session_duration,
+        },
+        'checkout_funnel': [
+            {'step': 'Cart', 'sessions': len(checkout_sessions['cart'] | cart_sessions)},
+            {'step': 'Shipping', 'sessions': len(checkout_sessions['shipping'])},
+            {'step': 'Payment', 'sessions': len(checkout_sessions['payment'])},
+            {'step': 'Review', 'sessions': len(checkout_sessions['review'])},
+            {'step': 'Completed', 'sessions': checkout_completed_count},
+        ],
+        'top_pages': top_pages,
+        'top_product_views': top_product_views,
+        'top_referrers': top_referrers,
+        'activity_heatmap': heatmap,
+        'busiest_hours': busiest_hours,
+        'recent_sessions': session_summaries[:25],
+    }
 
 
 class AdminDashboardAPIView(APIView):
@@ -249,6 +552,7 @@ class AdminDashboardAPIView(APIView):
                 'latest_orders': latest_orders,
                 'popular_products': popular_products,
                 'category_share': category_share,
+                'site_analytics': _site_analytics_payload(start=start, now=now),
             }
         )
 

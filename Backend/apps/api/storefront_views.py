@@ -64,6 +64,7 @@ ALLOWED_STOREFRONT_ANALYTICS_EVENTS = {
     'storefront.cart_item_added',
     'storefront.cart_line_updated',
     'storefront.cart_item_removed',
+    'storefront.cart_cleared',
     'storefront.saved_for_later',
     'storefront.saved_moved_to_cart',
     'storefront.saved_item_removed',

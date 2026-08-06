@@ -50,7 +50,7 @@ export default function OrderSummaryPanel({ basket, shipping, action, actionTo, 
               <strong>{formatCurrency(shippingTotal, currency)}</strong>
             </div>
             <div>
-              <span>Tax</span>
+              <span>VAT</span>
               <strong>{formatCurrency(tax, currency)}</strong>
             </div>
             {taxStatusLabels.length ? (
@@ -59,7 +59,12 @@ export default function OrderSummaryPanel({ basket, shipping, action, actionTo, 
               </p>
             ) : null}
           </>
-        ) : null}
+        ) : (
+          <div>
+            <span>VAT</span>
+            <strong>{formatCurrency(tax, currency)}</strong>
+          </div>
+        )}
         <div className="checkout-total-row">
           <span>Total</span>
           <strong>{formatCurrency(orderTotal, currency)}</strong>

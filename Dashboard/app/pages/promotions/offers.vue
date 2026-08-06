@@ -6,6 +6,7 @@ import type {
   OfferItem,
   OfferPayload,
 } from '~/composables/useOffers'
+import type { RangeItem } from '~/composables/useRanges'
 
 const ALL_STATUSES = '__all_statuses__'
 const ALL_TYPES = '__all_types__'
@@ -27,10 +28,12 @@ const {
   updateOffer,
   updateOfferStatus,
 } = useOffers()
+const { getRanges } = useRanges()
 
 const offers = ref<OfferItem[]>([])
 const conditions = ref<OfferConditionItem[]>([])
 const benefits = ref<OfferBenefitItem[]>([])
+const ranges = ref<RangeItem[]>([])
 const totalItems = ref(0)
 const isLoading = ref(false)
 const isSaving = ref(false)
@@ -112,6 +115,17 @@ const benefitSelectOptions = computed(() => benefits.value.map(benefit => ({
   value: benefit.id,
 })))
 
+const rangeSelectOptions = computed(() => [
+  { label: 'All products / no specific range', value: 0 },
+  ...ranges.value.map(range => ({
+    label: formatRangeLabel(range),
+    value: range.id,
+  })),
+])
+
+const selectedConditionRange = computed(() => ranges.value.find(range => range.id === Number(conditionForm.range_id)) || null)
+const selectedBenefitRange = computed(() => ranges.value.find(range => range.id === Number(benefitForm.range_id)) || null)
+
 const filteredOffers = computed(() => {
   const search = searchQuery.value.trim().toLowerCase()
   return offers.value.filter((offer) => {
@@ -136,6 +150,11 @@ function normalizeStatus(status?: string) {
 
 function formatChoice(choices: { label: string, value: string }[], value?: string | null) {
   return choices.find(choice => choice.value === value)?.label || value || 'Not set'
+}
+
+function formatRangeLabel(range: RangeItem) {
+  const scope = range.includes_all_products ? 'all products' : `${Number(range.num_products || 0)} product(s)`
+  return `${range.name} / #${range.id} / ${scope}`
 }
 
 function sanitizeSelectOptions(options: { label: string, value: string }[] = []) {
@@ -210,7 +229,7 @@ function resetConditionForm() {
   editingCondition.value = null
   saveError.value = ''
   conditionForm.type = meta.conditionTypes[0]?.value || ''
-  conditionForm.range_id = null
+  conditionForm.range_id = 0
   conditionForm.value = ''
   conditionForm.proxy_class = ''
 }
@@ -219,7 +238,7 @@ function resetBenefitForm() {
   editingBenefit.value = null
   saveError.value = ''
   benefitForm.type = meta.benefitTypes[0]?.value || ''
-  benefitForm.range_id = null
+  benefitForm.range_id = 0
   benefitForm.value = ''
   benefitForm.max_affected_items = null
   benefitForm.proxy_class = ''
@@ -256,7 +275,7 @@ function openEditCondition(condition: OfferConditionItem) {
   editingCondition.value = condition
   saveError.value = ''
   conditionForm.type = condition.type
-  conditionForm.range_id = condition.range_id
+  conditionForm.range_id = condition.range_id ?? 0
   conditionForm.value = String(condition.value ?? '')
   conditionForm.proxy_class = condition.proxy_class || ''
   conditionEditorOpen.value = true
@@ -271,7 +290,7 @@ function openEditBenefit(benefit: OfferBenefitItem) {
   editingBenefit.value = benefit
   saveError.value = ''
   benefitForm.type = benefit.type
-  benefitForm.range_id = benefit.range_id
+  benefitForm.range_id = benefit.range_id ?? 0
   benefitForm.value = String(benefit.value ?? '')
   benefitForm.max_affected_items = benefit.max_affected_items
   benefitForm.proxy_class = benefit.proxy_class || ''
@@ -280,11 +299,12 @@ function openEditBenefit(benefit: OfferBenefitItem) {
 
 async function loadOffers() {
   isLoading.value = true
-  const [metaResult, offersResult, conditionsResult, benefitsResult] = await Promise.all([
+  const [metaResult, offersResult, conditionsResult, benefitsResult, rangesResult] = await Promise.all([
     getOfferMeta(),
     getOffers({ pageSize: 200 }),
     getConditions({ pageSize: 200 }),
     getBenefits({ pageSize: 200 }),
+    getRanges({ pageSize: 200 }),
   ])
 
   if (metaResult.success && metaResult.data) {
@@ -310,10 +330,13 @@ async function loadOffers() {
   if (benefitsResult.success)
     benefits.value = benefitsResult.data?.results ?? []
 
-  if (!metaResult.success || !conditionsResult.success || !benefitsResult.success) {
+  if (rangesResult.success)
+    ranges.value = rangesResult.data?.results ?? []
+
+  if (!metaResult.success || !conditionsResult.success || !benefitsResult.success || !rangesResult.success) {
     toast.add({
       title: 'Some promotion data could not load',
-      description: metaResult.error || conditionsResult.error || benefitsResult.error || 'Please try again.',
+      description: metaResult.error || conditionsResult.error || benefitsResult.error || rangesResult.error || 'Please try again.',
       color: 'warning',
     })
   }
@@ -379,7 +402,7 @@ async function submitCondition() {
   isSaving.value = true
   const payload: OfferComponentPayload = {
     type: conditionForm.type,
-    range_id: conditionForm.range_id,
+    range_id: conditionForm.range_id ? Number(conditionForm.range_id) : null,
     value: blankToNull(conditionForm.value),
     proxy_class: blankToNull(conditionForm.proxy_class),
   }
@@ -411,7 +434,7 @@ async function submitBenefit() {
   isSaving.value = true
   const payload: OfferComponentPayload = {
     type: benefitForm.type,
-    range_id: benefitForm.range_id,
+    range_id: benefitForm.range_id ? Number(benefitForm.range_id) : null,
     value: blankToNull(benefitForm.value),
     max_affected_items: benefitForm.max_affected_items,
     proxy_class: blankToNull(benefitForm.proxy_class),
@@ -491,7 +514,7 @@ onMounted(loadOffers)
     <div class="mb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h1 class="text-2xl font-black text-slate-950">Offers</h1>
-        <p class="mt-1 text-sm text-slate-500">Manage Oscar conditional offers, their conditions, and benefits.</p>
+        <p class="mt-1 text-sm text-slate-500">Manage conditional offers, coupons, product ranges, and discount rules.</p>
       </div>
       <div class="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
         <UInput
@@ -682,7 +705,7 @@ onMounted(loadOffers)
           <div class="flex items-center justify-between gap-4">
             <div>
               <h3 class="font-semibold text-default">{{ editingOffer ? 'Edit offer' : 'New offer' }}</h3>
-              <p class="text-sm text-dimmed">Choose an Oscar condition and benefit before saving.</p>
+              <p class="text-sm text-dimmed">Choose the qualifying rule and discount before saving.</p>
             </div>
             <UButton icon="i-lucide-x" color="neutral" variant="ghost" square @click="offerEditorOpen = false" />
           </div>
@@ -721,9 +744,12 @@ onMounted(loadOffers)
         <div v-if="saveError" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{{ saveError }}</div>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <UFormField label="Condition type" required><USelect v-model="conditionForm.type" :items="meta.conditionTypes" value-attribute="value" option-attribute="label" /></UFormField>
-          <UFormField label="Value"><UInput v-model="conditionForm.value" autocomplete="off" /></UFormField>
-          <UFormField label="Range ID"><UInput v-model.number="conditionForm.range_id" type="number" min="1" /></UFormField>
+          <UFormField label="Minimum quantity/value"><UInput v-model="conditionForm.value" autocomplete="off" placeholder="Example: 1, 2, 5000" /></UFormField>
+          <UFormField label="Product range"><USelect v-model.number="conditionForm.range_id" :items="rangeSelectOptions" value-attribute="value" option-attribute="label" /></UFormField>
           <UFormField label="Proxy class"><UInput v-model="conditionForm.proxy_class" autocomplete="off" /></UFormField>
+          <div v-if="selectedConditionRange && !selectedConditionRange.includes_all_products && !Number(selectedConditionRange.num_products || 0)" class="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            This range has no products assigned, so the condition will not match a customer basket yet.
+          </div>
         </div>
         <template #footer>
           <div class="flex justify-end gap-3">
@@ -740,10 +766,13 @@ onMounted(loadOffers)
         <div v-if="saveError" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{{ saveError }}</div>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <UFormField label="Benefit type" required><USelect v-model="benefitForm.type" :items="meta.benefitTypes" value-attribute="value" option-attribute="label" /></UFormField>
-          <UFormField label="Value"><UInput v-model="benefitForm.value" autocomplete="off" /></UFormField>
-          <UFormField label="Range ID"><UInput v-model.number="benefitForm.range_id" type="number" min="1" /></UFormField>
+          <UFormField label="Discount value"><UInput v-model="benefitForm.value" autocomplete="off" placeholder="Example: 10 for 10%, 500 for Ksh 500" /></UFormField>
+          <UFormField label="Discount product range"><USelect v-model.number="benefitForm.range_id" :items="rangeSelectOptions" value-attribute="value" option-attribute="label" /></UFormField>
           <UFormField label="Max affected items"><UInput v-model.number="benefitForm.max_affected_items" type="number" min="1" /></UFormField>
           <UFormField label="Proxy class" class="md:col-span-2"><UInput v-model="benefitForm.proxy_class" autocomplete="off" /></UFormField>
+          <div v-if="selectedBenefitRange && !selectedBenefitRange.includes_all_products && !Number(selectedBenefitRange.num_products || 0)" class="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            This range has no products assigned, so the benefit has no product set to discount yet.
+          </div>
         </div>
         <template #footer>
           <div class="flex justify-end gap-3">

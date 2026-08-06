@@ -34,7 +34,7 @@ export function useRanges() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getRanges(params: { page?: number, pageSize?: number } = {}) {
+  async function getRanges(params: { page?: number, pageSize?: number, search?: string } = {}) {
     loading.value = true
     error.value = null
 
@@ -44,6 +44,7 @@ export function useRanges() {
         query: {
           page: params.page || 1,
           page_size: params.pageSize || 200,
+          search: params.search || undefined,
         },
       })
       return { success: true, data: result }

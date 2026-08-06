@@ -1,0 +1,39 @@
+User-agent: *
+
+# Allow all important content
+Allow: /
+
+# Block admin and system files
+Disallow: /wp-admin/
+Allow: /wp-admin/admin-ajax.php
+
+# Block login, registration, and transactional pages
+Disallow: /wp-login.php
+Disallow: /my-account/
+Disallow: /cart/
+Disallow: /checkout/
+Disallow: /wishlist/
+
+# Block internal search results
+Disallow: /?s=
+Disallow: /search/
+
+# Block unnecessary parameters
+Disallow: /?add-to-cart=
+Disallow: /?orderby=
+Disallow: /?filter_
+Disallow: /?rating_filter=
+Disallow: /?min_price=
+Disallow: /?max_price=
+Disallow: /*?page=
+
+# Allow assets
+Allow: /wp-content/uploads/
+Allow: /*.css$
+Allow: /*.js$
+
+# Crawl delay is ignored by Google but respected by some crawlers
+Crawl-delay: 5
+
+# XML sitemap
+Sitemap: https://reesolmart.com/sitemap.xml

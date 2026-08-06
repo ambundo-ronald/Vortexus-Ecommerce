@@ -55,6 +55,8 @@ const activeProductTotal = computed(() => Number(summary.value?.kpis?.active_pro
 const stockUnits = computed(() => Number(summary.value?.kpis?.stock_units || 0));
 const lowStockTotal = computed(() => Number(summary.value?.kpis?.low_stock_products || 0));
 const outOfStockTotal = computed(() => Number(summary.value?.kpis?.out_of_stock_products || 0));
+const siteAnalytics = computed(() => summary.value?.site_analytics || {});
+const siteKpis = computed(() => siteAnalytics.value?.kpis || {});
 
 const averageOrderValue = computed(() => orderTotal.value ? revenueTotal.value / orderTotal.value : 0);
 const revenuePerActiveProduct = computed(() => activeProductTotal.value ? revenueTotal.value / activeProductTotal.value : 0);
@@ -115,6 +117,15 @@ const searchMetrics = computed(() => [
   { label: "Search to order", value: `${searchSummary.value?.kpis?.search_to_order_rate || 0}%`, icon: "i-lucide-receipt" },
 ]);
 
+const sessionMetrics = computed(() => [
+  { label: "Sessions", value: siteKpis.value.sessions || 0, helper: `${formatNumber(siteKpis.value.page_views || 0)} page views`, icon: "i-lucide-users" },
+  { label: "Avg duration", value: formatDuration(siteKpis.value.avg_session_duration_seconds || 0), helper: "Active session time", icon: "i-lucide-clock-3" },
+  { label: "Product views", value: siteKpis.value.product_views || 0, helper: `${formatNumber(siteKpis.value.cart_sessions || 0)} cart sessions`, icon: "i-lucide-package-search" },
+  { label: "Checkout rate", value: `${siteKpis.value.checkout_rate || 0}%`, helper: `${formatNumber(siteKpis.value.checkout_completed || 0)} completed`, icon: "i-lucide-shopping-cart" },
+  { label: "Drop-off rate", value: `${siteKpis.value.checkout_dropoff_rate || 0}%`, helper: `${formatNumber(siteKpis.value.checkout_started || 0)} checkout starts`, icon: "i-lucide-log-out" },
+  { label: "Bounce rate", value: `${siteKpis.value.bounce_rate || 0}%`, helper: "Single-page sessions", icon: "i-lucide-corner-down-left" },
+]);
+
 const categoryColumns: TableColumn<any>[] = [
   { accessorKey: "name", header: "Category" },
   { accessorKey: "value", header: "Share", cell: ({ row }) => `${row.original.value}%` },
@@ -151,6 +162,23 @@ const clickedProductColumns: TableColumn<any>[] = [
   { accessorKey: "product_title", header: "Product" },
   { accessorKey: "clicks", header: "Clicks" },
   { accessorKey: "last_seen", header: "Last seen", cell: ({ row }) => formatDate(row.original.last_seen) },
+];
+
+const pageColumns: TableColumn<any>[] = [
+  { accessorKey: "path", header: "Page" },
+  { accessorKey: "views", header: "Views", cell: ({ row }) => formatNumber(row.original.views) },
+  { accessorKey: "sessions", header: "Sessions", cell: ({ row }) => formatNumber(row.original.sessions) },
+];
+
+const productViewColumns: TableColumn<any>[] = [
+  { accessorKey: "product_title", header: "Product" },
+  { accessorKey: "views", header: "Views", cell: ({ row }) => formatNumber(row.original.views) },
+  { accessorKey: "sessions", header: "Sessions", cell: ({ row }) => formatNumber(row.original.sessions) },
+];
+
+const referrerColumns: TableColumn<any>[] = [
+  { accessorKey: "referrer", header: "Referrer" },
+  { accessorKey: "visits", header: "Visits", cell: ({ row }) => formatNumber(row.original.visits) },
 ];
 
 const latestOrderColumns: TableColumn<any>[] = [
@@ -206,6 +234,33 @@ function formatNumber(value: number | string) {
 
 function formatCurrency(value: number | string) {
   return moneyFormatter.value.format(Number(value || 0));
+}
+
+function formatDuration(seconds: number | string) {
+  const total = Math.max(0, Number(seconds || 0));
+  const minutes = Math.floor(total / 60);
+  const remainder = Math.floor(total % 60);
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
+  }
+  if (minutes > 0)
+    return `${minutes}m ${remainder}s`;
+  return `${remainder}s`;
+}
+
+const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const heatmapRows = computed(() => {
+  const events = siteAnalytics.value?.activity_heatmap || [];
+  return weekdayLabels.map((label, weekday) => ({
+    label,
+    hours: Array.from({ length: 24 }, (_, hour) => events.find((item: any) => item.weekday === weekday && item.hour === hour)?.sessions || 0),
+  }));
+});
+const heatmapMax = computed(() => Math.max(1, ...heatmapRows.value.flatMap(row => row.hours)));
+function heatIntensity(value: number) {
+  const opacity = Math.max(0.08, Math.min(1, Number(value || 0) / heatmapMax.value));
+  return `rgba(48, 50, 143, ${opacity})`;
 }
 
 async function loadAnalytics() {
@@ -287,6 +342,152 @@ watch(selectedRange, loadAnalytics, { immediate: true });
           </div>
           <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-900" :class="metric.tone">
             <UIcon :name="metric.icon" class="h-5 w-5" />
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 gap-4 px-4 md:grid-cols-2 md:px-8 xl:grid-cols-6">
+      <UCard v-for="metric in sessionMetrics" :key="metric.label">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-bold uppercase text-toned">{{ metric.label }}</p>
+            <p class="mt-2 text-xl font-black">{{ typeof metric.value === 'number' ? formatNumber(metric.value) : metric.value }}</p>
+            <p class="mt-1 text-xs text-toned">{{ metric.helper }}</p>
+          </div>
+          <UIcon :name="metric.icon" class="h-5 w-5 text-primary" />
+        </div>
+      </UCard>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 gap-4 px-4 md:px-8 xl:grid-cols-3">
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Checkout funnel</h3>
+            <p class="text-sm text-toned">Where customers reach or drop during checkout.</p>
+          </div>
+        </template>
+        <div class="space-y-3">
+          <div v-for="step in siteAnalytics?.checkout_funnel || []" :key="step.step" class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-semibold">{{ step.step }}</span>
+              <strong>{{ formatNumber(step.sessions) }}</strong>
+            </div>
+            <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-900">
+              <div class="h-full rounded-full bg-primary" :style="{ width: `${Math.min(100, (Number(step.sessions || 0) / Math.max(1, Number(siteKpis.checkout_started || step.sessions || 1))) * 100)}%` }" />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard class="xl:col-span-2">
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Session activity heatmap</h3>
+            <p class="text-sm text-toned">High and low traffic hours by day.</p>
+          </div>
+        </template>
+        <div class="overflow-x-auto">
+          <div class="min-w-[720px] space-y-2">
+            <div class="grid grid-cols-[48px_repeat(24,minmax(18px,1fr))] gap-1 text-[10px] text-toned">
+              <span />
+              <span v-for="hour in 24" :key="hour" class="text-center">{{ hour - 1 }}</span>
+            </div>
+            <div v-for="row in heatmapRows" :key="row.label" class="grid grid-cols-[48px_repeat(24,minmax(18px,1fr))] gap-1">
+              <span class="text-xs font-semibold text-toned">{{ row.label }}</span>
+              <UTooltip v-for="(value, hour) in row.hours" :key="`${row.label}-${hour}`" :text="`${row.label} ${hour}:00 - ${formatNumber(value)} session event(s)`">
+                <div class="h-6 rounded border border-slate-200 dark:border-slate-800" :style="{ backgroundColor: heatIntensity(value) }" />
+              </UTooltip>
+            </div>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <div class="mt-4 grid grid-cols-1 gap-4 px-4 md:px-8 xl:grid-cols-3">
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Most viewed pages</h3>
+            <p class="text-sm text-toned">Where customer attention is concentrated.</p>
+          </div>
+        </template>
+        <UTable :columns="pageColumns" :data="siteAnalytics?.top_pages || []" :loading="isLoading" />
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Most viewed products</h3>
+            <p class="text-sm text-toned">Products customers inspect most.</p>
+          </div>
+        </template>
+        <UTable :columns="productViewColumns" :data="siteAnalytics?.top_product_views || []" :loading="isLoading" />
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Top referrers</h3>
+            <p class="text-sm text-toned">External traffic sources captured from page views.</p>
+          </div>
+        </template>
+        <UTable :columns="referrerColumns" :data="siteAnalytics?.top_referrers || []" :loading="isLoading" />
+      </UCard>
+    </div>
+
+    <div class="mt-4 px-4 md:px-8">
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="text-base font-semibold">Recent customer journeys</h3>
+            <p class="text-sm text-toned">First page, last page, duration, checkout stage, and latest session steps.</p>
+          </div>
+        </template>
+        <div class="space-y-3">
+          <div
+            v-for="session in siteAnalytics?.recent_sessions || []"
+            :key="session.session_key"
+            class="rounded-lg border border-slate-200 p-4 dark:border-slate-800"
+          >
+            <div class="grid grid-cols-1 gap-3 xl:grid-cols-5">
+              <div>
+                <p class="text-xs font-bold uppercase text-toned">Customer</p>
+                <p class="mt-1 truncate font-semibold">{{ session.customer }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase text-toned">Duration</p>
+                <p class="mt-1 font-semibold">{{ formatDuration(session.duration_seconds) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase text-toned">First page</p>
+                <p class="mt-1 truncate font-semibold">{{ session.first_page }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase text-toned">Last page</p>
+                <p class="mt-1 truncate font-semibold">{{ session.last_page }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold uppercase text-toned">Stage</p>
+                <UBadge :color="session.converted ? 'success' : session.checkout_step === 'Browsing' ? 'neutral' : 'warning'" variant="soft">
+                  {{ session.checkout_step }}
+                </UBadge>
+              </div>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <UBadge
+                v-for="(event, index) in session.journey || []"
+                :key="`${session.session_key}-${index}`"
+                color="neutral"
+                variant="subtle"
+              >
+                {{ event.event_type }}: {{ event.label || '-' }}
+              </UBadge>
+            </div>
+          </div>
+          <div v-if="!(siteAnalytics?.recent_sessions || []).length" class="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-toned dark:border-slate-700">
+            No customer journey data yet.
           </div>
         </div>
       </UCard>

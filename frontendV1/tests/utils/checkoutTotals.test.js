@@ -26,6 +26,20 @@ describe("checkoutTotals", () => {
     }));
   });
 
+  test("includes VAT exposed beside shipping totals in the checkout total", () => {
+    expect(
+      normalizeCheckoutTotals({
+        basket: { totals: { subtotal: 1000, currency: "KES" } },
+        shipping: { totals: { shipping: 200, currency: "KES" }, taxes: { total_tax: 192 } }
+      })
+    ).toEqual(expect.objectContaining({
+      subtotal: 1000,
+      shipping: 200,
+      tax: 192,
+      order_total: 1392
+    }));
+  });
+
   test("formats supported product tax states", () => {
     expect(taxStatusLabel("taxable")).toBe("Taxable");
     expect(taxStatusLabel("tax_exempt")).toBe("Tax exempt");

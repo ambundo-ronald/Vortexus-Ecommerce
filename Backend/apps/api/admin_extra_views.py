@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
@@ -7,6 +8,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, F, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 from oscar.core.loading import get_model
 from rest_framework import permissions, serializers, status
@@ -199,6 +201,37 @@ def _validate_offer_status(Offer, status_value):
 def _validate_offer_dates(start_datetime, end_datetime):
     if start_datetime and end_datetime and end_datetime <= start_datetime:
         raise serializers.ValidationError({'end_datetime': 'End date must be after the start date.'})
+
+
+def _clean_datetime_value(value, field_name):
+    value = _clean_blank(value)
+    if value is None or isinstance(value, datetime):
+        return value
+    parsed = parse_datetime(str(value))
+    if parsed is None:
+        raise serializers.ValidationError({field_name: 'Enter a valid date and time.'})
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _clean_voucher(voucher):
+    voucher.start_datetime = _clean_datetime_value(voucher.start_datetime, 'start_datetime')
+    voucher.end_datetime = _clean_datetime_value(voucher.end_datetime, 'end_datetime')
+    if not voucher.name.strip():
+        raise serializers.ValidationError({'name': 'Voucher name is required.'})
+    if not voucher.code.strip():
+        raise serializers.ValidationError({'code': 'Voucher code is required.'})
+    if not voucher.start_datetime:
+        raise serializers.ValidationError({'start_datetime': 'Start date is required.'})
+    if not voucher.end_datetime:
+        raise serializers.ValidationError({'end_datetime': 'End date is required.'})
+    _validate_offer_dates(voucher.start_datetime, voucher.end_datetime)
+    try:
+        voucher.full_clean()
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else exc.messages) from exc
+    return voucher
 
 
 def _clean_offer(offer):
@@ -629,13 +662,15 @@ class AdminVoucherCollectionAPIView(APIView):
 
     def post(self, request):
         Voucher = get_model('voucher', 'Voucher')
-        voucher = Voucher.objects.create(
+        voucher = Voucher(
             name=request.data.get('name', ''),
             code=request.data.get('code', ''),
             usage=request.data.get('usage', 'Single use'),
-            start_datetime=request.data.get('start_datetime') or timezone.now(),
-            end_datetime=request.data.get('end_datetime') or timezone.now(),
+            start_datetime=request.data.get('start_datetime') or None,
+            end_datetime=request.data.get('end_datetime') or None,
         )
+        _clean_voucher(voucher)
+        voucher.save()
         return Response({'voucher': _voucher_payload(voucher)}, status=status.HTTP_201_CREATED)
 
 
@@ -650,6 +685,7 @@ class AdminVoucherDetailAPIView(APIView):
         for field in ['name', 'code', 'usage', 'start_datetime', 'end_datetime']:
             if field in request.data:
                 setattr(voucher, field, request.data[field])
+        _clean_voucher(voucher)
         voucher.save()
         return Response({'voucher': _voucher_payload(voucher)})
 
@@ -967,7 +1003,15 @@ class AdminRangeCollectionAPIView(APIView):
 
     def get(self, request):
         Range = get_model('offer', 'Range')
-        return Response(_page(request, Range.objects.order_by('name'), _range_payload))
+        queryset = Range.objects.order_by('name')
+        search = str(request.query_params.get('search', '') or '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+                | Q(slug__icontains=search)
+                | Q(description__icontains=search)
+            )
+        return Response(_page(request, queryset, _range_payload))
 
     def post(self, request):
         Range = get_model('offer', 'Range')
