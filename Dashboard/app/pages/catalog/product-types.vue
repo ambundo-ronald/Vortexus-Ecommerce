@@ -12,10 +12,13 @@ const isLoading = ref(false)
 const isSaving = ref(false)
 const searchQuery = ref('')
 const capabilityFilter = ref(CAPABILITY_ALL)
+const currentPage = ref(1)
+const pageSize = ref(25)
 const editorOpen = ref(false)
 const editingProductType = ref<ProductTypeItem | null>(null)
 const pendingDeleteProductType = ref<ProductTypeItem | null>(null)
 const saveError = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive({
   name: '',
@@ -31,19 +34,7 @@ const capabilityOptions = [
   { label: 'Digital/service', value: 'digital' },
 ]
 
-const filteredProductTypes = computed(() => {
-  const search = searchQuery.value.trim().toLowerCase()
-  return productTypes.value.filter((productType) => {
-    const matchesSearch = !search
-      || productType.name.toLowerCase().includes(search)
-      || productType.slug.toLowerCase().includes(search)
-    const matchesCapability = capabilityFilter.value === CAPABILITY_ALL
-      || (capabilityFilter.value === 'requires_shipping' && productType.requires_shipping)
-      || (capabilityFilter.value === 'track_stock' && productType.track_stock)
-      || (capabilityFilter.value === 'digital' && !productType.requires_shipping && !productType.track_stock)
-    return matchesSearch && matchesCapability
-  })
-})
+const filteredProductTypes = computed(() => productTypes.value)
 
 const shippingCount = computed(() => productTypes.value.filter(item => item.requires_shipping).length)
 const stockCount = computed(() => productTypes.value.filter(item => item.track_stock).length)
@@ -73,13 +64,19 @@ function openEditProductType(productType: ProductTypeItem) {
   editorOpen.value = true
 }
 
-async function loadProductTypes() {
+async function loadProductTypes(page = currentPage.value) {
   isLoading.value = true
-  const result = await getProductTypes({ pageSize: 100 })
+  const result = await getProductTypes({
+    page,
+    pageSize: pageSize.value,
+    search: searchQuery.value.trim(),
+    capability: capabilityFilter.value === CAPABILITY_ALL ? '' : capabilityFilter.value,
+  })
 
   if (result.success) {
     productTypes.value = result.data?.results ?? []
     totalItems.value = result.data?.pagination?.total ?? productTypes.value.length
+    currentPage.value = result.data?.pagination?.page ?? page
   }
   else {
     productTypes.value = []
@@ -93,6 +90,18 @@ async function loadProductTypes() {
 
   isLoading.value = false
 }
+
+function queueSearch() {
+  currentPage.value = 1
+  if (searchTimer)
+    clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => loadProductTypes(1), 300)
+}
+
+watch(capabilityFilter, () => {
+  currentPage.value = 1
+  loadProductTypes(1)
+})
 
 async function submitProductType() {
   saveError.value = ''
@@ -182,6 +191,7 @@ onMounted(loadProductTypes)
           size="lg"
           icon="i-lucide-search"
           placeholder="Search product types..."
+          @input="queueSearch"
         />
         <USelect
           v-model="capabilityFilter"
@@ -266,9 +276,14 @@ onMounted(loadProductTypes)
       </div>
     </div>
 
-    <p class="mt-4 text-sm text-slate-500">
-      Showing {{ filteredProductTypes.length }} of {{ totalItems }} product types.
-    </p>
+    <AdminTableFooter
+      :shown="filteredProductTypes.length"
+      :total="totalItems"
+      label="product types"
+      :page="currentPage"
+      :page-size="pageSize"
+      @update:page="loadProductTypes"
+    />
 
     <div
       v-if="editorOpen"

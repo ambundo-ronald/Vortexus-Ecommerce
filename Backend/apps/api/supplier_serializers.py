@@ -11,6 +11,7 @@ from rest_framework import serializers
 
 from apps.common.products import serialize_product_card
 from apps.common.currency import default_currency
+from apps.marketplace.payables import supplier_payable_net_total, supplier_payable_queryset_net_total
 
 from .serializers import ProductWriteSerializer
 
@@ -28,6 +29,10 @@ def _sum_supplier_allocations(queryset):
 
 def _sum_supplier_payables(queryset):
     return queryset.aggregate(total=Sum('payable_total')).get('total') or ZERO
+
+
+def _sum_supplier_payables_net(queryset):
+    return supplier_payable_queryset_net_total(queryset)
 
 
 def _canonical_stockrecord_for_product(product, exclude_partner_id=None):
@@ -482,14 +487,14 @@ class SupplierDashboardSerializer(serializers.Serializer):
                 'open_order_count': supplier_orders.exclude(status__in=['delivered', 'cancelled']).count(),
                 'delivered_order_count': supplier_orders.filter(status='delivered').count(),
                 'cancelled_order_count': supplier_orders.filter(status='cancelled').count(),
-                'supplier_payable_total': _sum_supplier_payables(payables.exclude(status=SupplierPayableLedger.STATUS_REVERSED)),
-                'confirmed_payable_total': _sum_supplier_payables(confirmed_payables),
+                'supplier_payable_total': _sum_supplier_payables_net(payables),
+                'confirmed_payable_total': _sum_supplier_payables_net(confirmed_payables),
                 'pending_payable_total': _sum_supplier_payables(pending_payables),
             },
             'payments': {
                 'basis': 'supplier_payable_ledger',
                 'status': 'settlement_pending',
-                'confirmed_total': _sum_supplier_payables(confirmed_payables),
+                'confirmed_total': _sum_supplier_payables_net(confirmed_payables),
                 'pending_total': _sum_supplier_payables(pending_payables),
                 'paid_out_total': _sum_supplier_payables(payables.filter(status=SupplierPayableLedger.STATUS_PAID)),
             },
@@ -498,7 +503,7 @@ class SupplierDashboardSerializer(serializers.Serializer):
 
 def _supplier_order_group_payable(group):
     SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
-    return _sum_supplier_payables(SupplierPayableLedger.objects.filter(order=group.order, partner=group.partner))
+    return _sum_supplier_payables_net(SupplierPayableLedger.objects.filter(order=group.order, partner=group.partner))
 
 
 def _supplier_order_group_payload(group, *, include_platform_fields=False):
@@ -563,6 +568,7 @@ class SupplierAdminDetailSerializer(serializers.Serializer):
         SupplierProductOffer = apps.get_model('marketplace', 'SupplierProductOffer')
         SupplierProductRequest = apps.get_model('marketplace', 'SupplierProductRequest')
         SupplierOrderLineAllocation = apps.get_model('marketplace', 'SupplierOrderLineAllocation')
+        SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
         PaymentSession = apps.get_model('payments', 'PaymentSession')
         partner = supplier_profile.partner
 
@@ -593,6 +599,13 @@ class SupplierAdminDetailSerializer(serializers.Serializer):
             status__in=[PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID],
         ).values_list('order_id', flat=True)
         paid_allocations = allocations.filter(order_id__in=paid_order_ids)
+        payables = SupplierPayableLedger.objects.filter(partner=partner).select_related('allocation')
+        confirmed_payables = payables.filter(status__in=[
+            SupplierPayableLedger.STATUS_PAYABLE,
+            SupplierPayableLedger.STATUS_APPROVED,
+            SupplierPayableLedger.STATUS_PAID,
+        ])
+        pending_payables = payables.filter(status=SupplierPayableLedger.STATUS_PENDING)
         stockrecords = StockRecord.objects.filter(partner=partner)
 
         return {
@@ -607,16 +620,16 @@ class SupplierAdminDetailSerializer(serializers.Serializer):
                 'stock_units_allocated': stockrecords.aggregate(total=Sum('num_allocated')).get('total') or 0,
                 'order_count': order_groups.count(),
                 'open_order_count': order_groups.exclude(status__in=['delivered', 'cancelled']).count(),
-                'supplier_payable_total': allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'confirmed_payable_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'pending_payable_total': allocations.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'supplier_payable_total': _sum_supplier_payables_net(payables),
+                'confirmed_payable_total': _sum_supplier_payables_net(confirmed_payables),
+                'pending_payable_total': _sum_supplier_payables(pending_payables),
                 'gross_margin_total': allocations.aggregate(total=Sum('gross_margin')).get('total') or 0,
             },
             'payments': {
-                'basis': 'supplier_order_line_allocations',
-                'confirmed_payable_total': paid_allocations.aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'pending_payable_total': allocations.exclude(order_id__in=paid_order_ids).aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
-                'paid_out_total': allocations.filter(payout_status='paid').aggregate(total=Sum('supplier_total_cost')).get('total') or 0,
+                'basis': 'supplier_payable_ledger',
+                'confirmed_payable_total': _sum_supplier_payables_net(confirmed_payables),
+                'pending_payable_total': _sum_supplier_payables(pending_payables),
+                'paid_out_total': _sum_supplier_payables(payables.filter(status=SupplierPayableLedger.STATUS_PAID)),
             },
             'offers': SupplierProductOfferListSerializer(offers[:12], many=True).data,
             'product_requests': SupplierProductRequestListSerializer(product_requests[:12], many=True).data,

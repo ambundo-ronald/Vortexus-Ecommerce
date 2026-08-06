@@ -311,7 +311,7 @@ const supplierPayableColumns: TableColumn<FinanceSupplierPayableItem>[] = [
   { accessorKey: 'order_number', header: 'Order' },
   { accessorKey: 'product_title', header: 'Product' },
   { accessorKey: 'quantity', header: 'Qty' },
-  { accessorKey: 'payable_total', header: 'Supplier Payable', cell: ({ row }) => money(row.original.payable_total) },
+  { accessorKey: 'net_payable_total', header: 'Net Payable', cell: ({ row }) => money(row.original.net_payable_total ?? row.original.payable_total) },
   { accessorKey: 'gross_margin', header: 'Margin', cell: ({ row }) => money(row.original.gross_margin) },
   { accessorKey: 'updated_at', header: 'Updated', cell: ({ row }) => formatDate(row.original.updated_at) },
 ]
@@ -1551,7 +1551,7 @@ onMounted(loadFinance)
             <div>
               <h3 class="text-base font-semibold">Supplier Payables</h3>
               <p class="text-xs text-toned">
-                {{ payablePagination.count || 0 }} row(s), {{ money(payableSummary.payable_total) }} supplier payable.
+                {{ payablePagination.count || 0 }} row(s), {{ money(payableSummary.payable_total) }} net supplier payable.
               </p>
             </div>
             <UBadge color="primary" variant="soft">{{ money(summary?.supplier_payables?.ready_total) }} ready</UBadge>
@@ -1703,7 +1703,12 @@ onMounted(loadFinance)
                 <td class="px-4 py-3">{{ payable.order_number }}</td>
                 <td class="px-4 py-3">{{ payable.product_title }}</td>
                 <td class="px-4 py-3">{{ payable.quantity }}</td>
-                <td class="px-4 py-3">{{ money(payable.payable_total) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold">{{ money(payable.net_payable_total ?? payable.payable_total) }}</p>
+                  <p v-if="Number(payable.adjustment_debit_total || 0) || Number(payable.adjustment_reversal_total || 0)" class="text-xs text-toned">
+                    Gross {{ money(payable.payable_total) }} less adjustments {{ money(Number(payable.adjustment_debit_total || 0) + Number(payable.adjustment_reversal_total || 0)) }}
+                  </p>
+                </td>
                 <td class="px-4 py-3">{{ money(payable.gross_margin) }}</td>
                 <td class="px-4 py-3">
                   <p class="font-semibold">{{ formatLabel(payable.status) }}</p>

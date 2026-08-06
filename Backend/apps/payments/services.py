@@ -797,6 +797,10 @@ def update_payment_refund_ledger_status(
 
     _refresh_refund_reconciliation(refund_ledger.payment_session)
     if next_status == PaymentRefundLedger.STATUS_SUCCEEDED:
+        from apps.marketplace.payables import create_supplier_debit_adjustments_for_refund, mark_supplier_adjustments_applied_for_source
+
+        create_supplier_debit_adjustments_for_refund(refund_ledger, created_by=reviewed_by)
+        mark_supplier_adjustments_applied_for_source(refund_ledger.refund_reference, user=reviewed_by)
         _post_refund_accounting(refund_ledger)
     return refund_ledger
 
@@ -1048,7 +1052,11 @@ def update_payment_return_case(
         return_case.refund_ledger = refund_ledger
         metadata = return_case.metadata or {}
         adjustments = []
-        if not metadata.get('supplier_return_applied_at'):
+        if action == 'refund' and metadata.get('supplier_return_applied_at'):
+            from apps.marketplace.payables import mark_supplier_adjustments_applied_for_source
+
+            adjustments = mark_supplier_adjustments_applied_for_source(return_case.return_reference, user=reviewed_by)
+        elif not metadata.get('supplier_return_applied_at'):
             from apps.marketplace.payables import apply_supplier_return_to_payables
 
             adjustments = apply_supplier_return_to_payables(return_case, created_by=reviewed_by)

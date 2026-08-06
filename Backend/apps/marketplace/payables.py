@@ -13,6 +13,39 @@ ZERO = Decimal('0.00')
 logger = logging.getLogger(__name__)
 
 
+def supplier_payable_adjustment_totals(payable, *, include_pending=True):
+    SupplierPayableAdjustment = apps.get_model('marketplace', 'SupplierPayableAdjustment')
+    active_statuses = {
+        SupplierPayableAdjustment.STATUS_APPROVED,
+        SupplierPayableAdjustment.STATUS_APPLIED,
+    }
+    if include_pending:
+        active_statuses.add(SupplierPayableAdjustment.STATUS_PENDING_REVIEW)
+    totals = {
+        SupplierPayableAdjustment.TYPE_DEBIT: ZERO,
+        SupplierPayableAdjustment.TYPE_CREDIT: ZERO,
+        SupplierPayableAdjustment.TYPE_REVERSAL: ZERO,
+    }
+    for adjustment in payable.adjustments.filter(status__in=active_statuses):
+        totals[adjustment.adjustment_type] = _money(totals.get(adjustment.adjustment_type, ZERO) + _money(adjustment.amount))
+    return totals
+
+
+def supplier_payable_net_total(payable, *, include_pending_adjustments=True):
+    SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
+    SupplierPayableAdjustment = apps.get_model('marketplace', 'SupplierPayableAdjustment')
+    if payable.status == SupplierPayableLedger.STATUS_REVERSED:
+        return ZERO
+    totals = supplier_payable_adjustment_totals(payable, include_pending=include_pending_adjustments)
+    net = _money(payable.payable_total) - totals[SupplierPayableAdjustment.TYPE_DEBIT] - totals[SupplierPayableAdjustment.TYPE_REVERSAL]
+    net += totals[SupplierPayableAdjustment.TYPE_CREDIT]
+    return max(ZERO, _money(net))
+
+
+def supplier_payable_queryset_net_total(queryset, *, include_pending_adjustments=True):
+    return sum((supplier_payable_net_total(payable, include_pending_adjustments=include_pending_adjustments) for payable in queryset), ZERO)
+
+
 def sync_supplier_payable_for_allocation(allocation):
     SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
     status, source_status, reversal_reason = _ledger_status_for_allocation(allocation)
@@ -158,6 +191,9 @@ def create_supplier_payout_batch(*, payable_ids, created_by=None, payout_method=
                 'Payable rows cannot be batched until finance reconciliation is clear. '
                 + ' | '.join(payout_unsafe)
             )
+        zero_net = [payable.id for payable in payables if supplier_payable_net_total(payable) <= ZERO]
+        if zero_net:
+            raise ValueError(f'Payable rows have no net amount left after returns or refunds: {zero_net}.')
 
         supplier_ids = {payable.supplier_id for payable in payables}
         partner_ids = {payable.partner_id for payable in payables}
@@ -167,7 +203,7 @@ def create_supplier_payout_batch(*, payable_ids, created_by=None, payout_method=
         if len(currencies) > 1:
             raise ValueError('Create one payout batch per currency.')
 
-        total_amount = sum((_money(payable.payable_total) for payable in payables), ZERO)
+        total_amount = sum((supplier_payable_net_total(payable) for payable in payables), ZERO)
         batch = SupplierPayoutBatch.objects.create(
             batch_reference=_next_payout_reference(SupplierPayoutBatch),
             supplier=payables[0].supplier,
@@ -184,7 +220,7 @@ def create_supplier_payout_batch(*, payable_ids, created_by=None, payout_method=
                 SupplierPayoutBatchEntry(
                     batch=batch,
                     payable=payable,
-                    amount=_money(payable.payable_total),
+                    amount=supplier_payable_net_total(payable),
                     currency=payable.currency or batch.currency,
                 )
                 for payable in payables
@@ -285,6 +321,7 @@ def cancel_supplier_payout_batch(batch, *, user=None, reason=''):
 def create_supplier_debit_adjustments_for_refund(refund_ledger, *, created_by=None):
     SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
     SupplierPayableAdjustment = apps.get_model('marketplace', 'SupplierPayableAdjustment')
+    PaymentRefundLedger = apps.get_model('payments', 'PaymentRefundLedger')
 
     order = refund_ledger.order
     if not order:
@@ -303,6 +340,7 @@ def create_supplier_debit_adjustments_for_refund(refund_ledger, *, created_by=No
     if order_total <= ZERO or refund_amount <= ZERO:
         return []
     ratio = min(refund_amount / order_total, Decimal('1.00'))
+    is_completed = refund_ledger.status == PaymentRefundLedger.STATUS_SUCCEEDED
 
     adjustments = []
     with transaction.atomic():
@@ -320,7 +358,7 @@ def create_supplier_debit_adjustments_for_refund(refund_ledger, *, created_by=No
                     'order': payable.order,
                     'line': payable.line,
                     'adjustment_type': SupplierPayableAdjustment.TYPE_DEBIT,
-                    'status': SupplierPayableAdjustment.STATUS_PENDING_REVIEW,
+                    'status': SupplierPayableAdjustment.STATUS_APPLIED if is_completed else SupplierPayableAdjustment.STATUS_PENDING_REVIEW,
                     'amount': adjustment_amount,
                     'currency': payable.currency,
                     'reason': refund_ledger.reason or 'Customer refund after supplier payout.',
@@ -333,9 +371,39 @@ def create_supplier_debit_adjustments_for_refund(refund_ledger, *, created_by=No
                         'payable_id': payable.id,
                     },
                     'created_by': created_by if getattr(created_by, 'is_authenticated', False) else None,
+                    'applied_by': created_by if is_completed and getattr(created_by, 'is_authenticated', False) else None,
+                    'applied_at': timezone.now() if is_completed else None,
                 },
             )
+            if is_completed and adjustment.status != SupplierPayableAdjustment.STATUS_APPLIED:
+                adjustment.status = SupplierPayableAdjustment.STATUS_APPLIED
+                adjustment.applied_by = created_by if getattr(created_by, 'is_authenticated', False) else adjustment.applied_by
+                adjustment.applied_at = adjustment.applied_at or timezone.now()
+                adjustment.save(update_fields=['status', 'applied_by', 'applied_at', 'updated_at'])
             adjustments.append(adjustment)
+    return adjustments
+
+
+def mark_supplier_adjustments_applied_for_source(source_reference, *, user=None):
+    SupplierPayableAdjustment = apps.get_model('marketplace', 'SupplierPayableAdjustment')
+    reference = (source_reference or '').strip()
+    if not reference:
+        return []
+    with transaction.atomic():
+        adjustments = list(
+            SupplierPayableAdjustment.objects.select_for_update().filter(
+                source_reference=reference,
+                status__in=[
+                    SupplierPayableAdjustment.STATUS_PENDING_REVIEW,
+                    SupplierPayableAdjustment.STATUS_APPROVED,
+                ],
+            )
+        )
+        for adjustment in adjustments:
+            adjustment.status = SupplierPayableAdjustment.STATUS_APPLIED
+            adjustment.applied_by = user if getattr(user, 'is_authenticated', False) else adjustment.applied_by
+            adjustment.applied_at = adjustment.applied_at or timezone.now()
+            adjustment.save(update_fields=['status', 'applied_by', 'applied_at', 'updated_at'])
     return adjustments
 
 
@@ -343,6 +411,7 @@ def create_supplier_debit_adjustments_for_refund(refund_ledger, *, created_by=No
 def apply_supplier_return_to_payables(return_case, *, created_by=None):
     SupplierPayableLedger = apps.get_model('marketplace', 'SupplierPayableLedger')
     SupplierPayableAdjustment = apps.get_model('marketplace', 'SupplierPayableAdjustment')
+    PaymentReturnCase = apps.get_model('payments', 'PaymentReturnCase')
 
     quantity = int(return_case.accepted_quantity or 0)
     if quantity <= 0:
@@ -355,6 +424,7 @@ def apply_supplier_return_to_payables(return_case, *, created_by=None):
         .order_by('id')
     )
     adjustments = []
+    is_refunded = return_case.status == PaymentReturnCase.STATUS_REFUNDED
     for payable in payables:
         return_cost = min(_money(payable.payable_total), _money(_money(payable.supplier_unit_cost) * Decimal(quantity)))
         if return_cost <= ZERO:
@@ -371,7 +441,7 @@ def apply_supplier_return_to_payables(return_case, *, created_by=None):
                     'order': payable.order,
                     'line': payable.line,
                     'adjustment_type': SupplierPayableAdjustment.TYPE_DEBIT,
-                    'status': SupplierPayableAdjustment.STATUS_PENDING_REVIEW,
+                    'status': SupplierPayableAdjustment.STATUS_APPLIED if is_refunded else SupplierPayableAdjustment.STATUS_PENDING_REVIEW,
                     'amount': return_cost,
                     'currency': payable.currency,
                     'reason': return_case.reason or 'Accepted customer return after supplier payout.',
@@ -383,8 +453,15 @@ def apply_supplier_return_to_payables(return_case, *, created_by=None):
                         'payable_id': payable.id,
                     },
                     'created_by': created_by if getattr(created_by, 'is_authenticated', False) else None,
+                    'applied_by': created_by if is_refunded and getattr(created_by, 'is_authenticated', False) else None,
+                    'applied_at': timezone.now() if is_refunded else None,
                 },
             )
+            if is_refunded and adjustment.status != SupplierPayableAdjustment.STATUS_APPLIED:
+                adjustment.status = SupplierPayableAdjustment.STATUS_APPLIED
+                adjustment.applied_by = created_by if getattr(created_by, 'is_authenticated', False) else adjustment.applied_by
+                adjustment.applied_at = adjustment.applied_at or timezone.now()
+                adjustment.save(update_fields=['status', 'applied_by', 'applied_at', 'updated_at'])
             adjustments.append(adjustment)
             continue
 

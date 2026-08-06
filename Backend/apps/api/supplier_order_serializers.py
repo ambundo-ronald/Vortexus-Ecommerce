@@ -1,6 +1,9 @@
 from django.apps import apps
+from decimal import Decimal
 
 from rest_framework import serializers
+
+from apps.marketplace.payables import supplier_payable_net_total
 
 
 def _supplier_payables_for_group(group):
@@ -9,7 +12,7 @@ def _supplier_payables_for_group(group):
 
 
 def _supplier_payable_total(group):
-    return sum((payable.payable_total or 0) for payable in _supplier_payables_for_group(group))
+    return sum((supplier_payable_net_total(payable) for payable in _supplier_payables_for_group(group)), Decimal('0.00'))
 
 
 SUPPLIER_LINE_STATUS_CHOICES = [
@@ -72,6 +75,7 @@ class SupplierOrderDetailSerializer(serializers.Serializer):
             if line.partner_id != supplier_profile.partner_id:
                 continue
             payable = payables_by_line_id.get(line.id)
+            supplier_line_total = supplier_payable_net_total(payable) if payable else 0
             supplier_lines.append(
                 {
                     'id': line.id,
@@ -81,7 +85,7 @@ class SupplierOrderDetailSerializer(serializers.Serializer):
                     'partner_sku': line.partner_sku,
                     'status': line.status,
                     'supplier_unit_cost': float(getattr(payable, 'supplier_unit_cost', 0) or 0),
-                    'supplier_line_total': float(getattr(payable, 'payable_total', 0) or 0),
+                    'supplier_line_total': float(supplier_line_total),
                     'payout_status': getattr(payable, 'status', '') or '',
                 }
             )

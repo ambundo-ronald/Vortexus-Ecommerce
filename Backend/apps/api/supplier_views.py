@@ -849,7 +849,8 @@ class SupplierAdminCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def get(self, request):
-        queryset = assigned_supplier_queryset(request.user).order_by('company_name', 'id')
+        base_queryset = assigned_supplier_queryset(request.user)
+        queryset = base_queryset.order_by('company_name', 'id')
         search = (request.query_params.get('q') or '').strip()
         status_filter = (request.query_params.get('status') or '').strip()
         if search:
@@ -863,7 +864,40 @@ class SupplierAdminCollectionAPIView(APIView):
             )
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        return Response({'results': SupplierProfileSerializer(queryset, many=True).data})
+        try:
+            page = max(int(request.query_params.get('page', 1) or 1), 1)
+            page_size = min(max(int(request.query_params.get('page_size', 20) or 20), 1), 100)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    'error': {
+                        'code': 'invalid_pagination',
+                        'detail': 'Page and page_size must be integers.',
+                        'status': 400,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        paginator = Paginator(queryset, page_size)
+        page_obj = paginator.get_page(page)
+        return Response(
+            {
+                'results': SupplierProfileSerializer(page_obj.object_list, many=True).data,
+                'pagination': {
+                    'page': page_obj.number,
+                    'page_size': page_size,
+                    'total': paginator.count,
+                    'num_pages': paginator.num_pages,
+                    'has_next': page_obj.has_next(),
+                },
+                'summary': {
+                    'total': base_queryset.count(),
+                    'pending': base_queryset.filter(status='pending').count(),
+                    'approved': base_queryset.filter(status='approved').count(),
+                    'suspended': base_queryset.filter(status='suspended').count(),
+                },
+            }
+        )
 
     def post(self, request):
         if not can_access_all_admin_data(request.user):

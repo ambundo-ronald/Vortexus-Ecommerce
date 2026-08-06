@@ -25,7 +25,7 @@ export function useProductTypes() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getProductTypes(params: { page?: number, pageSize?: number } = {}) {
+  async function getProductTypes(params: { page?: number, pageSize?: number, search?: string, capability?: string } = {}) {
     loading.value = true
     error.value = null
 
@@ -34,7 +34,9 @@ export function useProductTypes() {
         method: 'GET',
         query: {
           page: params.page || 1,
-          page_size: params.pageSize || 100,
+          page_size: params.pageSize || 25,
+          q: params.search || '',
+          capability: params.capability || '',
         },
       })
       return { success: true, data: result }

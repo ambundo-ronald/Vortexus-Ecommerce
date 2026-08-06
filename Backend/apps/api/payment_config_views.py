@@ -24,6 +24,9 @@ from apps.marketplace.payables import (
     create_supplier_payout_batch,
     mark_supplier_payout_batch_paid,
     submit_supplier_payout_batch,
+    supplier_payable_adjustment_totals,
+    supplier_payable_net_total,
+    supplier_payable_queryset_net_total,
 )
 from apps.notifications.secret_store import seal_secret
 from apps.payments.config import (
@@ -676,6 +679,8 @@ def _finance_reconciliation_payload(reconciliation) -> dict:
 
 def _finance_payable_payload(payable) -> dict:
     allocation = getattr(payable, 'allocation', None)
+    adjustment_totals = supplier_payable_adjustment_totals(payable)
+    net_payable_total = supplier_payable_net_total(payable)
     return {
         'id': payable.id,
         'status': payable.status,
@@ -697,6 +702,10 @@ def _finance_payable_payload(payable) -> dict:
         'quantity': payable.quantity,
         'supplier_unit_cost': float(payable.supplier_unit_cost or 0),
         'payable_total': float(payable.payable_total or 0),
+        'adjustment_debit_total': float(adjustment_totals.get('debit') or 0),
+        'adjustment_credit_total': float(adjustment_totals.get('credit') or 0),
+        'adjustment_reversal_total': float(adjustment_totals.get('reversal') or 0),
+        'net_payable_total': float(net_payable_total),
         'currency': payable.currency,
         'payout_reference': payable.payout_reference,
         'reversal_reason': payable.reversal_reason,
@@ -878,7 +887,7 @@ def _return_next_actions(return_case) -> list[str]:
 
 def _finance_order_line_payload(line, payables_by_line: dict) -> dict:
     line_payables = payables_by_line.get(line.id, [])
-    supplier_payable_total = sum(Decimal(str(payable.payable_total or 0)) for payable in line_payables)
+    supplier_payable_total = sum((supplier_payable_net_total(payable) for payable in line_payables), Decimal('0.00'))
     gross_margin_total = sum(Decimal(str(getattr(payable.allocation, 'gross_margin', 0) or 0)) for payable in line_payables)
     return {
         'line_id': line.id,
@@ -981,7 +990,7 @@ def _finance_order_payload(order) -> dict:
 
     subtotal_excl_tax = Decimal(str(order.total_excl_tax or 0)) - Decimal(str(order.shipping_excl_tax or 0))
     total_paid = sum(Decimal(str(payment.amount or 0)) for payment in payments if payment.status in [PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID])
-    supplier_payable_total = sum(Decimal(str(payable.payable_total or 0)) for payable in payables if payable.status != 'reversed')
+    supplier_payable_total = sum((supplier_payable_net_total(payable) for payable in payables), Decimal('0.00'))
     gross_margin_total = sum(Decimal(str(getattr(payable.allocation, 'gross_margin', 0) or 0)) for payable in payables)
     gateway_fee_total = sum(Decimal(str(reconciliation.fee_amount or 0)) for reconciliation in reconciliations)
     refund_summary = _finance_refund_summary(payments)
@@ -1061,7 +1070,6 @@ class AdminFinanceSummaryAPIView(APIView):
                 PaymentReconciliation.STATUS_REFUNDED,
             ]
         )
-        active_payables = payables.exclude(status=SupplierPayableLedger.STATUS_REVERSED)
         payable_ready = payables.filter(status__in=[SupplierPayableLedger.STATUS_PAYABLE, SupplierPayableLedger.STATUS_APPROVED])
         supplier_paid = payables.filter(status=SupplierPayableLedger.STATUS_PAID)
         supplier_pending = payables.filter(status=SupplierPayableLedger.STATUS_PENDING)
@@ -1073,7 +1081,7 @@ class AdminFinanceSummaryAPIView(APIView):
         )
         gross_margin_total = Decimal(str(sum(
             Decimal(str(getattr(payable.allocation, 'gross_margin', 0) or 0))
-            for payable in active_payables.select_related('allocation')
+            for payable in payables.exclude(status=SupplierPayableLedger.STATUS_REVERSED).select_related('allocation')
         )))
         refund_summary = _refund_request_summary(collectible_payments)
         refund_impact = _finance_refund_impact_summary(collectible_payments)
@@ -1099,8 +1107,8 @@ class AdminFinanceSummaryAPIView(APIView):
                     'issues_count': reconciliations.exclude(issues=[]).count(),
                 },
                 'supplier_payables': {
-                    'total': _money_total(active_payables, 'payable_total'),
-                    'ready_total': _money_total(payable_ready, 'payable_total'),
+                    'total': float(supplier_payable_queryset_net_total(payables)),
+                    'ready_total': float(supplier_payable_queryset_net_total(payable_ready)),
                     'pending_total': _money_total(supplier_pending, 'payable_total'),
                     'paid_total': _money_total(supplier_paid, 'payable_total'),
                     'by_status': list(payables.values('status').annotate(count=Count('id'), total=Sum('payable_total')).order_by('status')),
@@ -1296,7 +1304,8 @@ class AdminFinanceSupplierPayableCollectionAPIView(APIView):
                 'pagination': _pagination_payload(page_obj, page_obj.number, page_size),
                 'summary': {
                     'count': queryset.count(),
-                    'payable_total': _money_total(queryset, 'payable_total'),
+                    'payable_total': float(supplier_payable_queryset_net_total(queryset)),
+                    'gross_payable_total': _money_total(queryset, 'payable_total'),
                     'gross_margin_total': _money_total(queryset, 'allocation__gross_margin'),
                     'by_status': list(queryset.values('status').annotate(count=Count('id'), total=Sum('payable_total')).order_by('status')),
                 },

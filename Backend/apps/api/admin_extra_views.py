@@ -306,7 +306,16 @@ class AdminCategoryCollectionAPIView(APIView):
 
     def get(self, request):
         Category = get_model('catalogue', 'Category')
-        return Response(_page(request, Category.objects.order_by('path'), _category_payload))
+        queryset = Category.objects.order_by('path')
+        search = (request.query_params.get('q') or '').strip()
+        visibility = (request.query_params.get('visibility') or '').strip()
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(slug__icontains=search) | Q(description__icontains=search))
+        if visibility == 'public':
+            queryset = queryset.filter(is_public=True)
+        elif visibility == 'hidden':
+            queryset = queryset.filter(is_public=False)
+        return Response(_page(request, queryset, _category_payload))
 
     def post(self, request):
         Category = get_model('catalogue', 'Category')
@@ -373,7 +382,18 @@ class AdminProductTypeCollectionAPIView(APIView):
 
     def get(self, request):
         ProductClass = get_model('catalogue', 'ProductClass')
-        return Response(_page(request, ProductClass.objects.order_by('name'), _product_class_payload))
+        queryset = ProductClass.objects.order_by('name')
+        search = (request.query_params.get('q') or '').strip()
+        capability = (request.query_params.get('capability') or '').strip()
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(slug__icontains=search))
+        if capability == 'requires_shipping':
+            queryset = queryset.filter(requires_shipping=True)
+        elif capability == 'track_stock':
+            queryset = queryset.filter(track_stock=True)
+        elif capability == 'digital':
+            queryset = queryset.filter(requires_shipping=False, track_stock=False)
+        return Response(_page(request, queryset, _product_class_payload))
 
     def post(self, request):
         ProductClass = get_model('catalogue', 'ProductClass')
@@ -470,6 +490,24 @@ class AdminAttributeCollectionAPIView(APIView):
             'vortexus_metadata',
             'vortexus_metadata__parent_attribute',
         ).order_by('code')
+        search = (request.query_params.get('q') or '').strip()
+        type_filter = (request.query_params.get('type') or '').strip()
+        product_class_id = (request.query_params.get('product_class_id') or '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+                | Q(code__icontains=search)
+                | Q(product_class__name__icontains=search)
+                | Q(vortexus_metadata__parent_attribute__name__icontains=search)
+                | Q(vortexus_metadata__uom__icontains=search)
+            )
+        if type_filter:
+            if type_filter == 'uom':
+                queryset = queryset.filter(vortexus_metadata__data_type='uom')
+            else:
+                queryset = queryset.filter(type=type_filter)
+        if product_class_id:
+            queryset = queryset.filter(product_class_id=product_class_id)
         return Response(_page(request, queryset, _attribute_payload))
 
     def post(self, request):
@@ -541,7 +579,19 @@ class AdminOptionCollectionAPIView(APIView):
 
     def get(self, request):
         Option = get_model('catalogue', 'Option')
-        return Response(_page(request, Option.objects.order_by('order', 'name'), _option_payload))
+        queryset = Option.objects.order_by('order', 'name')
+        search = (request.query_params.get('q') or '').strip()
+        type_filter = (request.query_params.get('type') or '').strip()
+        required_filter = (request.query_params.get('required') or '').strip()
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(code__icontains=search) | Q(help_text__icontains=search))
+        if type_filter:
+            queryset = queryset.filter(type=type_filter)
+        if required_filter == 'required':
+            queryset = queryset.filter(required=True)
+        elif required_filter == 'optional':
+            queryset = queryset.filter(required=False)
+        return Response(_page(request, queryset, _option_payload))
 
     def post(self, request):
         Option = get_model('catalogue', 'Option')

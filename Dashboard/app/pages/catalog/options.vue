@@ -14,10 +14,13 @@ const isSaving = ref(false)
 const searchQuery = ref('')
 const typeFilter = ref(ALL_TYPES)
 const requiredFilter = ref(ALL_REQUIRED)
+const currentPage = ref(1)
+const pageSize = ref(25)
 const editorOpen = ref(false)
 const editingOption = ref<OptionItem | null>(null)
 const pendingDeleteOption = ref<OptionItem | null>(null)
 const saveError = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const form = reactive({
   name: '',
@@ -53,20 +56,7 @@ const requiredOptions = [
   { label: 'Optional', value: 'optional' },
 ]
 
-const filteredOptions = computed(() => {
-  const search = searchQuery.value.trim().toLowerCase()
-  return options.value.filter((option) => {
-    const matchesSearch = !search
-      || option.name.toLowerCase().includes(search)
-      || option.code.toLowerCase().includes(search)
-      || option.help_text.toLowerCase().includes(search)
-    const matchesType = typeFilter.value === ALL_TYPES || option.type === typeFilter.value
-    const matchesRequired = requiredFilter.value === ALL_REQUIRED
-      || (requiredFilter.value === 'required' && option.required)
-      || (requiredFilter.value === 'optional' && !option.required)
-    return matchesSearch && matchesType && matchesRequired
-  })
-})
+const filteredOptions = computed(() => options.value)
 
 const requiredCount = computed(() => options.value.filter(item => item.required).length)
 const optionalCount = computed(() => options.value.filter(item => !item.required).length)
@@ -104,13 +94,20 @@ function openEditOption(option: OptionItem) {
   editorOpen.value = true
 }
 
-async function loadOptions() {
+async function loadOptions(page = currentPage.value) {
   isLoading.value = true
-  const result = await getOptions({ pageSize: 200 })
+  const result = await getOptions({
+    page,
+    pageSize: pageSize.value,
+    search: searchQuery.value.trim(),
+    type: typeFilter.value === ALL_TYPES ? '' : typeFilter.value,
+    required: requiredFilter.value === ALL_REQUIRED ? '' : requiredFilter.value,
+  })
 
   if (result.success) {
     options.value = result.data?.results ?? []
     totalItems.value = result.data?.pagination?.total ?? options.value.length
+    currentPage.value = result.data?.pagination?.page ?? page
   }
   else {
     options.value = []
@@ -124,6 +121,18 @@ async function loadOptions() {
 
   isLoading.value = false
 }
+
+function queueSearch() {
+  currentPage.value = 1
+  if (searchTimer)
+    clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => loadOptions(1), 300)
+}
+
+watch([typeFilter, requiredFilter], () => {
+  currentPage.value = 1
+  loadOptions(1)
+})
 
 async function submitOption() {
   saveError.value = ''
@@ -215,6 +224,7 @@ onMounted(loadOptions)
           size="lg"
           icon="i-lucide-search"
           placeholder="Search options..."
+          @input="queueSearch"
         />
         <USelect
           v-model="typeFilter"
@@ -315,9 +325,14 @@ onMounted(loadOptions)
       </div>
     </div>
 
-    <p class="mt-4 text-sm text-slate-500">
-      Showing {{ filteredOptions.length }} of {{ totalItems }} options.
-    </p>
+    <AdminTableFooter
+      :shown="filteredOptions.length"
+      :total="totalItems"
+      label="options"
+      :page="currentPage"
+      :page-size="pageSize"
+      @update:page="loadOptions"
+    />
 
     <div
       v-if="editorOpen"

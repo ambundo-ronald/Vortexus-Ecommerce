@@ -90,6 +90,11 @@ export interface FinanceSupplierPayableItem {
   quantity: number
   supplier_unit_cost: number
   payable_total: number
+  gross_payable_total?: number
+  adjustment_debit_total: number
+  adjustment_credit_total: number
+  adjustment_reversal_total: number
+  net_payable_total: number
   currency: string
   payout_reference: string
   reversal_reason: string

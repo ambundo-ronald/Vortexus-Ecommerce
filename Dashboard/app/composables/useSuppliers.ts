@@ -56,6 +56,30 @@ export interface SupplierCreatePayload extends SupplierPayload {
   partner_code?: string
 }
 
+export interface SupplierListParams {
+  status?: string
+  search?: string
+  page?: number
+  pageSize?: number
+}
+
+export interface SupplierListResponse {
+  results: SupplierItem[]
+  pagination?: {
+    page: number
+    page_size: number
+    total: number
+    num_pages: number
+    has_next: boolean
+  }
+  summary?: {
+    total: number
+    pending: number
+    approved: number
+    suspended: number
+  }
+}
+
 function readApiError(err: any) {
   const detail = err?.data?.error?.detail || err?.data?.detail || err?.message
   const errors = err?.data?.error?.errors || err?.data
@@ -77,16 +101,18 @@ export function useSuppliers() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getSuppliers(params: { status?: string, search?: string } = {}) {
+  async function getSuppliers(params: SupplierListParams = {}) {
     loading.value = true
     error.value = null
 
     try {
-      const result = await request<{ results: SupplierItem[] }>('/admin/suppliers/', {
+      const result = await request<SupplierListResponse>('/admin/suppliers/', {
         method: 'GET',
         query: {
           status: params.status || '',
           q: params.search || '',
+          page: params.page || 1,
+          page_size: params.pageSize || 20,
         },
       })
       return { success: true, data: result }

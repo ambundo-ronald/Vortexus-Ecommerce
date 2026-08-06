@@ -29,7 +29,7 @@ export function useOptions() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getOptions(params: { page?: number, pageSize?: number } = {}) {
+  async function getOptions(params: { page?: number, pageSize?: number, search?: string, type?: string, required?: string } = {}) {
     loading.value = true
     error.value = null
 
@@ -38,7 +38,10 @@ export function useOptions() {
         method: 'GET',
         query: {
           page: params.page || 1,
-          page_size: params.pageSize || 200,
+          page_size: params.pageSize || 25,
+          q: params.search || '',
+          type: params.type || '',
+          required: params.required || '',
         },
       })
       return { success: true, data: result }

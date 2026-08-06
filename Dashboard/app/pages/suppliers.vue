@@ -21,7 +21,17 @@ const saveError = ref('')
 const accountManagerSearch = ref('')
 const accountManagerOptions = ref<UserTableRow[]>([])
 const accountManagerPickerOpen = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const totalItems = ref(0)
+const supplierSummary = ref({
+  total: 0,
+  pending: 0,
+  approved: 0,
+  suspended: 0,
+})
 let accountManagerSearchTimer: ReturnType<typeof setTimeout> | null = null
+let supplierSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 const statusOptions = [
   { label: 'All statuses', value: ALL_STATUSES },
@@ -47,22 +57,10 @@ const form = reactive({
   status: 'pending',
 })
 
-const filteredSuppliers = computed(() => {
-  const search = searchQuery.value.trim().toLowerCase()
-  return suppliers.value.filter((supplier) => {
-    return !search
-      || supplier.company_name.toLowerCase().includes(search)
-      || supplier.contact_name.toLowerCase().includes(search)
-      || supplier.partner?.name?.toLowerCase().includes(search)
-      || supplier.partner?.code?.toLowerCase().includes(search)
-      || supplier.user?.email?.toLowerCase().includes(search)
-      || String(supplier.id).includes(search)
-  })
-})
-
-const pendingCount = computed(() => suppliers.value.filter(supplier => supplier.status === 'pending').length)
-const approvedCount = computed(() => suppliers.value.filter(supplier => supplier.status === 'approved').length)
-const suspendedCount = computed(() => suppliers.value.filter(supplier => supplier.status === 'suspended').length)
+const filteredSuppliers = computed(() => suppliers.value)
+const pendingCount = computed(() => supplierSummary.value.pending)
+const approvedCount = computed(() => supplierSummary.value.approved)
+const suspendedCount = computed(() => supplierSummary.value.suspended)
 
 const selectedAccountManagerLabel = computed(() => {
   if (!form.account_manager_id)
@@ -190,12 +188,23 @@ function clearAccountManager() {
   accountManagerPickerOpen.value = false
 }
 
-async function loadSuppliers() {
+async function loadSuppliers(page = currentPage.value) {
   isLoading.value = true
-  const result = await getSuppliers({ status: statusFilter.value === ALL_STATUSES ? '' : statusFilter.value })
+  const result = await getSuppliers({
+    status: statusFilter.value === ALL_STATUSES ? '' : statusFilter.value,
+    search: searchQuery.value.trim(),
+    page,
+    pageSize: pageSize.value,
+  })
 
   if (result.success) {
     suppliers.value = result.data?.results ?? []
+    totalItems.value = result.data?.pagination?.total ?? suppliers.value.length
+    currentPage.value = result.data?.pagination?.page ?? page
+    supplierSummary.value = {
+      ...supplierSummary.value,
+      ...(result.data?.summary ?? {}),
+    }
     if (selectedSupplier.value) {
       selectedSupplier.value = suppliers.value.find(supplier => supplier.id === selectedSupplier.value?.id) || null
       if (selectedSupplier.value)
@@ -204,6 +213,7 @@ async function loadSuppliers() {
   }
   else {
     suppliers.value = []
+    totalItems.value = 0
     toast.add({
       title: 'Could not load suppliers',
       description: result.error || 'Please try again.',
@@ -323,7 +333,19 @@ async function submitSupplier() {
   isSaving.value = false
 }
 
-watch(statusFilter, loadSuppliers)
+function queueSupplierSearch() {
+  currentPage.value = 1
+  if (supplierSearchTimer)
+    clearTimeout(supplierSearchTimer)
+  supplierSearchTimer = setTimeout(() => {
+    loadSuppliers(1)
+  }, 300)
+}
+
+watch(statusFilter, () => {
+  currentPage.value = 1
+  loadSuppliers(1)
+})
 
 onMounted(loadSuppliers)
 </script>
@@ -344,6 +366,7 @@ onMounted(loadSuppliers)
           size="lg"
           icon="i-lucide-search"
           placeholder="Search suppliers..."
+          @input="queueSupplierSearch"
         />
         <USelect v-model="statusFilter" :items="statusOptions" class="w-44" />
         <UButton color="neutral" variant="outline" :loading="isLoading" @click="loadSuppliers">
@@ -358,10 +381,10 @@ onMounted(loadSuppliers)
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <CardsKpiCard2 name="Total suppliers" :value="suppliers.length" :budget="suppliers.length" color="#30328f" icon="i-lucide-store" :loading="isLoading" />
-      <CardsKpiCard2 name="Pending" :value="pendingCount" :budget="suppliers.length" color="#f59e0b" icon="i-lucide-clock" :loading="isLoading" />
-      <CardsKpiCard2 name="Approved" :value="approvedCount" :budget="suppliers.length" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
-      <CardsKpiCard2 name="Suspended" :value="suspendedCount" :budget="suppliers.length" color="#dc2626" icon="i-lucide-ban" :loading="isLoading" />
+      <CardsKpiCard2 name="Total suppliers" :value="supplierSummary.total" :budget="supplierSummary.total" color="#30328f" icon="i-lucide-store" :loading="isLoading" />
+      <CardsKpiCard2 name="Pending" :value="pendingCount" :budget="supplierSummary.total" color="#f59e0b" icon="i-lucide-clock" :loading="isLoading" />
+      <CardsKpiCard2 name="Approved" :value="approvedCount" :budget="supplierSummary.total" color="#059669" icon="i-lucide-circle-check" :loading="isLoading" />
+      <CardsKpiCard2 name="Suspended" :value="suspendedCount" :budget="supplierSummary.total" color="#dc2626" icon="i-lucide-ban" :loading="isLoading" />
     </div>
 
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-5">
@@ -567,7 +590,14 @@ onMounted(loadSuppliers)
       </div>
     </div>
 
-    <p class="mt-4 text-sm text-slate-500">Showing {{ filteredSuppliers.length }} of {{ suppliers.length }} suppliers.</p>
+    <AdminTableFooter
+      :shown="filteredSuppliers.length"
+      :total="totalItems"
+      label="suppliers"
+      :page="currentPage"
+      :page-size="pageSize"
+      @update:page="loadSuppliers"
+    />
 
     <div v-if="editorOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <UCard class="w-full max-w-3xl">

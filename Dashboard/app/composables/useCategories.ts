@@ -29,7 +29,7 @@ export function useCategories() {
   const error = ref<string | null>(null)
   const { request } = useBackendApi()
 
-  async function getCategories(params: { page?: number, pageSize?: number } = {}) {
+  async function getCategories(params: { page?: number, pageSize?: number, search?: string, visibility?: string } = {}) {
     loading.value = true
     error.value = null
 
@@ -38,7 +38,9 @@ export function useCategories() {
         method: 'GET',
         query: {
           page: params.page || 1,
-          page_size: params.pageSize || 200,
+          page_size: params.pageSize || 25,
+          q: params.search || '',
+          visibility: params.visibility || '',
         },
       })
       return { success: true, data: result }
