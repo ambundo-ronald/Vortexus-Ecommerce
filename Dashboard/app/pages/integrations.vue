@@ -323,6 +323,7 @@ function buildConnectionPayload(): IntegrationConnectionPayload {
     default_company: connectionForm.value.default_company.trim(),
     default_warehouse: connectionForm.value.default_warehouse.trim(),
     poll_interval_minutes: Number(connectionForm.value.poll_interval_minutes || 20),
+    status: isGoogleMerchant && connectionForm.value.google_enabled ? 'active' : undefined,
     is_active: connectionForm.value.is_active,
     metadata,
   }
@@ -470,7 +471,7 @@ onMounted(loadConnections)
 
     <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
       <CardsKpiCard2 name="Connections" :value="connections.length" :budget="connections.length" color="#30328f" />
-      <CardsKpiCard2 name="Active" :value="activeConnections" :budget="connections.length" color="#16a34a" />
+      <CardsKpiCard2 name="Enabled" :value="activeConnections" :budget="connections.length" color="#16a34a" />
       <CardsKpiCard2 name="Needs attention" :value="errorConnections" :budget="connections.length" color="#ef4444" />
     </div>
 

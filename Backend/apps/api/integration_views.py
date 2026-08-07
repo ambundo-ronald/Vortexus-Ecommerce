@@ -18,6 +18,37 @@ from .integration_serializers import (
 )
 
 
+def _activate_google_merchant_connection(connection: IntegrationConnection) -> None:
+    if connection.connection_type != IntegrationConnection.TYPE_GOOGLE_MERCHANT:
+        return
+
+    metadata = connection.metadata or {}
+    if metadata.get('enabled') is False or not connection.is_active:
+        if connection.status != IntegrationConnection.STATUS_DISABLED:
+            connection.status = IntegrationConnection.STATUS_DISABLED
+            connection.save(update_fields=['status', 'updated_at'])
+        return
+
+    account_id = str(metadata.get('account_id') or '').strip()
+    data_source = str(metadata.get('data_source') or metadata.get('data_source_name') or '').strip()
+    data_source_id = str(metadata.get('data_source_id') or '').strip()
+    metadata_changed = False
+    if account_id and data_source_id and not data_source:
+        metadata['data_source'] = f'accounts/{account_id}/dataSources/{data_source_id}'
+        connection.metadata = metadata
+        metadata_changed = True
+
+    if connection.status != IntegrationConnection.STATUS_ACTIVE:
+        connection.status = IntegrationConnection.STATUS_ACTIVE
+        connection.save(update_fields=['status', 'metadata', 'updated_at'])
+    elif metadata_changed:
+        connection.save(update_fields=['metadata', 'updated_at'])
+
+    from apps.integrations.tasks import refresh_google_merchant_products
+
+    transaction.on_commit(lambda: refresh_google_merchant_products.delay())
+
+
 class IntegrationConnectionCollectionAPIView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -30,6 +61,7 @@ class IntegrationConnectionCollectionAPIView(APIView):
         serializer = IntegrationConnectionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         connection = serializer.save()
+        _activate_google_merchant_connection(connection)
         record_audit_event(
             event_type='integrations.connection_created',
             request=request,
@@ -54,6 +86,7 @@ class IntegrationConnectionDetailAPIView(APIView):
         serializer = IntegrationConnectionSerializer(connection, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         connection = serializer.save()
+        _activate_google_merchant_connection(connection)
         record_audit_event(
             event_type='integrations.connection_updated',
             request=request,

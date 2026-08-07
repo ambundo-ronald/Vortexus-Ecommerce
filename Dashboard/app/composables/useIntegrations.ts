@@ -34,6 +34,7 @@ export interface IntegrationConnectionPayload {
   default_company?: string
   default_warehouse?: string
   poll_interval_minutes?: number
+  status?: string
   is_active?: boolean
   metadata?: Record<string, any>
 }
