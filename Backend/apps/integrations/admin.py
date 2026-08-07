@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 
-from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
+from .models import GoogleMerchantProductSync, IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 
 
 class IntegrationConnectionAdminForm(forms.ModelForm):
@@ -122,4 +122,21 @@ class SyncEventLogAdmin(admin.ModelAdmin):
     list_display = ('connection', 'direction', 'entity_type', 'external_reference', 'status', 'created_at')
     list_filter = ('direction', 'status', 'entity_type', 'connection')
     search_fields = ('external_reference', 'error_message', 'connection__name')
+
+
+@admin.register(GoogleMerchantProductSync)
+class GoogleMerchantProductSyncAdmin(admin.ModelAdmin):
+    list_display = ('product', 'connection', 'offer_id', 'status', 'last_action', 'synced_at', 'updated_at')
+    list_filter = ('status', 'last_action', 'connection', 'content_language', 'feed_label')
+    search_fields = ('product__title', 'product__upc', 'offer_id', 'last_error', 'processed_product_name')
+    readonly_fields = (
+        'product_input_name',
+        'processed_product_name',
+        'last_payload',
+        'last_response',
+        'last_error',
+        'synced_at',
+        'created_at',
+        'updated_at',
+    )
 

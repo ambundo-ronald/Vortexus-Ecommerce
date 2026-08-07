@@ -26,6 +26,7 @@ from .services import (
     payment_requires_prepayment,
     payment_reconciliation,
     record_payment_refund_ledger,
+    create_payment_return_case,
     sync_payment_reconciliation,
     update_payment_refund_ledger_status,
     update_payment_return_case,
@@ -521,6 +522,61 @@ class RefundAndReturnWorkflowTests(TestCase):
         defaults.update(overrides)
         return PaymentSession.objects.create(**defaults)
 
+    def _order_line_with_stock(self, *, quantity=2, stock=5, line_total=Decimal('1000.00')):
+        ProductClass = apps.get_model('catalogue', 'ProductClass')
+        Product = apps.get_model('catalogue', 'Product')
+        Partner = apps.get_model('partner', 'Partner')
+        StockRecord = apps.get_model('partner', 'StockRecord')
+        Order = apps.get_model('order', 'Order')
+        Line = apps.get_model('order', 'Line')
+
+        product_class, _ = ProductClass.objects.get_or_create(name='Return test products')
+        product = Product.objects.create(
+            product_class=product_class,
+            structure=Product.STANDALONE,
+            upc='RETURN-SKU',
+            title='Return test product',
+            slug='return-test-product',
+            is_public=True,
+        )
+        partner = Partner.objects.create(name='Return Test Partner')
+        stockrecord = StockRecord.objects.create(
+            product=product,
+            partner=partner,
+            partner_sku='RETURN-SKU',
+            price_currency='KES',
+            price=(line_total / Decimal(str(quantity))).quantize(Decimal('0.01')),
+            num_in_stock=stock,
+        )
+        order = Order.objects.create(
+            number='100903',
+            currency='KES',
+            total_incl_tax=line_total,
+            total_excl_tax=line_total,
+            status='Delivered',
+            date_placed=timezone.now(),
+        )
+        line = Line.objects.create(
+            order=order,
+            partner=partner,
+            partner_name=partner.name,
+            partner_sku=stockrecord.partner_sku,
+            stockrecord=stockrecord,
+            product=product,
+            title=product.title,
+            upc=product.upc,
+            quantity=quantity,
+            line_price_incl_tax=line_total,
+            line_price_excl_tax=line_total,
+            line_price_before_discounts_incl_tax=line_total,
+            line_price_before_discounts_excl_tax=line_total,
+            unit_price_incl_tax=(line_total / Decimal(str(quantity))).quantize(Decimal('0.01')),
+            unit_price_excl_tax=(line_total / Decimal(str(quantity))).quantize(Decimal('0.01')),
+            num_allocated=quantity,
+            allocation_cancelled=0,
+        )
+        return order, line, stockrecord
+
     def test_refund_can_be_submitted_and_completed_with_accounting_entry(self):
         payment = self._payment()
         refund = record_payment_refund_ledger(
@@ -604,6 +660,72 @@ class RefundAndReturnWorkflowTests(TestCase):
 
         with self.assertRaises(ValueError):
             update_payment_return_case(return_case, action='receive', reviewed_by=self.admin)
+
+    def test_return_accept_restocks_without_creating_refund_ledger(self):
+        order, line, stockrecord = self._order_line_with_stock(quantity=2, stock=5, line_total=Decimal('1000.00'))
+        payment = self._payment(reference='PAY-RETURN-ACCEPT', order=order, amount=Decimal('1000.00'))
+        return_case = create_payment_return_case(
+            payment_session=payment,
+            line=line,
+            quantity=1,
+            restock_decision=PaymentReturnCase.RESTOCK_RESTOCK,
+            requested_by=self.admin,
+        )
+        update_payment_return_case(return_case, action='approve', reviewed_by=self.admin)
+        update_payment_return_case(return_case, action='receive', reviewed_by=self.admin)
+
+        return_case = update_payment_return_case(
+            return_case,
+            action='accept',
+            accepted_quantity=1,
+            restock_decision=PaymentReturnCase.RESTOCK_RESTOCK,
+            reviewed_by=self.admin,
+        )
+
+        stockrecord.refresh_from_db()
+        self.assertEqual(return_case.status, PaymentReturnCase.STATUS_ACCEPTED)
+        self.assertEqual(return_case.refund_ledger_id, None)
+        self.assertEqual(stockrecord.num_in_stock, 6)
+        self.assertIsNotNone(return_case.restocked_at)
+
+    def test_return_creation_blocks_quantity_already_in_return_flow(self):
+        order, line, _stockrecord = self._order_line_with_stock(quantity=1, stock=5, line_total=Decimal('1000.00'))
+        payment = self._payment(reference='PAY-RETURN-DUPLICATE', order=order, amount=Decimal('1000.00'))
+        create_payment_return_case(
+            payment_session=payment,
+            line=line,
+            quantity=1,
+            requested_by=self.admin,
+        )
+
+        with self.assertRaisesMessage(ValueError, 'This order line already has return/refund quantity in progress or completed.'):
+            create_payment_return_case(
+                payment_session=payment,
+                line=line,
+                quantity=1,
+                requested_by=self.admin,
+            )
+
+    def test_return_refund_creates_refund_reference_after_acceptance(self):
+        order, line, _stockrecord = self._order_line_with_stock(quantity=2, stock=5, line_total=Decimal('1000.00'))
+        payment = self._payment(reference='PAY-RETURN-REFUND', order=order, amount=Decimal('1000.00'))
+        return_case = create_payment_return_case(
+            payment_session=payment,
+            line=line,
+            quantity=1,
+            restock_decision=PaymentReturnCase.RESTOCK_RESTOCK,
+            requested_by=self.admin,
+        )
+        update_payment_return_case(return_case, action='approve', reviewed_by=self.admin)
+        update_payment_return_case(return_case, action='receive', reviewed_by=self.admin)
+        update_payment_return_case(return_case, action='accept', accepted_quantity=1, reviewed_by=self.admin)
+
+        return_case = update_payment_return_case(return_case, action='refund', reviewed_by=self.admin)
+
+        self.assertEqual(return_case.status, PaymentReturnCase.STATUS_REFUNDED)
+        self.assertIsNotNone(return_case.refund_ledger_id)
+        self.assertEqual(return_case.refund_ledger.refund_reference, f'RETURN-{return_case.return_reference}')
+        self.assertEqual(return_case.refund_ledger.status, PaymentRefundLedger.STATUS_SUCCEEDED)
 
 
 class PesapalNotificationSerializerTests(TestCase):

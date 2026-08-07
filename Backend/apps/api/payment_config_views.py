@@ -50,6 +50,7 @@ from apps.payments.services import (
     log_payment_event,
     payment_reconciliation,
     record_payment_refund_ledger,
+    refund_total_for_payment,
     update_payment_return_case,
     update_payment_refund_ledger_status,
     serialize_payment_session,
@@ -826,11 +827,22 @@ def _finance_refund_payload(refund) -> dict:
 
 def _finance_return_payload(return_case) -> dict:
     metadata = return_case.metadata or {}
+    refund_reference = ''
+    if return_case.refund_ledger_id:
+        refund_reference = return_case.refund_ledger.refund_reference
+    else:
+        refund_reference = metadata.get('refund_reference', '')
+        if not refund_reference:
+            refund = PaymentRefundLedger.objects.filter(
+                payment_session=return_case.payment_session,
+                refund_reference=f'RETURN-{return_case.return_reference}',
+            ).only('refund_reference').first()
+            refund_reference = refund.refund_reference if refund else ''
     return {
         'id': return_case.id,
         'return_reference': return_case.return_reference,
         'payment_reference': return_case.payment_session.reference if return_case.payment_session_id else '',
-        'refund_reference': return_case.refund_ledger.refund_reference if return_case.refund_ledger_id else '',
+        'refund_reference': refund_reference,
         'order_number': return_case.order.number if return_case.order_id else '',
         'line_id': return_case.line_id,
         'line_title': return_case.line.title if return_case.line_id else '',
@@ -885,16 +897,38 @@ def _return_next_actions(return_case) -> list[str]:
     return []
 
 
-def _finance_order_line_payload(line, payables_by_line: dict) -> dict:
+def _finance_order_line_payload(line, payables_by_line: dict, returns_by_line: dict | None = None) -> dict:
     line_payables = payables_by_line.get(line.id, [])
     supplier_payable_total = sum((supplier_payable_net_total(payable) for payable in line_payables), Decimal('0.00'))
     gross_margin_total = sum(Decimal(str(getattr(payable.allocation, 'gross_margin', 0) or 0)) for payable in line_payables)
+    line_returns = (returns_by_line or {}).get(line.id, [])
+    open_statuses = {
+        PaymentReturnCase.STATUS_REQUESTED,
+        PaymentReturnCase.STATUS_APPROVED,
+        PaymentReturnCase.STATUS_RECEIVED,
+    }
+    completed_statuses = {
+        PaymentReturnCase.STATUS_ACCEPTED,
+        PaymentReturnCase.STATUS_REFUNDED,
+    }
+    open_return_quantity = sum(int(return_case.quantity or 0) for return_case in line_returns if return_case.status in open_statuses)
+    completed_return_quantity = sum(int(return_case.accepted_quantity or 0) for return_case in line_returns if return_case.status in completed_statuses)
+    reserved_return_quantity = open_return_quantity + completed_return_quantity
+    line_quantity = int(line.quantity or 0)
+    returnable_quantity = max(0, line_quantity - reserved_return_quantity)
+    return_locked_reason = ''
+    if returnable_quantity <= 0 and line_quantity > 0:
+        return_locked_reason = 'This line is already fully returned or has a return in progress.'
     return {
         'line_id': line.id,
         'product_id': line.product_id,
         'title': line.title,
         'sku': line.partner_sku or '',
-        'quantity': line.quantity,
+        'quantity': line_quantity,
+        'open_return_quantity': open_return_quantity,
+        'completed_return_quantity': completed_return_quantity,
+        'returnable_quantity': returnable_quantity,
+        'return_locked_reason': return_locked_reason,
         'line_price_excl_tax': float(line.line_price_excl_tax or 0),
         'line_price_incl_tax': float(line.line_price_incl_tax or 0),
         'supplier_payable_total': float(supplier_payable_total),
@@ -1006,6 +1040,17 @@ def _finance_order_payload(order) -> dict:
             'reviewed_by',
         ).all()
     )
+    returns_by_line = {}
+    for return_case in return_cases:
+        returns_by_line.setdefault(return_case.line_id, []).append(return_case)
+    refundable_remaining_total = sum(
+        max(
+            Decimal('0.00'),
+            Decimal(str(payment.amount or 0)) - refund_total_for_payment(payment, include_requested=True),
+        )
+        for payment in payments
+        if payment.status in [PaymentSession.STATUS_AUTHORIZED, PaymentSession.STATUS_PAID]
+    )
 
     return {
         'id': order.id,
@@ -1027,11 +1072,12 @@ def _finance_order_payload(order) -> dict:
             'gross_margin_total': float(gross_margin_total),
             'gateway_fee_total': float(gateway_fee_total),
             'refund_total': float(refund_summary['total']),
+            'refundable_remaining_total': float(refundable_remaining_total),
             'net_margin_before_overheads': float(gross_margin_total - gateway_fee_total - Decimal(str(refund_summary['total']))),
         },
         'payments': [_finance_payment_payload(payment) for payment in payments],
         'reconciliations': [_finance_reconciliation_payload(reconciliation) for reconciliation in reconciliations],
-        'lines': [_finance_order_line_payload(line, payables_by_line) for line in order.lines.select_related('product').all()],
+        'lines': [_finance_order_line_payload(line, payables_by_line, returns_by_line) for line in order.lines.select_related('product').all()],
         'supplier_payables': [_finance_payable_payload(payable) for payable in payables],
         'refunds': refund_summary,
         'returns': [_finance_return_payload(return_case) for return_case in return_cases],

@@ -202,7 +202,13 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.backups.tasks.create_scheduled_backup_task',
         'schedule': crontab(minute=15, hour='*/4'),
     },
+    'refresh-google-merchant-products-weekly': {
+        'task': 'apps.integrations.tasks.refresh_google_merchant_products',
+        'schedule': crontab(minute=35, hour=2, day_of_week='sun'),
+    },
 }
+
+GOOGLE_MERCHANT_TIMEOUT_SECONDS = env.int('GOOGLE_MERCHANT_TIMEOUT_SECONDS', default=30)
 
 BACKUP_ROOT = Path(env('BACKUP_ROOT', default=str(BASE_DIR / 'backups')))
 BACKUP_STORAGE_BACKEND = env('BACKUP_STORAGE_BACKEND', default='local')

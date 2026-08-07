@@ -947,13 +947,16 @@ def create_payment_return_case(
     if quantity > int(line.quantity or 0):
         raise ValueError('Return quantity cannot exceed the order line quantity.')
 
-    already_returned = _accepted_return_quantity_for_line(PaymentReturnCase, line)
-    if already_returned + quantity > int(line.quantity or 0):
-        raise ValueError('Accepted return quantity would exceed the order line quantity.')
+    already_in_return_flow = _active_return_quantity_for_line(PaymentReturnCase, line)
+    if already_in_return_flow + quantity > int(line.quantity or 0):
+        raise ValueError('This order line already has return/refund quantity in progress or completed.')
 
     amount = _money(refund_amount) if refund_amount is not None else _line_refund_amount(line, quantity)
     if amount <= Decimal('0.00'):
         raise ValueError('Return refund amount must be greater than zero.')
+    payment_amount = _money(payment_session.amount)
+    if refund_total_for_payment(payment_session, include_requested=True) + amount > payment_amount:
+        raise ValueError('Return refund amount exceeds the remaining refundable payment amount.')
 
     reference = _next_return_reference(PaymentReturnCase)
     reconciliation = _optional_reconciliation(payment_session)
@@ -1048,8 +1051,10 @@ def update_payment_return_case(
             return_case.status = PaymentReturnCase.STATUS_REFUNDED
             return_case.completed_at = timezone.now()
         _apply_return_restock(return_case)
-        refund_ledger = _ensure_return_refund_ledger(return_case, reviewed_by=reviewed_by)
-        return_case.refund_ledger = refund_ledger
+        refund_ledger = None
+        if action == 'refund':
+            refund_ledger = _ensure_return_refund_ledger(return_case, reviewed_by=reviewed_by)
+            return_case.refund_ledger = refund_ledger
         metadata = return_case.metadata or {}
         adjustments = []
         if action == 'refund' and metadata.get('supplier_return_applied_at'):
@@ -1067,15 +1072,22 @@ def update_payment_return_case(
         return_case.metadata = {
             **metadata,
             'supplier_adjustment_count': len(adjustments) if adjustments else metadata.get('supplier_adjustment_count', 0),
-            'refund_ledger_id': refund_ledger.id,
-            'refund_reference': refund_ledger.refund_reference,
+            **(
+                {
+                    'refund_ledger_id': refund_ledger.id,
+                    'refund_reference': refund_ledger.refund_reference,
+                }
+                if refund_ledger
+                else {}
+            ),
             'credit_note_reference': metadata.get('credit_note_reference') or f'CN-{return_case.return_reference}',
             'refund_payment_reference': (
                 metadata.get('refund_payment_reference')
                 or (f'PE-{return_case.return_reference}' if action == 'refund' else '')
             ),
         }
-        _queue_return_credit_note_export(refund_ledger)
+        if refund_ledger:
+            _queue_return_credit_note_export(refund_ledger)
 
     return_case.save()
     return return_case
@@ -1158,10 +1170,36 @@ def _accepted_return_quantity_for_line(PaymentReturnCase, line, *, exclude_id=No
         PaymentReturnCase.STATUS_ACCEPTED,
         PaymentReturnCase.STATUS_REFUNDED,
     }
-    queryset = PaymentReturnCase.objects.filter(line=line, status__in=active_statuses)
+    return _return_quantity_for_line(PaymentReturnCase, line, active_statuses, quantity_field='accepted_quantity', exclude_id=exclude_id)
+
+
+def _active_return_quantity_for_line(PaymentReturnCase, line, *, exclude_id=None) -> int:
+    open_statuses = {
+        PaymentReturnCase.STATUS_REQUESTED,
+        PaymentReturnCase.STATUS_APPROVED,
+        PaymentReturnCase.STATUS_RECEIVED,
+    }
+    completed_statuses = {
+        PaymentReturnCase.STATUS_ACCEPTED,
+        PaymentReturnCase.STATUS_REFUNDED,
+    }
+    return (
+        _return_quantity_for_line(PaymentReturnCase, line, open_statuses, quantity_field='quantity', exclude_id=exclude_id)
+        + _return_quantity_for_line(
+            PaymentReturnCase,
+            line,
+            completed_statuses,
+            quantity_field='accepted_quantity',
+            exclude_id=exclude_id,
+        )
+    )
+
+
+def _return_quantity_for_line(PaymentReturnCase, line, statuses, *, quantity_field='quantity', exclude_id=None) -> int:
+    queryset = PaymentReturnCase.objects.filter(line=line, status__in=statuses)
     if exclude_id:
         queryset = queryset.exclude(id=exclude_id)
-    total = queryset.aggregate(total=Sum('accepted_quantity'))
+    total = queryset.aggregate(total=Sum(quantity_field))
     return int(total.get('total') or 0)
 
 

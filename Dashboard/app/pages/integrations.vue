@@ -22,7 +22,9 @@ const isSavingConnection = ref(false)
 const editingConnectionId = ref<number | null>(null)
 const connectionForm = ref({
   name: '',
+  connection_type: 'erpnext',
   base_url: '',
+  auth_type: 'token',
   credential_source: 'db',
   secret_env_prefix: '',
   api_key: '',
@@ -46,6 +48,12 @@ const connectionForm = ref({
   territory: 'Kenya',
   pesapal_bank_account: '',
   delivery_days: 7,
+  google_account_id: '',
+  google_data_source: '',
+  google_data_source_id: '',
+  google_content_language: 'en',
+  google_feed_label: 'KE',
+  google_enabled: true,
 })
 
 const previewResourceOptions = [
@@ -65,6 +73,31 @@ const credentialSourceOptions = [
   { label: 'Saved in dashboard', value: 'db' },
   { label: 'Environment variables', value: 'env' },
 ]
+
+const connectionTypeOptions = [
+  { label: 'ERPNext', value: 'erpnext' },
+  { label: 'Google Merchant', value: 'google_merchant' },
+]
+
+const authTypeOptions = computed(() => {
+  if (connectionForm.value.connection_type === 'google_merchant') {
+    return [
+      { label: 'Service account', value: 'service_account' },
+      { label: 'Bearer token', value: 'bearer' },
+    ]
+  }
+  return [{ label: 'Token', value: 'token' }]
+})
+
+watch(() => connectionForm.value.connection_type, (type) => {
+  if (type === 'google_merchant') {
+    connectionForm.value.auth_type = 'service_account'
+    connectionForm.value.base_url ||= 'https://merchantapi.googleapis.com'
+    connectionForm.value.secret_env_prefix ||= 'GOOGLE_MERCHANT'
+    return
+  }
+  connectionForm.value.auth_type = 'token'
+})
 
 const activeConnections = computed(() => connections.value.filter(connection => connection.is_active).length)
 const healthyConnections = computed(() => connections.value.filter(connection => connection.status === 'active').length)
@@ -160,7 +193,9 @@ function resetConnectionForm() {
   editingConnectionId.value = null
   connectionForm.value = {
     name: '',
+    connection_type: 'erpnext',
     base_url: '',
+    auth_type: 'token',
     credential_source: 'db',
     secret_env_prefix: '',
     api_key: '',
@@ -184,6 +219,12 @@ function resetConnectionForm() {
     territory: 'Kenya',
     pesapal_bank_account: '',
     delivery_days: 7,
+    google_account_id: '',
+    google_data_source: '',
+    google_data_source_id: '',
+    google_content_language: 'en',
+    google_feed_label: 'KE',
+    google_enabled: true,
   }
 }
 
@@ -197,7 +238,9 @@ function openEditConnection(connection: IntegrationConnection) {
   const metadata = connection.metadata || {}
   connectionForm.value = {
     name: connection.name || '',
+    connection_type: connection.connection_type || 'erpnext',
     base_url: connection.base_url || '',
+    auth_type: connection.auth_type || (connection.connection_type === 'google_merchant' ? 'service_account' : 'token'),
     credential_source: connection.credential_source || 'db',
     secret_env_prefix: connection.secret_env_prefix || '',
     api_key: '',
@@ -221,12 +264,28 @@ function openEditConnection(connection: IntegrationConnection) {
     territory: metadata.territory || 'Kenya',
     pesapal_bank_account: metadata.pesapal_bank_account || '',
     delivery_days: Number(metadata.delivery_days || 7),
+    google_account_id: metadata.account_id || '',
+    google_data_source: metadata.data_source || metadata.data_source_name || '',
+    google_data_source_id: metadata.data_source_id || '',
+    google_content_language: metadata.content_language || 'en',
+    google_feed_label: metadata.feed_label || metadata.target_country || 'KE',
+    google_enabled: metadata.enabled !== false,
   }
   isEditorOpen.value = true
 }
 
 function buildConnectionPayload(): IntegrationConnectionPayload {
-  const metadata: Record<string, any> = {
+  const isGoogleMerchant = connectionForm.value.connection_type === 'google_merchant'
+  const metadata: Record<string, any> = isGoogleMerchant
+    ? {
+        enabled: connectionForm.value.google_enabled,
+        account_id: connectionForm.value.google_account_id.trim(),
+        data_source: connectionForm.value.google_data_source.trim(),
+        data_source_id: connectionForm.value.google_data_source_id.trim(),
+        content_language: connectionForm.value.google_content_language.trim() || 'en',
+        feed_label: connectionForm.value.google_feed_label.trim() || 'KE',
+      }
+    : {
     price_list: connectionForm.value.price_list.trim(),
     item_groups: connectionForm.value.item_groups_text
       .split(',')
@@ -256,9 +315,9 @@ function buildConnectionPayload(): IntegrationConnectionPayload {
 
   const payload: IntegrationConnectionPayload = {
     name: connectionForm.value.name.trim(),
-    connection_type: 'erpnext',
-    base_url: connectionForm.value.base_url.trim(),
-    auth_type: 'token',
+    connection_type: connectionForm.value.connection_type,
+    base_url: connectionForm.value.base_url.trim() || (isGoogleMerchant ? 'https://merchantapi.googleapis.com' : ''),
+    auth_type: connectionForm.value.auth_type || (isGoogleMerchant ? 'service_account' : 'token'),
     credential_source: connectionForm.value.credential_source,
     secret_env_prefix: connectionForm.value.secret_env_prefix.trim(),
     default_company: connectionForm.value.default_company.trim(),
@@ -288,7 +347,9 @@ async function saveConnection() {
   if (result.success && result.data) {
     toast.add({
       title: editingConnectionId.value ? 'ERPNext integration updated' : 'ERPNext integration created',
-      description: 'The dashboard can now test, preview, import, and sync with this ERPNext connection.',
+      description: payload.connection_type === 'google_merchant'
+        ? 'Product changes can now queue Google Merchant sync jobs.'
+        : 'The dashboard can now test, preview, import, and sync with this ERPNext connection.',
       color: 'success',
     })
     isEditorOpen.value = false
@@ -298,7 +359,7 @@ async function saveConnection() {
   }
   else {
     toast.add({
-      title: 'Could not save ERPNext integration',
+      title: 'Could not save integration',
       description: result.error || 'Please check the form and try again.',
       color: 'error',
     })
@@ -398,7 +459,7 @@ onMounted(loadConnections)
 
       <div class="flex flex-wrap gap-2">
         <UButton color="primary" size="lg" icon="i-lucide-plus" @click="openNewConnection">
-          New ERPNext Integration
+          New Integration
         </UButton>
         <UButton variant="outline" size="lg" :loading="isLoading" @click="loadConnections">
           <UIcon name="i-lucide-refresh-cw" />
@@ -418,10 +479,10 @@ onMounted(loadConnections)
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 class="text-lg font-black text-slate-950">
-              {{ editingConnectionId ? 'Edit ERPNext integration' : 'New ERPNext integration' }}
+              {{ editingConnectionId ? 'Edit integration' : 'New integration' }}
             </h2>
             <p class="mt-1 text-sm text-slate-500">
-              Configure catalog, price list, warehouse, and credentials used by backend sync jobs.
+              Configure business integrations and credentials used by backend sync jobs.
             </p>
           </div>
           <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="isEditorOpen = false">
@@ -432,25 +493,53 @@ onMounted(loadConnections)
 
       <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
         <UFormField label="Connection name" required>
-          <UInput v-model="connectionForm.name" placeholder="ERPNext Main" />
+          <UInput v-model="connectionForm.name" placeholder="ERPNext Main or Google Merchant" />
         </UFormField>
-        <UFormField label="ERPNext URL" required>
-          <UInput v-model="connectionForm.base_url" placeholder="https://erp.example.com" />
+        <UFormField label="Integration type" required>
+          <USelect v-model="connectionForm.connection_type" :items="connectionTypeOptions" class="w-full" />
+        </UFormField>
+        <UFormField label="Base URL" required>
+          <UInput v-model="connectionForm.base_url" :placeholder="connectionForm.connection_type === 'google_merchant' ? 'https://merchantapi.googleapis.com' : 'https://erp.example.com'" />
+        </UFormField>
+        <UFormField label="Auth type">
+          <USelect v-model="connectionForm.auth_type" :items="authTypeOptions" class="w-full" />
         </UFormField>
         <UFormField label="Credential source">
           <USelect v-model="connectionForm.credential_source" :items="credentialSourceOptions" class="w-full" />
         </UFormField>
 
         <UFormField v-if="connectionForm.credential_source === 'env'" label="Secret env prefix" required>
-          <UInput v-model="connectionForm.secret_env_prefix" placeholder="ERPNEXT_MAIN" />
+          <UInput v-model="connectionForm.secret_env_prefix" :placeholder="connectionForm.connection_type === 'google_merchant' ? 'GOOGLE_MERCHANT' : 'ERPNEXT_MAIN'" />
         </UFormField>
-        <UFormField v-if="connectionForm.credential_source === 'db'" label="API key">
+        <UFormField v-if="connectionForm.credential_source === 'db' && connectionForm.connection_type === 'erpnext'" label="API key">
           <UInput v-model="connectionForm.api_key" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API key'" autocomplete="new-password" />
         </UFormField>
-        <UFormField v-if="connectionForm.credential_source === 'db'" label="API secret">
+        <UFormField v-if="connectionForm.credential_source === 'db' && connectionForm.connection_type === 'erpnext'" label="API secret">
           <UInput v-model="connectionForm.api_secret" type="password" :placeholder="editingConnectionId ? 'Saved if already configured' : 'ERPNext API secret'" autocomplete="new-password" />
         </UFormField>
 
+        <template v-if="connectionForm.connection_type === 'google_merchant'">
+          <UFormField label="Merchant account ID" required>
+            <UInput v-model="connectionForm.google_account_id" placeholder="5832145286" />
+          </UFormField>
+          <UFormField label="API data source name">
+            <UInput v-model="connectionForm.google_data_source" placeholder="accounts/5832145286/dataSources/123456789" />
+          </UFormField>
+          <UFormField label="API data source ID">
+            <UInput v-model="connectionForm.google_data_source_id" placeholder="123456789" />
+          </UFormField>
+          <UFormField label="Content language">
+            <UInput v-model="connectionForm.google_content_language" maxlength="8" placeholder="en" />
+          </UFormField>
+          <UFormField label="Feed label / country">
+            <UInput v-model="connectionForm.google_feed_label" maxlength="16" placeholder="KE" />
+          </UFormField>
+          <div class="flex items-end">
+            <UCheckbox v-model="connectionForm.google_enabled" label="Enable Google Merchant sync" />
+          </div>
+        </template>
+
+        <template v-else>
         <UFormField label="Company">
           <UInput v-model="connectionForm.default_company" placeholder="Company name in ERPNext" />
         </UFormField>
@@ -490,9 +579,10 @@ onMounted(loadConnections)
         <div class="flex items-end">
           <UCheckbox v-model="connectionForm.is_active" label="Enable scheduled sync" />
         </div>
+        </template>
       </div>
 
-      <div class="grid grid-cols-1 gap-3 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div v-if="connectionForm.connection_type === 'erpnext'" class="grid grid-cols-1 gap-3 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 xl:grid-cols-3">
         <UCheckbox v-model="connectionForm.use_vortexus_bridge_app" label="Use Reesolmart ERPNext app" />
         <UCheckbox v-model="connectionForm.sync_customers" label="Sync customers" />
         <UCheckbox v-model="connectionForm.export_orders" label="Export sales orders" />
@@ -574,6 +664,7 @@ onMounted(loadConnections)
                 @click="openEditConnection(connection)"
               />
               <UButton
+                v-if="connection.connection_type === 'erpnext'"
                 size="sm"
                 variant="outline"
                 :loading="actionId === connection.id"

@@ -275,7 +275,9 @@ const returnPaymentOptions = computed(() => {
 const canCreateReturn = computed(() => Boolean(
   returnCreateForm.paymentReference.trim()
   && Number(returnCreateForm.lineId)
-  && Number(returnCreateForm.quantity),
+  && Number(returnCreateForm.quantity)
+  && selectedReturnLine.value
+  && Number(returnCreateForm.quantity) <= Number(selectedReturnLine.value.returnable_quantity ?? selectedReturnLine.value.quantity ?? 0),
 ))
 
 const paymentStatusColumns: TableColumn<any>[] = [
@@ -800,6 +802,11 @@ async function refreshReturnLookup() {
 }
 
 function useReturnLine(line: FinanceOrderDetail['lines'][number]) {
+  const returnableQuantity = Number(line.returnable_quantity ?? line.quantity ?? 0)
+  if (returnableQuantity <= 0) {
+    toast.add({ title: 'Line already returned', description: line.return_locked_reason || 'This item has no remaining quantity available for return.', color: 'warning' })
+    return
+  }
   returnCreateForm.lineId = String(line.line_id)
   returnCreateForm.quantity = '1'
   const unitAmount = Number(line.line_price_incl_tax || 0) / Math.max(Number(line.quantity || 1), 1)
@@ -811,7 +818,8 @@ function autofillReturnAmount() {
   const line = selectedReturnLine.value
   if (!line)
     return
-  const quantity = Math.max(Number(returnCreateForm.quantity || 1), 1)
+  const returnableQuantity = Number(line.returnable_quantity ?? line.quantity ?? 1)
+  const quantity = Math.min(Math.max(Number(returnCreateForm.quantity || 1), 1), Math.max(returnableQuantity, 1))
   const unitAmount = Number(line.line_price_incl_tax || 0) / Math.max(Number(line.quantity || 1), 1)
   returnCreateForm.refundAmount = (unitAmount * quantity).toFixed(2)
 }
@@ -968,6 +976,16 @@ async function createReturnFromForm() {
   const quantity = Number(returnCreateForm.quantity)
   if (!returnCreateForm.paymentReference.trim() || !Number.isInteger(lineId) || !Number.isInteger(quantity)) {
     toast.add({ title: 'Return details needed', description: 'Add payment reference, line ID, and quantity.', color: 'warning' })
+    return
+  }
+  const line = selectedReturnLine.value
+  const returnableQuantity = Number(line?.returnable_quantity ?? line?.quantity ?? 0)
+  if (!line || returnableQuantity <= 0) {
+    toast.add({ title: 'Line already returned', description: line?.return_locked_reason || 'This item has no remaining quantity available for return.', color: 'warning' })
+    return
+  }
+  if (quantity > returnableQuantity) {
+    toast.add({ title: 'Quantity too high', description: `Only ${returnableQuantity} item(s) remain available for return.`, color: 'warning' })
     return
   }
   isReturnsLoading.value = true
@@ -1289,6 +1307,7 @@ onMounted(loadFinance)
                   <tr>
                     <th class="px-4 py-3 text-left font-semibold">Item</th>
                     <th class="px-4 py-3 text-left font-semibold">Qty bought</th>
+                    <th class="px-4 py-3 text-left font-semibold">Returnable</th>
                     <th class="px-4 py-3 text-left font-semibold">Line total</th>
                     <th class="px-4 py-3 text-left font-semibold">Supplier payable</th>
                     <th class="px-4 py-3 text-right font-semibold">Action</th>
@@ -1301,10 +1320,16 @@ onMounted(loadFinance)
                       <p class="text-xs text-toned">{{ line.sku || 'No SKU' }}</p>
                     </td>
                     <td class="px-4 py-3">{{ line.quantity }}</td>
+                    <td class="px-4 py-3">
+                      <p class="font-semibold">{{ line.returnable_quantity ?? line.quantity }}</p>
+                      <p v-if="line.open_return_quantity || line.completed_return_quantity" class="text-xs text-toned">
+                        {{ line.open_return_quantity || 0 }} open, {{ line.completed_return_quantity || 0 }} done
+                      </p>
+                    </td>
                     <td class="px-4 py-3">{{ money(line.line_price_incl_tax) }}</td>
                     <td class="px-4 py-3">{{ money(line.supplier_payable_total) }}</td>
                     <td class="px-4 py-3 text-right">
-                      <UButton size="xs" color="neutral" variant="outline" @click="useReturnLine(line)">
+                      <UButton size="xs" color="neutral" variant="outline" :disabled="Number(line.returnable_quantity ?? line.quantity ?? 0) <= 0" @click="useReturnLine(line)">
                         Select
                       </UButton>
                     </td>

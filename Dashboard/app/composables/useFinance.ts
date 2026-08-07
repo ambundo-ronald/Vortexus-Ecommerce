@@ -203,6 +203,10 @@ export interface FinanceOrderDetail {
     title: string
     sku: string
     quantity: number
+    open_return_quantity: number
+    completed_return_quantity: number
+    returnable_quantity: number
+    return_locked_reason: string
     line_price_excl_tax: number
     line_price_incl_tax: number
     supplier_payable_total: number

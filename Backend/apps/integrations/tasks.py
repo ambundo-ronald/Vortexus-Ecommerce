@@ -10,6 +10,11 @@ from .erpnext_sync import (
     sync_customer_to_active_erpnext,
     sync_order_cancellation_to_active_erpnext,
 )
+from .google_merchant import (
+    delete_product_from_active_google_merchant_connections,
+    refresh_all_google_merchant_products,
+    sync_product_to_active_google_merchant_connections,
+)
 from .models import IntegrationConnection
 
 
@@ -108,3 +113,33 @@ def export_refund_credit_note_to_erpnext(payment_reference: str, refund_amount: 
 )
 def export_supplier_payout_batch_to_erpnext(batch_id: int):
     return export_supplier_payout_batch_to_active_erpnext(batch_id)
+
+
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={'max_retries': 5},
+)
+def sync_product_to_google_merchant(product_id: int):
+    return sync_product_to_active_google_merchant_connections(product_id)
+
+
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={'max_retries': 5},
+)
+def delete_product_from_google_merchant(product_id: int, offer_id: str = ''):
+    return delete_product_from_active_google_merchant_connections(product_id, offer_id=offer_id)
+
+
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={'max_retries': 3},
+)
+def refresh_google_merchant_products():
+    return refresh_all_google_merchant_products()

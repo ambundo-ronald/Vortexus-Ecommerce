@@ -418,7 +418,7 @@ def apply_supplier_return_to_payables(return_case, *, created_by=None):
         return []
 
     payables = list(
-        SupplierPayableLedger.objects.select_for_update()
+        SupplierPayableLedger.objects.select_for_update(of=('self',))
         .select_related('supplier', 'partner', 'order', 'line')
         .filter(order=return_case.order, line=return_case.line)
         .order_by('id')

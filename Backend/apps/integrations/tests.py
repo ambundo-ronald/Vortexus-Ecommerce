@@ -3,8 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
+from oscar.core.loading import get_model
 
 from .erpnext_sync import ERPNextSyncService, _normalise_price_for_marketplace, _normalise_stockrecord_for_marketplace
+from .google_merchant import GoogleMerchantSyncService
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextClient
 
@@ -84,6 +86,81 @@ class ERPNextClientFileTests(TestCase):
         self.assertEqual(update_fields, ['price', 'price_currency'])
         self.assertEqual(stockrecord.price_currency, 'KES')
         self.assertEqual(stockrecord.price, Decimal('249.45'))
+
+
+class GoogleMerchantSyncServiceTests(TestCase):
+    def _connection(self):
+        return IntegrationConnection.objects.create(
+            name='Google Merchant',
+            connection_type=IntegrationConnection.TYPE_GOOGLE_MERCHANT,
+            base_url='https://merchantapi.googleapis.com',
+            auth_type=IntegrationConnection.AUTH_SERVICE_ACCOUNT,
+            status=IntegrationConnection.STATUS_ACTIVE,
+            metadata={
+                'account_id': '5832145286',
+                'data_source': 'accounts/5832145286/dataSources/123456789',
+                'content_language': 'en',
+                'feed_label': 'KE',
+                'storefront_base_url': 'https://reesolmart.com',
+                'backend_public_base_url': 'https://api.reesolmart.cloud',
+            },
+        )
+
+    def _product(self):
+        ProductClass = get_model('catalogue', 'ProductClass')
+        Product = get_model('catalogue', 'Product')
+        StockRecord = get_model('partner', 'StockRecord')
+        Partner = get_model('partner', 'Partner')
+        ProductImage = get_model('catalogue', 'ProductImage')
+
+        product_class, _ = ProductClass.objects.get_or_create(name='Industrial Product')
+        partner, _ = Partner.objects.get_or_create(code='default', defaults={'name': 'Default Partner'})
+        product = Product.objects.create(
+            product_class=product_class,
+            structure=Product.STANDALONE,
+            upc='SKU-100',
+            title='Spun Filter',
+            slug='spun-filter',
+            description='Replacement water filter cartridge.',
+            is_public=True,
+        )
+        StockRecord.objects.create(
+            product=product,
+            partner=partner,
+            partner_sku='SKU-100',
+            price='1500.00',
+            price_currency='KES',
+            num_in_stock=8,
+        )
+        ProductImage.objects.create(product=product, original='products/spun-filter.webp')
+        return product
+
+    def test_build_product_input_uses_storefront_link_public_image_and_micros(self):
+        service = GoogleMerchantSyncService(self._connection())
+        product = self._product()
+        payload, skip_reason = service.build_product_input(product)
+
+        self.assertEqual(skip_reason, '')
+        self.assertEqual(payload['offerId'], 'SKU-100')
+        self.assertEqual(payload['contentLanguage'], 'en')
+        self.assertEqual(payload['feedLabel'], 'KE')
+        attributes = payload['productAttributes']
+        self.assertEqual(attributes['title'], 'Spun Filter')
+        self.assertEqual(attributes['link'], f'https://reesolmart.com/products/{product.id}')
+        self.assertEqual(attributes['imageLink'], 'https://api.reesolmart.cloud/media/products/spun-filter.webp')
+        self.assertEqual(attributes['availability'], 'IN_STOCK')
+        self.assertEqual(attributes['price'], {'amountMicros': '1500000000', 'currencyCode': 'KES'})
+        self.assertEqual(attributes['condition'], 'NEW')
+
+    def test_build_product_input_skips_draft_products(self):
+        service = GoogleMerchantSyncService(self._connection())
+        product = self._product()
+        product.is_public = False
+        product.save(update_fields=['is_public'])
+
+        _, skip_reason = service.build_product_input(product)
+
+        self.assertEqual(skip_reason, 'Product is draft or hidden.')
 
 
 class ERPNextOrderExportTests(TestCase):

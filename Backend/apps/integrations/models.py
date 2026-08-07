@@ -6,9 +6,11 @@ from django.db import models
 
 class IntegrationConnection(models.Model):
     TYPE_ERPNEXT = 'erpnext'
+    TYPE_GOOGLE_MERCHANT = 'google_merchant'
 
     TYPE_CHOICES = [
         (TYPE_ERPNEXT, 'ERPNext'),
+        (TYPE_GOOGLE_MERCHANT, 'Google Merchant'),
     ]
 
     STATUS_DRAFT = 'draft'
@@ -24,9 +26,13 @@ class IntegrationConnection(models.Model):
     ]
 
     AUTH_TOKEN = 'token'
+    AUTH_BEARER = 'bearer'
+    AUTH_SERVICE_ACCOUNT = 'service_account'
 
     AUTH_CHOICES = [
         (AUTH_TOKEN, 'Token'),
+        (AUTH_BEARER, 'Bearer token'),
+        (AUTH_SERVICE_ACCOUNT, 'Service account'),
     ]
 
     CREDENTIAL_SOURCE_DB = 'db'
@@ -122,6 +128,61 @@ class IntegrationMapping(models.Model):
 
     def __str__(self) -> str:
         return f'{self.connection.name}::{self.entity_type}::{self.external_id}'
+
+
+class GoogleMerchantProductSync(models.Model):
+    STATUS_PENDING = 'pending'
+    STATUS_SYNCED = 'synced'
+    STATUS_FAILED = 'failed'
+    STATUS_DELETED = 'deleted'
+    STATUS_SKIPPED = 'skipped'
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_SYNCED, 'Synced'),
+        (STATUS_FAILED, 'Failed'),
+        (STATUS_DELETED, 'Deleted'),
+        (STATUS_SKIPPED, 'Skipped'),
+    ]
+
+    ACTION_INSERT = 'insert'
+    ACTION_DELETE = 'delete'
+    ACTION_SKIP = 'skip'
+
+    ACTION_CHOICES = [
+        (ACTION_INSERT, 'Insert or update'),
+        (ACTION_DELETE, 'Delete'),
+        (ACTION_SKIP, 'Skip'),
+    ]
+
+    connection = models.ForeignKey(IntegrationConnection, on_delete=models.CASCADE, related_name='google_merchant_product_syncs')
+    product = models.ForeignKey('catalogue.Product', on_delete=models.CASCADE, related_name='google_merchant_syncs')
+    offer_id = models.CharField(max_length=255)
+    content_language = models.CharField(max_length=16, default='en')
+    feed_label = models.CharField(max_length=64, default='KE')
+    product_input_name = models.CharField(max_length=512, blank=True)
+    processed_product_name = models.CharField(max_length=512, blank=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    last_action = models.CharField(max_length=16, choices=ACTION_CHOICES, default=ACTION_INSERT)
+    last_payload = models.JSONField(default=dict, blank=True)
+    last_response = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['connection', 'product'], name='uniq_google_merchant_sync_product'),
+            models.UniqueConstraint(
+                fields=['connection', 'content_language', 'feed_label', 'offer_id'],
+                name='uniq_google_merchant_sync_offer',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.connection.name}::{self.offer_id}::{self.status}'
 
 
 class SyncJob(models.Model):

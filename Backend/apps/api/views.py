@@ -17,6 +17,7 @@ from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_que
 from apps.common.currency import resolve_display_currency
 from apps.common.products import product_stock_totals, serialize_product_card, stockrecord_count
 from apps.common.taxes import product_tax_status, resolve_tax_country
+from apps.integrations.google_merchant import queue_google_merchant_product_delete, queue_google_merchant_product_sync
 from apps.notifications.services import queue_quote_request_notifications
 from apps.recommendations.services import RecommendationService
 
@@ -55,7 +56,7 @@ def _product_queryset(include_hidden: bool = False):
     Review = apps.get_model("reviews", "ProductReview")
     queryset = (
         Product.objects.exclude(structure="parent")
-        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images", "recommended_products")
+        .prefetch_related("stockrecords", "categories", "attribute_values__attribute", "images", "recommended_products", "google_merchant_syncs__connection")
         .annotate(
             average_review_score=Avg(
                 "reviews__score",
@@ -163,6 +164,31 @@ def _stockrecord_for_product(product):
     return product.stockrecords.first() if hasattr(product, 'stockrecords') else None
 
 
+def _google_merchant_sync_payload(product) -> dict:
+    sync_record = None
+    try:
+        sync_record = product.google_merchant_syncs.select_related('connection').order_by('-updated_at').first()
+    except Exception:
+        sync_record = None
+    if not sync_record:
+        return {
+            'status': 'not_configured',
+            'offerId': product.upc or f'product-{product.id}',
+            'lastSyncedAt': None,
+            'lastError': '',
+            'connectionName': '',
+        }
+    return {
+        'status': sync_record.status,
+        'offerId': sync_record.offer_id,
+        'lastAction': sync_record.last_action,
+        'lastSyncedAt': sync_record.synced_at,
+        'lastError': sync_record.last_error,
+        'connectionName': sync_record.connection.name if sync_record.connection else '',
+        'processedProductName': sync_record.processed_product_name,
+    }
+
+
 def _attribute_value_map(product) -> dict[str, str]:
     values: dict[str, str] = {}
     for attribute_value in product.attribute_values.all():
@@ -200,6 +226,7 @@ def _serialize_admin_product_row(product, display_currency: str | None = None) -
         'stockAllocated': stock_allocated,
         'imageUrl': card.get('thumbnail', ''),
         'isPublic': product.is_public,
+        'googleMerchant': _google_merchant_sync_payload(product),
         'updatedAt': product.date_updated,
     }
 
@@ -251,6 +278,7 @@ def _build_admin_product_detail(product, display_currency: str | None = None) ->
         'specifications': detail.get('specifications', []),
         'updatedAt': detail.get('updated_at'),
         'isPublic': product.is_public,
+        'googleMerchant': _google_merchant_sync_payload(product),
     }
 
 
@@ -555,6 +583,7 @@ class AdminProductCollectionAPIView(APIView):
             message='Admin product created.',
             metadata={'upc': product.upc, 'title': product.title, 'update_mode': 'admin_post'},
         )
+        queue_google_merchant_product_sync(product.id)
         return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)}, status=status.HTTP_201_CREATED)
 
 
@@ -581,6 +610,7 @@ class AdminProductDetailAPIView(APIView):
             message='Admin product fully updated.',
             metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'admin_put'},
         )
+        queue_google_merchant_product_sync(product.id)
         return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
 
     def patch(self, request, product_id: int):
@@ -598,12 +628,15 @@ class AdminProductDetailAPIView(APIView):
             message='Admin product partially updated.',
             metadata={'previous_title': previous_title, 'current_title': product.title, 'update_mode': 'admin_patch'},
         )
+        queue_google_merchant_product_sync(product.id)
         return Response({'product': _build_admin_product_detail(product, display_currency=display_currency)})
 
     def delete(self, request, product_id: int):
         product = get_object_or_404(_product_queryset(include_hidden=True), id=product_id)
+        offer_id = product.upc or f'product-{product.id}'
         metadata = {'upc': product.upc, 'title': product.title}
         product.delete()
+        queue_google_merchant_product_delete(product_id, offer_id=offer_id)
         record_audit_event(
             event_type='catalog.product_deleted',
             request=request,
@@ -645,6 +678,7 @@ class AdminProductImageCollectionAPIView(APIView):
             message='Catalog product image uploaded by staff.',
             metadata={'image_id': product_image.id, 'product_id': product.id, 'filename': final_name},
         )
+        queue_google_merchant_product_sync(product.id)
 
         return Response({'image': _serialize_product_image(product_image, fallback_alt=product.title)}, status=status.HTTP_201_CREATED)
 
@@ -669,6 +703,7 @@ class AdminProductImageDetailAPIView(APIView):
             message='Catalog product image deleted by staff.',
             metadata=metadata,
         )
+        queue_google_merchant_product_sync(product.id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
