@@ -2,10 +2,11 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from oscar.core.loading import get_model
 
 from .erpnext_sync import ERPNextSyncService, _normalise_price_for_marketplace, _normalise_stockrecord_for_marketplace
+from .google_merchant_feed import build_google_merchant_feed_row, render_google_merchant_feed_csv
 from .google_merchant import GoogleMerchantSyncService
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextClient
@@ -161,6 +162,47 @@ class GoogleMerchantSyncServiceTests(TestCase):
         _, skip_reason = service.build_product_input(product)
 
         self.assertEqual(skip_reason, 'Product is draft or hidden.')
+
+    @override_settings(STOREFRONT_BASE_URL='https://reesolmart.com', BACKEND_PUBLIC_BASE_URL='https://api.reesolmart.cloud')
+    def test_google_sheet_feed_row_matches_required_google_columns(self):
+        product = self._product()
+
+        row = build_google_merchant_feed_row(product)
+
+        self.assertEqual(row['id'], 'SKU-100')
+        self.assertEqual(row['title'], 'Spun Filter')
+        self.assertEqual(row['description'], 'Replacement water filter cartridge.')
+        self.assertEqual(row['availability'], 'in_stock')
+        self.assertEqual(row['link'], f'https://reesolmart.com/products/{product.id}')
+        self.assertEqual(row['image_link'], 'https://api.reesolmart.cloud/media/products/spun-filter.webp')
+        self.assertEqual(row['price'], '1740.00 KES')
+        self.assertEqual(row['identifier_exists'], 'yes')
+        self.assertEqual(row['mpn'], 'SKU-100')
+        self.assertEqual(row['condition'], 'new')
+        self.assertEqual(row['adult'], 'no')
+
+    def test_google_sheet_feed_csv_uses_google_template_headers(self):
+        csv_body = render_google_merchant_feed_csv([
+            {
+                'id': 'SKU-100',
+                'title': 'Spun Filter',
+                'description': 'Replacement water filter cartridge.',
+                'availability': 'in_stock',
+                'link': 'https://reesolmart.com/products/1',
+                'image_link': 'https://api.reesolmart.cloud/media/products/spun-filter.webp',
+                'price': '1500.00 KES',
+                'identifier_exists': 'yes',
+                'mpn': 'SKU-100',
+                'brand': 'Reesolmart',
+                'condition': 'new',
+                'adult': 'no',
+            }
+        ])
+
+        header = csv_body.splitlines()[0]
+        self.assertTrue(header.startswith('id,title,description,availability,availability_date'))
+        self.assertIn('cost_of_goods_sold', header)
+        self.assertIn('SKU-100', csv_body)
 
 
 class ERPNextOrderExportTests(TestCase):

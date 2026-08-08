@@ -99,6 +99,7 @@ from .email_config_views import (
     AdminEmailTestAPIView,
 )
 from .health_views import LivenessAPIView, ReadinessAPIView
+from .feed_views import GoogleMerchantProductFeedAPIView
 from .personal_shopper_views import (
     AdminShopperListCollectionAPIView,
     AdminShopperListDetailAPIView,
@@ -296,6 +297,7 @@ urlpatterns = [
     path('', ApiRootAPIView.as_view(), name='api-root'),
     path('docs/', ApiDocsHtmlAPIView.as_view(), name='api-docs-html'),
     path('docs.json', ApiDocsJsonAPIView.as_view(), name='api-docs-json'),
+    path('feeds/google-merchant/products.csv', GoogleMerchantProductFeedAPIView.as_view(), name='google-merchant-product-feed'),
     path('health/live/', LivenessAPIView.as_view(), name='health-live'),
     path('health/ready/', ReadinessAPIView.as_view(), name='health-ready'),
     path('account/csrf/', CsrfTokenAPIView.as_view(), name='account-csrf'),
