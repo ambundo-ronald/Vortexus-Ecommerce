@@ -15,6 +15,7 @@ from .google_merchant import (
     refresh_all_google_merchant_products,
     sync_product_to_active_google_merchant_connections,
 )
+from .google_merchant_sheets import sync_google_merchant_sheet
 from .models import IntegrationConnection
 
 
@@ -143,3 +144,13 @@ def delete_product_from_google_merchant(product_id: int, offer_id: str = ''):
 )
 def refresh_google_merchant_products():
     return refresh_all_google_merchant_products()
+
+
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={'max_retries': 3},
+)
+def refresh_google_merchant_sheet():
+    return sync_google_merchant_sheet()

@@ -8,6 +8,7 @@ from oscar.core.loading import get_model
 from .erpnext_sync import ERPNextSyncService, _normalise_price_for_marketplace, _normalise_stockrecord_for_marketplace
 from .google_merchant_feed import build_google_merchant_feed_row, render_google_merchant_feed_csv
 from .google_merchant import GoogleMerchantSyncService
+from .google_merchant_sheets import google_merchant_sheet_values
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextClient
 
@@ -203,6 +204,18 @@ class GoogleMerchantSyncServiceTests(TestCase):
         self.assertTrue(header.startswith('id,title,description,availability,availability_date'))
         self.assertIn('cost_of_goods_sold', header)
         self.assertIn('SKU-100', csv_body)
+
+    @override_settings(STOREFRONT_BASE_URL='https://reesolmart.com', BACKEND_PUBLIC_BASE_URL='https://api.reesolmart.cloud')
+    def test_google_sheet_values_include_header_and_feed_rows(self):
+        product = self._product()
+
+        values = google_merchant_sheet_values()
+
+        self.assertEqual(values[0][0:4], ['id', 'title', 'description', 'availability'])
+        self.assertEqual(values[1][0], 'SKU-100')
+        self.assertEqual(values[1][1], 'Spun Filter')
+        self.assertIn(f'https://reesolmart.com/products/{product.id}', values[1])
+        self.assertIn('1740.00 KES', values[1])
 
 
 class ERPNextOrderExportTests(TestCase):
