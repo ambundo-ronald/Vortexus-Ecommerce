@@ -103,6 +103,7 @@ from .feed_views import GoogleMerchantProductFeedAPIView
 from .personal_shopper_views import (
     AdminShopperListCollectionAPIView,
     AdminShopperListDetailAPIView,
+    AdminShopperListDuplicateAPIView,
     ShopperHubAddedToCartAPIView,
     ShopperHubAPIView,
     ShopperListCollectionAPIView,
@@ -291,6 +292,7 @@ from .user_views import (
 urlpatterns = [
     path('admin/personal-shopper/lists/', AdminShopperListCollectionAPIView.as_view(), name='admin-shopper-lists'),
     path('admin/personal-shopper/lists/<int:list_id>/', AdminShopperListDetailAPIView.as_view(), name='admin-shopper-list-detail'),
+    path('admin/personal-shopper/lists/<int:list_id>/duplicate/', AdminShopperListDuplicateAPIView.as_view(), name='admin-shopper-list-duplicate'),
     path('account/personal-shopper/lists/', ShopperListCollectionAPIView.as_view(), name='shopper-lists'),
     path('personal-shopper/hub/<uuid:token>/', ShopperHubAPIView.as_view(), name='shopper-hub'),
     path('personal-shopper/hub/<uuid:token>/added-to-cart/', ShopperHubAddedToCartAPIView.as_view(), name='shopper-hub-added-to-cart'),

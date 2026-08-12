@@ -10,6 +10,7 @@ export interface ShopperListInput {
   note?: string
   status: 'draft' | 'shared' | 'archived'
   expires_at?: string | null
+  discount_percentage?: number
   items: ShopperListItemInput[]
 }
 
@@ -21,6 +22,7 @@ export interface ShopperListRecord {
   date_updated: string
   customer: { id: number, name: string, email: string }
   items: Array<{ id: number, quantity: number, product: Record<string, unknown> }>
+  discount: { percentage: string | number, code: string }
 }
 
 function apiError(err: unknown) {
@@ -61,5 +63,18 @@ export function usePersonalShopper() {
     }
   }
 
-  return { getLists, createList, archiveList }
+  async function duplicateList(id: number, payload: { customer_id: number, title?: string, status: 'draft' | 'shared' }) {
+    try {
+      const data = await request<{ shopper_list: ShopperListRecord }>(`/admin/personal-shopper/lists/${id}/duplicate/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: data.shopper_list }
+    }
+    catch (err: unknown) {
+      return { success: false, error: apiError(err) }
+    }
+  }
+
+  return { getLists, createList, archiveList, duplicateList }
 }

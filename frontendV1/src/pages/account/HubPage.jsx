@@ -10,10 +10,12 @@ import { useCartStore } from "../../store/cart.store";
 import { productImageUrl } from "../../utils/productImages";
 import { productInitials, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
 import "./HubPage.css";
+import "./HubDiscount.css";
 
 export default function HubPage() {
   const { shareToken } = useParams();
   const addItem = useCartStore((state) => state.addItem);
+  const applyVoucher = useCartStore((state) => state.applyVoucher);
   const cartLoading = useCartStore((state) => state.loading);
   const [shopperList, setShopperList] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
@@ -21,6 +23,7 @@ export default function HubPage() {
   const [error, setError] = useState("");
   const [addingAll, setAddingAll] = useState(false);
   const [addedIds, setAddedIds] = useState([]);
+  const [discountApplied, setDiscountApplied] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -61,8 +64,21 @@ export default function HubPage() {
     if (successful.length) {
       setAddedIds((current) => [...new Set([...current, ...successful])]);
       await personalShopperApi.markAddedToCart(shareToken);
+      if (shopperList.discount?.code) {
+        try {
+          await applyVoucher(shopperList.discount.code);
+          setDiscountApplied(true);
+        } catch {
+          // The cart store shows the voucher error and it can be retried below.
+        }
+      }
     }
     setAddingAll(false);
+  }
+
+  async function applyDiscount() {
+    await applyVoucher(shopperList.discount.code);
+    setDiscountApplied(true);
   }
 
   if (loading) return <div className="hub-page"><Spinner label="Opening your personal shopper list" /></div>;
@@ -87,13 +103,26 @@ export default function HubPage() {
         </button>
       </header>
 
+      {Number(shopperList.discount?.percentage || 0) > 0 ? (
+        <section className="hub-discount" aria-label="Personal shopper discount">
+          <span className="hub-discount__icon"><MaterialIcon name="sell" size={24} /></span>
+          <div>
+            <strong>{shopperList.discount.percentage}% off your curated items</strong>
+            <p>Use your private code <code>{shopperList.discount.code}</code>. It applies only to products in this list.</p>
+          </div>
+          <button className="secondary-button" type="button" disabled={cartLoading || discountApplied} onClick={() => void applyDiscount()}>
+            <MaterialIcon name={discountApplied ? "check_circle" : "sell"} size={17} /> {discountApplied ? "Discount applied" : "Apply code"}
+          </button>
+        </section>
+      ) : null}
+
       <section className="hub-list" aria-labelledby="hub-list-title">
         <div className="hub-list__heading"><h2 id="hub-list-title">Selected for you</h2><span>{shopperList.items.length} products</span></div>
         <div className="hub-table-head"><span>Product</span><span>Price</span><span>Qty</span><span></span></div>
         {shopperList.items.map((item) => <HubItem key={item.id} item={item} added={addedIds.includes(item.id)} disabled={cartLoading || addingAll} onAdd={() => addOne(item)} />)}
       </section>
 
-      {addedIds.length ? <div className="hub-cart-callout"><span>{addedIds.length} selection{addedIds.length === 1 ? " is" : "s are"} now in your cart.</span><Link className="primary-button" to="/checkout/cart">View cart</Link></div> : null}
+      {addedIds.length ? <div className="hub-cart-callout"><span>{addedIds.length} selection{addedIds.length === 1 ? " is" : "s are"} now in your cart.{discountApplied ? " Your discount is applied." : ""}</span><Link className="primary-button" to="/checkout/cart">View cart</Link></div> : null}
 
       {recommendations.length ? (
         <section className="hub-recommendations">

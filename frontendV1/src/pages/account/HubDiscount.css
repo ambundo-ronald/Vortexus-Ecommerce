@@ -1,0 +1,30 @@
+.hub-discount {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 18px 22px;
+  border: 1px solid #a7f3d0;
+  border-radius: 16px;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.hub-discount__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #d1fae5;
+}
+
+.hub-discount > div { flex: 1; }
+.hub-discount strong { font-size: 1.05rem; }
+.hub-discount p { margin: 4px 0 0; font-size: .86rem; }
+.hub-discount code { padding: 2px 6px; border-radius: 5px; background: #fff; font-weight: 900; letter-spacing: .05em; }
+
+@media (max-width: 800px) {
+  .hub-discount { align-items: stretch; flex-direction: column; }
+}

@@ -7,7 +7,7 @@ interface CustomerOption { id: string, name: string, email: string }
 
 const toast = useToast()
 const config = useRuntimeConfig()
-const { getLists, createList, archiveList } = usePersonalShopper()
+const { getLists, createList, archiveList, duplicateList } = usePersonalShopper()
 const { getUsers } = useUser()
 const { getProductOptions } = useProduct()
 
@@ -20,11 +20,15 @@ const showForm = ref(false)
 const search = ref('')
 const qrDataUrl = ref('')
 const sharedList = ref<ShopperListRecord | null>(null)
+const duplicateSource = ref<ShopperListRecord | null>(null)
+const duplicating = ref(false)
+const duplicateForm = reactive({ customer_id: undefined as number | undefined, title: '', publish: false })
 const form = reactive({
   customer_id: undefined as number | undefined,
   title: '',
   note: '',
   expires_at: '',
+  discount_percentage: 0,
   publish: true,
   items: [] as Array<{ product_id?: number, quantity: number, note: string }>,
 })
@@ -59,7 +63,7 @@ async function load() {
 }
 
 function openForm() {
-  Object.assign(form, { customer_id: undefined, title: '', note: '', expires_at: '', publish: true, items: [{ product_id: undefined, quantity: 1, note: '' }] })
+  Object.assign(form, { customer_id: undefined, title: '', note: '', expires_at: '', discount_percentage: 0, publish: true, items: [{ product_id: undefined, quantity: 1, note: '' }] })
   showForm.value = true
 }
 
@@ -79,6 +83,7 @@ async function save() {
     note: form.note.trim(),
     status: form.publish ? 'shared' : 'draft',
     expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+    discount_percentage: Number(form.discount_percentage || 0),
     items: form.items.map(item => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), note: item.note.trim() })),
   })
   saving.value = false
@@ -108,6 +113,34 @@ async function archive(item: ShopperListRecord) {
   const result = await archiveList(item.id)
   if (result.success) await load()
   else toast.add({ title: 'Could not archive list', description: result.error, color: 'error' })
+}
+
+function openDuplicate(item: ShopperListRecord) {
+  duplicateSource.value = item
+  Object.assign(duplicateForm, { customer_id: undefined, title: item.title, publish: false })
+}
+
+async function saveDuplicate() {
+  if (!duplicateSource.value || !duplicateForm.customer_id) {
+    toast.add({ title: 'Choose a customer', description: 'Select who should receive the duplicated list.', color: 'warning' })
+    return
+  }
+  duplicating.value = true
+  const result = await duplicateList(duplicateSource.value.id, {
+    customer_id: duplicateForm.customer_id,
+    title: duplicateForm.title.trim(),
+    status: duplicateForm.publish ? 'shared' : 'draft',
+  })
+  duplicating.value = false
+  if (!result.success) {
+    toast.add({ title: 'Could not duplicate list', description: result.error, color: 'error' })
+    return
+  }
+  duplicateSource.value = null
+  await load()
+  toast.add({ title: duplicateForm.publish ? 'Duplicate published' : 'Duplicate saved as draft', description: 'A fresh Hub link and discount code will be used.', color: 'success' })
+  if (duplicateForm.publish)
+    await showShare(result.data!)
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -144,8 +177,10 @@ onMounted(load)
             <div class="flex items-center gap-2"><h2 class="font-bold text-slate-950">{{ item.title }}</h2><UBadge>{{ item.status.replaceAll('_', ' ') }}</UBadge></div>
             <p class="mt-1 text-sm text-slate-600">{{ item.customer.name }} · {{ item.customer.email }}</p>
             <p class="mt-2 text-sm text-slate-500">{{ item.items.length }} products · Updated {{ new Date(item.date_updated).toLocaleDateString() }}</p>
+            <p v-if="Number(item.discount?.percentage) > 0" class="mt-2 text-sm font-semibold text-emerald-700">{{ item.discount.percentage }}% off · {{ item.discount.code }}</p>
           </div>
           <div class="flex gap-1">
+            <UButton icon="i-lucide-copy-plus" variant="outline" aria-label="Duplicate list" @click="openDuplicate(item)" />
             <UButton v-if="item.status !== 'draft' && item.status !== 'archived'" icon="i-lucide-qr-code" variant="outline" @click="showShare(item)" />
             <UButton v-if="item.status !== 'archived'" icon="i-lucide-archive" variant="ghost" color="error" @click="archive(item)" />
           </div>
@@ -160,6 +195,10 @@ onMounted(load)
           <UFormField label="List title" required><UInput v-model="form.title" placeholder="Recommended borehole system" class="w-full" /></UFormField>
           <UFormField label="Message to customer"><UTextarea v-model="form.note" :rows="3" class="w-full" /></UFormField>
           <UFormField label="Expires (optional)"><UInput v-model="form.expires_at" type="datetime-local" class="w-full" /></UFormField>
+          <UFormField label="Discount on curated items">
+            <UInput v-model.number="form.discount_percentage" type="number" min="0" max="100" step="0.01" trailing="%" class="w-full" />
+            <template #hint>Set 0 for no discount. A unique one-use code is generated when published.</template>
+          </UFormField>
           <div class="flex items-center justify-between"><h3 class="font-bold">Products</h3><UButton size="sm" variant="outline" @click="addItem"><UIcon name="i-lucide-plus" /> Add product</UButton></div>
           <div v-for="(item, index) in form.items" :key="index" class="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_90px_auto]">
             <USelectMenu v-model="item.product_id" :items="productOptions" value-key="value" searchable placeholder="Choose product" />
@@ -173,12 +212,29 @@ onMounted(load)
       <template #footer><div class="flex w-full justify-end gap-2"><UButton variant="outline" @click="showForm = false">Cancel</UButton><UButton color="primary" :loading="saving" @click="save">{{ form.publish ? 'Publish list' : 'Save draft' }}</UButton></div></template>
     </UModal>
 
+    <UModal :open="!!duplicateSource" title="Duplicate shopper list" description="Reuse this selection for another registered customer." @update:open="value => { if (!value) duplicateSource = null }">
+      <template #body>
+        <div class="space-y-4">
+          <div class="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+            Copying <strong>{{ duplicateSource?.title }}</strong>, including products, quantities, notes, and discount percentage.
+          </div>
+          <UFormField label="New customer" required><USelectMenu v-model="duplicateForm.customer_id" :items="customerOptions" value-key="value" searchable class="w-full" /></UFormField>
+          <UFormField label="List title"><UInput v-model="duplicateForm.title" class="w-full" /></UFormField>
+          <UCheckbox v-model="duplicateForm.publish" label="Publish immediately with a fresh Hub link and discount code" />
+        </div>
+      </template>
+      <template #footer><div class="flex w-full justify-end gap-2"><UButton variant="outline" @click="duplicateSource = null">Cancel</UButton><UButton color="primary" :loading="duplicating" @click="saveDuplicate">Duplicate list</UButton></div></template>
+    </UModal>
+
     <UModal :open="!!sharedList" title="Share Personal Shopper Hub" @update:open="value => { if (!value) sharedList = null }">
       <template #body>
         <div v-if="sharedList" class="text-center">
           <img :src="qrDataUrl" alt="QR code for the customer's secure Hub page" class="mx-auto w-64 rounded-lg border">
           <p class="mt-3 text-sm text-slate-500">The customer must sign in to the account assigned to this list.</p>
           <UInput :model-value="hubUrl(sharedList)" readonly class="mt-3 w-full" />
+          <div v-if="Number(sharedList.discount?.percentage) > 0" class="mt-3 rounded-lg bg-emerald-50 p-3 text-emerald-800">
+            <strong>{{ sharedList.discount.percentage }}% discount:</strong> {{ sharedList.discount.code }}
+          </div>
         </div>
       </template>
       <template #footer><div class="flex w-full justify-end"><UButton icon="i-lucide-copy" color="primary" @click="copyLink(sharedList)">Copy link</UButton></div></template>

@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
@@ -19,6 +20,10 @@ class ShopperList(models.Model):
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.DRAFT, db_index=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     expires_at = models.DateTimeField(blank=True, null=True)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+    discount_voucher = models.ForeignKey(
+        'voucher.Voucher', blank=True, null=True, on_delete=models.SET_NULL, related_name='personal_shopper_lists'
+    )
     viewed_at = models.DateTimeField(blank=True, null=True)
     added_to_cart_at = models.DateTimeField(blank=True, null=True)
     date_created = models.DateTimeField(auto_now_add=True)
@@ -43,4 +48,3 @@ class ShopperListItem(models.Model):
         constraints = [
             models.UniqueConstraint(fields=('shopper_list', 'product'), name='unique_product_per_shopper_list'),
         ]
-

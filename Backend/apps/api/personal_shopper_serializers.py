@@ -18,6 +18,7 @@ class ShopperListWriteSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default='')
     status = serializers.ChoiceField(choices=ShopperList.Status.choices, required=False, default=ShopperList.Status.DRAFT)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    discount_percentage = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, required=False, default=0)
     items = ShopperListItemWriteSerializer(many=True, allow_empty=False)
 
     def validate_customer_id(self, value):
@@ -47,6 +48,22 @@ class ShopperListWriteSerializer(serializers.Serializer):
         return attrs
 
 
+class ShopperListDuplicateSerializer(serializers.Serializer):
+    customer_id = serializers.IntegerField(min_value=1)
+    title = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    status = serializers.ChoiceField(
+        choices=(ShopperList.Status.DRAFT, ShopperList.Status.SHARED),
+        required=False,
+        default=ShopperList.Status.DRAFT,
+    )
+
+    def validate_customer_id(self, value):
+        User = apps.get_model('auth', 'User')
+        if not User.objects.filter(id=value, is_active=True, is_staff=False).exists():
+            raise serializers.ValidationError('Select an active registered customer.')
+        return value
+
+
 def shopper_list_payload(
     shopper_list,
     display_currency=None,
@@ -61,6 +78,10 @@ def shopper_list_payload(
         'note': shopper_list.note,
         'status': shopper_list.status,
         'expires_at': shopper_list.expires_at,
+        'discount': {
+            'percentage': shopper_list.discount_percentage,
+            'code': shopper_list.discount_voucher.code if shopper_list.discount_voucher_id else '',
+        },
         'viewed_at': shopper_list.viewed_at,
         'added_to_cart_at': shopper_list.added_to_cart_at,
         'date_created': shopper_list.date_created,

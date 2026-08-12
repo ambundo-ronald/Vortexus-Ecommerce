@@ -296,6 +296,9 @@ class VoucherApplyAPIView(APIView):
 
         Voucher = apps.get_model('voucher', 'Voucher')
         voucher = get_object_or_404(Voucher, code__iexact=code)
+        shopper_list = voucher.personal_shopper_lists.select_related('customer').first()
+        if shopper_list and (not request.user.is_authenticated or shopper_list.customer_id != request.user.id):
+            raise serializers.ValidationError({'code': 'This voucher belongs to another customer.'})
         if not voucher.is_active():
             raise serializers.ValidationError({'code': 'This voucher is not active.'})
         if not voucher.is_available_for_basket(request.basket):

@@ -8,12 +8,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.personal_shopper.models import ShopperList
+from apps.personal_shopper.discounts import sync_shopper_discount
 from apps.recommendations.services import RecommendationService
 
 from apps.common.currency import resolve_display_currency
 from apps.common.taxes import resolve_tax_country
 from .personal_shopper_serializers import (
     ShopperListWriteSerializer,
+    ShopperListDuplicateSerializer,
     replace_shopper_list_items,
     shopper_list_payload,
 )
@@ -23,6 +25,7 @@ def _shopper_queryset():
     return (
         ShopperList.objects
         .select_related('customer', 'created_by')
+        .select_related('discount_voucher')
         .prefetch_related('items__product__images', 'items__product__stockrecords', 'items__product__categories')
     )
 
@@ -84,8 +87,10 @@ class AdminShopperListCollectionAPIView(APIView):
             note=data.get('note', ''),
             status=data.get('status', ShopperList.Status.DRAFT),
             expires_at=data.get('expires_at'),
+            discount_percentage=data.get('discount_percentage', 0),
         )
         replace_shopper_list_items(shopper_list, data['items'])
+        sync_shopper_discount(shopper_list)
         shopper_list = get_object_or_404(_shopper_queryset(), id=shopper_list.id)
         return Response({'shopper_list': shopper_list_payload(shopper_list, include_token=True)}, status=status.HTTP_201_CREATED)
 
@@ -108,6 +113,7 @@ class AdminShopperListDetailAPIView(APIView):
             'note': shopper_list.note,
             'status': shopper_list.status,
             'expires_at': shopper_list.expires_at,
+            'discount_percentage': shopper_list.discount_percentage,
             'items': [{'product_id': item.product_id, 'quantity': item.quantity, 'note': item.note} for item in shopper_list.items.all()],
         }
         initial.update(request.data)
@@ -119,15 +125,48 @@ class AdminShopperListDetailAPIView(APIView):
         shopper_list.note = data.get('note', '')
         shopper_list.status = data['status']
         shopper_list.expires_at = data.get('expires_at')
+        shopper_list.discount_percentage = data.get('discount_percentage', 0)
         shopper_list.save()
         replace_shopper_list_items(shopper_list, data['items'])
+        sync_shopper_discount(shopper_list)
         return Response({'shopper_list': shopper_list_payload(self.get_object(list_id), include_token=True)})
 
     def delete(self, request, list_id):
         shopper_list = self.get_object(list_id)
         shopper_list.status = ShopperList.Status.ARCHIVED
         shopper_list.save(update_fields=['status', 'date_updated'])
+        sync_shopper_discount(shopper_list)
         return Response({'shopper_list': shopper_list_payload(shopper_list, include_token=True)})
+
+
+class AdminShopperListDuplicateAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    @transaction.atomic
+    def post(self, request, list_id):
+        source = get_object_or_404(_shopper_queryset(), id=list_id)
+        serializer = ShopperListDuplicateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        duplicate = ShopperList.objects.create(
+            customer_id=data['customer_id'],
+            created_by=request.user,
+            title=data.get('title', '').strip() or source.title,
+            note=source.note,
+            status=data['status'],
+            expires_at=source.expires_at if not source.expires_at or source.expires_at > timezone.now() else None,
+            discount_percentage=source.discount_percentage,
+        )
+        replace_shopper_list_items(duplicate, [
+            {'product_id': item.product_id, 'quantity': item.quantity, 'note': item.note}
+            for item in source.items.all()
+        ])
+        sync_shopper_discount(duplicate)
+        duplicate = get_object_or_404(_shopper_queryset(), id=duplicate.id)
+        return Response(
+            {'shopper_list': shopper_list_payload(duplicate, include_token=True)},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ShopperListCollectionAPIView(APIView):

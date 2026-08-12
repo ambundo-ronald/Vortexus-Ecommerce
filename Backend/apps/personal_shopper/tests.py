@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from .discounts import sync_shopper_discount
 from .models import ShopperList
 
 
@@ -46,3 +47,42 @@ class ShopperHubSecurityTests(APITestCase):
         self.client.force_authenticate(self.customer)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_published_discount_generates_customer_scoped_voucher(self):
+        self.shopper_list.discount_percentage = 12.5
+        self.shopper_list.save(update_fields=['discount_percentage'])
+        voucher = sync_shopper_discount(self.shopper_list)
+        self.shopper_list.refresh_from_db()
+
+        self.assertIsNotNone(voucher)
+        self.assertTrue(voucher.code.startswith('HUB-'))
+        self.assertEqual(voucher.offers.get().benefit.value, 12.5)
+        self.assertEqual(self.shopper_list.discount_voucher_id, voucher.id)
+
+        self.client.force_authenticate(self.other_customer)
+        response = self.client.post(reverse('checkout-vouchers'), {'code': voucher.code}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('another customer', str(response.data))
+
+    def test_staff_can_duplicate_list_for_another_customer_with_fresh_share_credentials(self):
+        self.shopper_list.discount_percentage = 10
+        self.shopper_list.note = 'Use the same setup.'
+        self.shopper_list.save(update_fields=['discount_percentage', 'note'])
+        sync_shopper_discount(self.shopper_list)
+        self.shopper_list.refresh_from_db()
+
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            reverse('admin-shopper-list-duplicate', kwargs={'list_id': self.shopper_list.id}),
+            {'customer_id': self.other_customer.id, 'status': ShopperList.Status.SHARED},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        duplicate = ShopperList.objects.get(id=response.data['shopper_list']['id'])
+        self.assertEqual(duplicate.customer_id, self.other_customer.id)
+        self.assertEqual(duplicate.note, self.shopper_list.note)
+        self.assertEqual(duplicate.discount_percentage, self.shopper_list.discount_percentage)
+        self.assertNotEqual(duplicate.share_token, self.shopper_list.share_token)
+        self.assertNotEqual(duplicate.discount_voucher_id, self.shopper_list.discount_voucher_id)
+        self.assertNotEqual(duplicate.discount_voucher.code, self.shopper_list.discount_voucher.code)
