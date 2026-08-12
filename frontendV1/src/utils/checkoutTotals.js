@@ -19,6 +19,7 @@ export function normalizeCheckoutTotals({ basket, shipping, preview } = {}) {
 
   const currency = totals.currency || shippingTotals.currency || basketTotals.currency || basket?.currency || "KES";
   const subtotal = numberOrZero(totals.subtotal ?? basketTotals.subtotal);
+  const discount = numberOrZero(totals.discount ?? basketTotals.discount);
   const shippingTotal = numberOrZero(totals.shipping ?? shippingTotals.shipping);
   const tax = checkoutTaxTotal({
     ...shipping?.taxes,
@@ -30,13 +31,15 @@ export function normalizeCheckoutTotals({ basket, shipping, preview } = {}) {
     totals.order_total ??
       totals.total ??
       totals.total_incl_tax ??
-      subtotal + shippingTotal + tax
+      totals.subtotal_after_discount ??
+      Math.max(0, subtotal - discount) + shippingTotal
   );
 
   return {
     ...totals,
     currency,
     subtotal,
+    discount,
     shipping: shippingTotal,
     tax,
     order_total: orderTotal

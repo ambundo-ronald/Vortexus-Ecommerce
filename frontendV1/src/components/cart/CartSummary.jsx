@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
-import { basketTaxStatuses, checkoutTaxTotal, normalizeCheckoutTotals } from "../../utils/checkoutTotals";
+import { basketTaxStatuses, normalizeCheckoutTotals } from "../../utils/checkoutTotals";
 import { formatCurrency } from "../../utils/currency";
 
 export default function CartSummary({ basket }) {
@@ -11,16 +11,14 @@ export default function CartSummary({ basket }) {
   const applyVoucher = useCartStore((state) => state.applyVoucher);
   const removeVoucher = useCartStore((state) => state.removeVoucher);
   const loading = useCartStore((state) => state.loading);
-  const rawTotals = basket?.totals || {};
   const totals = normalizeCheckoutTotals({ basket });
   const vouchers = basket?.vouchers || [];
   const currency = totals.currency;
   const subtotal = totals.subtotal;
   const discount = Number(totals.discount || 0);
-  const tax = checkoutTaxTotal(rawTotals);
+  const tax = totals.tax;
   const taxStatusLabels = basketTaxStatuses(basket);
-  const explicitOrderTotal = rawTotals.order_total ?? rawTotals.total ?? rawTotals.total_incl_tax;
-  const orderTotal = explicitOrderTotal ?? Math.max(0, Number(subtotal || 0) - discount + tax);
+  const orderTotal = totals.order_total;
 
   async function handleApplyCoupon(event) {
     event.preventDefault();

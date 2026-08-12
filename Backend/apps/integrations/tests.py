@@ -8,7 +8,7 @@ from oscar.core.loading import get_model
 from .erpnext_sync import ERPNextSyncService, _normalise_price_for_marketplace, _normalise_stockrecord_for_marketplace
 from .google_merchant_feed import build_google_merchant_feed_row, render_google_merchant_feed_csv
 from .google_merchant import GoogleMerchantSyncService
-from .google_merchant_sheets import google_merchant_sheet_values
+from .google_merchant_sheets import google_merchant_sheet_values, sync_google_merchant_sheet
 from .models import IntegrationConnection, IntegrationMapping, SyncEventLog, SyncJob
 from .services import ERPNextClient
 
@@ -46,6 +46,39 @@ class _FakeERPNextClient:
         if method.endswith('upsert_customer'):
             return {'customer': 'CUST-ECOM-1', 'created': True}
         return {}
+
+
+class _FakeSheetsValues:
+    def __init__(self):
+        self.cleared = []
+        self.updated = []
+
+    def clear(self, **kwargs):
+        self.cleared.append(kwargs)
+        return self
+
+    def update(self, **kwargs):
+        self.updated.append(kwargs)
+        return self
+
+    def execute(self):
+        return {'updatedCells': 40, 'updatedRange': 'Sheet1!A1:AN2'}
+
+
+class _FakeSheetsSpreadsheets:
+    def __init__(self):
+        self.values_resource = _FakeSheetsValues()
+
+    def values(self):
+        return self.values_resource
+
+
+class _FakeSheetsService:
+    def __init__(self):
+        self.spreadsheets_resource = _FakeSheetsSpreadsheets()
+
+    def spreadsheets(self):
+        return self.spreadsheets_resource
 
 
 class ERPNextClientFileTests(TestCase):
@@ -216,6 +249,22 @@ class GoogleMerchantSyncServiceTests(TestCase):
         self.assertEqual(values[1][1], 'Spun Filter')
         self.assertIn(f'https://reesolmart.com/products/{product.id}', values[1])
         self.assertIn('1740.00 KES', values[1])
+
+    @override_settings(STOREFRONT_BASE_URL='https://reesolmart.com', BACKEND_PUBLIC_BASE_URL='https://api.reesolmart.cloud')
+    @patch('apps.integrations.google_merchant_sheets._sheets_service')
+    def test_google_sheet_sync_records_job_and_event_log(self, mock_sheets_service):
+        self._connection()
+        self._product()
+        mock_sheets_service.return_value = _FakeSheetsService()
+
+        result = sync_google_merchant_sheet(spreadsheet_id='sheet-123', range_name='Sheet1!A1:AN', clear_range='Sheet1!A:AN')
+
+        self.assertEqual(result['products_written'], 1)
+        self.assertEqual(result['updated_cells'], 40)
+        job = SyncJob.objects.get(job_type=SyncJob.TYPE_GOOGLE_SHEETS_EXPORT)
+        self.assertEqual(job.status, SyncJob.STATUS_SUCCEEDED)
+        self.assertEqual(job.summary['spreadsheet_id'], 'sheet-123')
+        self.assertTrue(SyncEventLog.objects.filter(job=job, entity_type='google_sheet', status=SyncEventLog.STATUS_PROCESSED).exists())
 
 
 class ERPNextOrderExportTests(TestCase):

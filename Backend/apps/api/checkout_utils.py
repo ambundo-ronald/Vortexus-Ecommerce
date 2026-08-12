@@ -9,7 +9,7 @@ from oscar.core.loading import get_class
 from apps.common.currency import convert_amount, default_currency, resolve_display_currency
 from apps.common.products import serialize_product_card
 from apps.inventory.services import available_quantity_for_line, reserved_quantity_for_line
-from apps.common.taxes import calculate_checkout_taxes
+from apps.common.taxes import calculate_checkout_taxes, resolve_tax_country
 from apps.accounts.delivery_locations import get_session_location, location_for_shipping_address
 from apps.accounts.routing import route_distance
 
@@ -466,16 +466,39 @@ def serialize_basket(
     display_currency: str | None = None,
     tax_country_code: str | None = 'KE',
 ) -> dict:
+    base_currency = basket_currency(basket)
     lines = [
         serialize_basket_line(line, display_currency=display_currency, tax_country_code=tax_country_code)
         for line in basket.all_lines()
     ]
-    subtotal = basket_subtotal(basket)
-    subtotal_before_discount = _money(getattr(basket, 'total_excl_tax_excl_discounts', subtotal))
+    subtotal_after_discount_excl_tax = basket_subtotal_excl_tax(basket)
+    subtotal_after_discount_incl_tax = basket_subtotal(basket)
     discount_total = _money(getattr(basket, 'total_discount', ZERO))
-    display_subtotal, output_currency = convert_amount(subtotal, basket_currency(basket), display_currency)
-    display_subtotal_before_discount, _ = convert_amount(subtotal_before_discount, basket_currency(basket), display_currency)
-    display_discount_total, _ = convert_amount(discount_total, basket_currency(basket), display_currency)
+    subtotal_before_discount_incl_tax = _money(subtotal_after_discount_incl_tax + discount_total)
+    subtotal_before_discount_excl_tax = _money(
+        getattr(
+            basket,
+            'total_excl_tax_excl_discounts',
+            subtotal_after_discount_excl_tax + discount_total,
+        )
+    )
+    taxes = calculate_checkout_taxes(
+        subtotal_after_discount_excl_tax,
+        ZERO,
+        tax_country_code or 'KE',
+        basket=basket,
+    )
+    tax_total = _money(taxes['total_tax'])
+    estimated_total = subtotal_after_discount_incl_tax
+    if not estimated_total and subtotal_after_discount_excl_tax:
+        estimated_total = _money(subtotal_after_discount_excl_tax + tax_total)
+
+    display_subtotal, output_currency = convert_amount(subtotal_before_discount_incl_tax, base_currency, display_currency)
+    display_subtotal_after_discount, _ = convert_amount(estimated_total, base_currency, display_currency)
+    display_subtotal_before_discount_excl_tax, _ = convert_amount(subtotal_before_discount_excl_tax, base_currency, display_currency)
+    display_discount_total, _ = convert_amount(discount_total, base_currency, display_currency)
+    display_tax_total, _ = convert_amount(tax_total, base_currency, display_currency)
+    display_shipping_total, _ = convert_amount(ZERO, base_currency, display_currency)
     vouchers = []
     if getattr(basket, 'id', None):
         vouchers = [
@@ -496,15 +519,34 @@ def serialize_basket(
         'item_count': basket.num_items,
         'lines': lines,
         'vouchers': vouchers,
+        'taxes': taxes,
+        'tax_breakdown': taxes,
         'totals': {
             'subtotal': display_subtotal,
-            'subtotal_before_discount': display_subtotal_before_discount,
+            'subtotal_before_discount': display_subtotal,
+            'subtotal_before_discount_excl_tax': display_subtotal_before_discount_excl_tax,
+            'subtotal_after_discount': display_subtotal_after_discount,
             'discount': display_discount_total,
+            'tax': display_tax_total,
+            'total_tax': display_tax_total,
+            'shipping': display_shipping_total,
+            'order_total': display_subtotal_after_discount,
+            'total': display_subtotal_after_discount,
+            'total_incl_tax': display_subtotal_after_discount,
             'currency': output_currency,
-            'base_subtotal': _money_payload(subtotal),
-            'base_subtotal_before_discount': _money_payload(subtotal_before_discount),
+            'base_subtotal': _money_payload(subtotal_before_discount_incl_tax),
+            'base_subtotal_before_discount': _money_payload(subtotal_before_discount_incl_tax),
+            'base_subtotal_before_discount_excl_tax': _money_payload(subtotal_before_discount_excl_tax),
+            'base_subtotal_after_discount': _money_payload(estimated_total),
+            'base_subtotal_after_discount_excl_tax': _money_payload(subtotal_after_discount_excl_tax),
             'base_discount': _money_payload(discount_total),
-            'base_currency': basket_currency(basket),
+            'base_tax': _money_payload(tax_total),
+            'base_total_tax': _money_payload(tax_total),
+            'base_shipping': _money_payload(ZERO),
+            'base_order_total': _money_payload(estimated_total),
+            'base_total': _money_payload(estimated_total),
+            'base_total_incl_tax': _money_payload(estimated_total),
+            'base_currency': base_currency,
         },
     }
 
@@ -522,7 +564,7 @@ def build_checkout_payload(request) -> dict:
     basket = request.basket
     apply_offers_to_basket(basket, request.user, request)
     shipping_address = get_shipping_address(request, basket)
-    country_code = shipping_country_code(shipping_address)
+    country_code = shipping_country_code(shipping_address) or resolve_tax_country(request)
     display_currency = resolve_display_currency(request, country_code=country_code)
     methods = get_shipping_methods(request, basket, shipping_address=shipping_address)
     selected_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)

@@ -52,6 +52,32 @@ export interface IntegrationLog {
   created_at: string
 }
 
+export interface IntegrationSyncJob {
+  id: number
+  connection: number
+  connection_name: string
+  job_type: string
+  direction: string
+  status: string
+  summary?: Record<string, any>
+  error_message?: string
+  started_at?: string | null
+  finished_at?: string | null
+  created_at: string
+}
+
+export interface GoogleMerchantSheetLogs {
+  connection: IntegrationConnection | null
+  settings: {
+    sync_enabled: boolean
+    spreadsheet_id: string
+    range: string
+    clear_range: string
+  }
+  jobs: IntegrationSyncJob[]
+  events: IntegrationLog[]
+}
+
 export type ERPNextPreviewResource = 'items' | 'stock' | 'prices'
 
 export interface ERPNextPreviewResult {
@@ -225,6 +251,37 @@ export function useIntegrations() {
     }
   }
 
+  async function getGoogleMerchantSheetLogs() {
+    try {
+      const result = await request<GoogleMerchantSheetLogs>('/admin/integrations/google-merchant/sheets/logs/', {
+        method: 'GET',
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      return { success: false, error: readApiError(err), data: null }
+    }
+  }
+
+  async function syncGoogleMerchantSheet() {
+    loading.value = true
+    error.value = null
+
+    try {
+      const result = await request<{ queued: boolean, task_id?: string }>('/admin/integrations/google-merchant/sheets/sync/', {
+        method: 'POST',
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -236,5 +293,7 @@ export function useIntegrations() {
     syncStock,
     previewERPNext,
     importERPNextCatalog,
+    getGoogleMerchantSheetLogs,
+    syncGoogleMerchantSheet,
   }
 }

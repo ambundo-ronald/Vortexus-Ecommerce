@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.integrations.models import IntegrationConnection, SyncEventLog
+from apps.integrations.models import IntegrationConnection, SyncEventLog, SyncJob
 
 
 class IntegrationConnectionSerializer(serializers.ModelSerializer):
@@ -99,5 +99,25 @@ class SyncEventLogSerializer(serializers.ModelSerializer):
             'status',
             'payload_excerpt',
             'error_message',
+            'created_at',
+        ]
+
+
+class SyncJobSerializer(serializers.ModelSerializer):
+    connection_name = serializers.CharField(source='connection.name', read_only=True)
+
+    class Meta:
+        model = SyncJob
+        fields = [
+            'id',
+            'connection',
+            'connection_name',
+            'job_type',
+            'direction',
+            'status',
+            'summary',
+            'error_message',
+            'started_at',
+            'finished_at',
             'created_at',
         ]

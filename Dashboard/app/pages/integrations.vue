@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import type { ERPNextPreviewResource, ERPNextPreviewResult, IntegrationConnection, IntegrationConnectionPayload, IntegrationLog } from '~/composables/useIntegrations'
+import type { ERPNextPreviewResource, ERPNextPreviewResult, GoogleMerchantSheetLogs, IntegrationConnection, IntegrationConnectionPayload, IntegrationLog } from '~/composables/useIntegrations'
 
 const toast = useToast()
-const { getConnections, createConnection, updateConnection, getLogs, testConnection, syncStock, previewERPNext, importERPNextCatalog } = useIntegrations()
+const {
+  getConnections,
+  createConnection,
+  updateConnection,
+  getLogs,
+  testConnection,
+  syncStock,
+  previewERPNext,
+  importERPNextCatalog,
+  getGoogleMerchantSheetLogs,
+  syncGoogleMerchantSheet,
+} = useIntegrations()
 
 const connections = ref<IntegrationConnection[]>([])
 const selectedConnection = ref<IntegrationConnection | null>(null)
@@ -17,6 +28,9 @@ const previewResult = ref<ERPNextPreviewResult | null>(null)
 const previewConnection = ref<IntegrationConnection | null>(null)
 const importIncludeStock = ref(true)
 const importSummary = ref<Record<string, any> | null>(null)
+const sheetLogs = ref<GoogleMerchantSheetLogs | null>(null)
+const isLoadingSheetLogs = ref(false)
+const isSyncingSheet = ref(false)
 const isEditorOpen = ref(false)
 const isSavingConnection = ref(false)
 const editingConnectionId = ref<number | null>(null)
@@ -140,6 +154,20 @@ function formatDate(value?: string | null) {
   })
 }
 
+function sheetSummaryValue(job: { summary?: Record<string, any> }, key: string) {
+  return job.summary?.[key] ?? '-'
+}
+
+function sheetStatusColor(status: string) {
+  if (status === 'succeeded')
+    return 'success'
+  if (status === 'failed')
+    return 'error'
+  if (status === 'running')
+    return 'primary'
+  return 'warning'
+}
+
 async function loadLogs(connection: IntegrationConnection) {
   selectedConnection.value = connection
   const result = await getLogs(connection.id)
@@ -152,6 +180,22 @@ async function loadLogs(connection: IntegrationConnection) {
       color: 'error',
     })
   }
+}
+
+async function loadSheetLogs() {
+  isLoadingSheetLogs.value = true
+  const result = await getGoogleMerchantSheetLogs()
+  if (result.success) {
+    sheetLogs.value = result.data
+  }
+  else {
+    toast.add({
+      title: 'Could not load Google Sheets logs',
+      description: result.error || 'Please try again.',
+      color: 'error',
+    })
+  }
+  isLoadingSheetLogs.value = false
 }
 
 async function loadConnections() {
@@ -173,6 +217,20 @@ async function loadConnections() {
   }
 
   isLoading.value = false
+}
+
+async function runGoogleSheetSync() {
+  isSyncingSheet.value = true
+  const result = await syncGoogleMerchantSheet()
+
+  toast.add({
+    title: result.success ? 'Google Sheets sync queued' : 'Google Sheets sync failed',
+    description: result.success ? 'The product feed sync is running in the background.' : result.error || 'Please check the integration settings.',
+    color: result.success ? 'success' : 'error',
+  })
+
+  await loadSheetLogs()
+  isSyncingSheet.value = false
 }
 
 async function runTest(connection: IntegrationConnection) {
@@ -443,7 +501,9 @@ async function runStockSync(connection: IntegrationConnection) {
   actionId.value = null
 }
 
-onMounted(loadConnections)
+onMounted(async () => {
+  await Promise.all([loadConnections(), loadSheetLogs()])
+})
 </script>
 
 <template>
@@ -816,6 +876,111 @@ onMounted(loadConnections)
               <p v-if="log.error_message" class="mt-2 text-sm text-red-600">
                 {{ log.error_message }}
               </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div class="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+            <div>
+              <h2 class="text-lg font-black text-slate-950">
+                Google Sheets feed
+              </h2>
+              <p class="mt-1 text-sm text-slate-500">
+                Product feed export jobs for Merchant Center.
+              </p>
+            </div>
+            <UButton
+              size="sm"
+              color="primary"
+              variant="soft"
+              icon="i-lucide-refresh-cw"
+              :loading="isSyncingSheet"
+              @click="runGoogleSheetSync"
+            >
+              Sync sheet
+            </UButton>
+          </div>
+
+          <div v-if="isLoadingSheetLogs" class="space-y-3 p-5">
+            <USkeleton v-for="item in 3" :key="item" class="h-16 rounded-xl" />
+          </div>
+
+          <div v-else class="space-y-4 p-5">
+            <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+              <div class="rounded-xl border border-slate-200 px-4 py-3">
+                <p class="text-xs font-black uppercase tracking-wide text-slate-500">
+                  Status
+                </p>
+                <p class="mt-1 font-black text-slate-950">
+                  {{ sheetLogs?.settings.sync_enabled ? 'Scheduled sync enabled' : 'Manual sync only' }}
+                </p>
+              </div>
+              <div class="rounded-xl border border-slate-200 px-4 py-3">
+                <p class="text-xs font-black uppercase tracking-wide text-slate-500">
+                  Last success
+                </p>
+                <p class="mt-1 font-black text-slate-950">
+                  {{ formatDate(sheetLogs?.connection?.last_successful_sync_at) }}
+                </p>
+              </div>
+              <div class="rounded-xl border border-slate-200 px-4 py-3 sm:col-span-2">
+                <p class="text-xs font-black uppercase tracking-wide text-slate-500">
+                  Spreadsheet
+                </p>
+                <p class="mt-1 truncate font-semibold text-slate-950">
+                  {{ sheetLogs?.settings.spreadsheet_id || 'Not configured' }}
+                </p>
+                <p class="mt-1 text-xs text-slate-500">
+                  {{ sheetLogs?.settings.range || 'Sheet1!A1:AN' }}
+                </p>
+              </div>
+            </div>
+
+            <div v-if="!sheetLogs?.jobs.length" class="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+              No Google Sheets sync jobs recorded yet.
+            </div>
+
+            <div v-else class="overflow-hidden rounded-xl border border-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-black uppercase text-slate-500">
+                      Time
+                    </th>
+                    <th class="px-3 py-2 text-left text-xs font-black uppercase text-slate-500">
+                      Status
+                    </th>
+                    <th class="px-3 py-2 text-left text-xs font-black uppercase text-slate-500">
+                      Products
+                    </th>
+                    <th class="px-3 py-2 text-left text-xs font-black uppercase text-slate-500">
+                      Cells
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="job in sheetLogs.jobs" :key="job.id">
+                    <td class="px-3 py-3 text-slate-700">
+                      {{ formatDate(job.created_at) }}
+                    </td>
+                    <td class="px-3 py-3">
+                      <UBadge :color="sheetStatusColor(job.status)" variant="soft" class="capitalize">
+                        {{ job.status }}
+                      </UBadge>
+                      <p v-if="job.error_message" class="mt-1 max-w-48 truncate text-xs text-red-600">
+                        {{ job.error_message }}
+                      </p>
+                    </td>
+                    <td class="px-3 py-3 font-semibold text-slate-950">
+                      {{ sheetSummaryValue(job, 'products_written') }}
+                    </td>
+                    <td class="px-3 py-3 font-semibold text-slate-950">
+                      {{ sheetSummaryValue(job, 'updated_cells') }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

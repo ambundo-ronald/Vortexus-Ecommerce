@@ -8,7 +8,17 @@ const emptyBasket = {
   lines: [],
   line_count: 0,
   item_count: 0,
-  totals: { subtotal: 0, currency: "KES" },
+  totals: {
+    subtotal: 0,
+    subtotal_before_discount: 0,
+    subtotal_after_discount: 0,
+    discount: 0,
+    tax: 0,
+    total_tax: 0,
+    shipping: 0,
+    order_total: 0,
+    currency: "KES"
+  },
   is_empty: true,
   shipping_required: false
 };

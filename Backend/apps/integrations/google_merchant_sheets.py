@@ -3,8 +3,12 @@ import os
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
+
+from apps.auditlog.services import sanitize_metadata
 
 from .google_merchant_feed import GOOGLE_MERCHANT_FEED_HEADERS, build_google_merchant_feed_rows
+from .models import IntegrationConnection, SyncEventLog, SyncJob
 
 
 GOOGLE_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
@@ -28,6 +32,7 @@ def sync_google_merchant_sheet(
     range_name: str = '',
     clear_range: str = '',
     tax_country_code: str = 'KE',
+    created_by=None,
 ) -> dict[str, Any]:
     spreadsheet_id = spreadsheet_id or getattr(settings, 'GOOGLE_MERCHANT_SHEETS_SPREADSHEET_ID', '')
     range_name = range_name or getattr(settings, 'GOOGLE_MERCHANT_SHEETS_RANGE', 'Sheet1!A1:AN')
@@ -35,29 +40,134 @@ def sync_google_merchant_sheet(
     if not spreadsheet_id:
         raise GoogleMerchantSheetsError('GOOGLE_MERCHANT_SHEETS_SPREADSHEET_ID is required.')
 
-    service = _sheets_service()
-    values = google_merchant_sheet_values(tax_country_code=tax_country_code)
-    if clear_range:
-        service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id,
-            range=clear_range,
-            body={},
-        ).execute()
+    connection = _google_merchant_connection()
+    job = _start_sheet_sync_job(connection, created_by=created_by)
+    try:
+        service = _sheets_service()
+        values = google_merchant_sheet_values(tax_country_code=tax_country_code)
+        if clear_range:
+            service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=clear_range,
+                body={},
+            ).execute()
 
-    result = service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id,
-        range=range_name,
-        valueInputOption='RAW',
-        body={'values': values},
-    ).execute()
-    return {
-        'spreadsheet_id': spreadsheet_id,
-        'range': range_name,
-        'rows_written': len(values),
-        'products_written': max(0, len(values) - 1),
-        'updated_cells': result.get('updatedCells', 0),
-        'updated_range': result.get('updatedRange', ''),
-    }
+        result = service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+            valueInputOption='RAW',
+            body={'values': values},
+        ).execute()
+        summary = {
+            'spreadsheet_id': spreadsheet_id,
+            'range': range_name,
+            'clear_range': clear_range,
+            'rows_written': len(values),
+            'products_written': max(0, len(values) - 1),
+            'updated_cells': result.get('updatedCells', 0),
+            'updated_range': result.get('updatedRange', ''),
+        }
+    except Exception as exc:
+        _finish_sheet_sync_job(
+            connection,
+            job,
+            status=SyncJob.STATUS_FAILED,
+            spreadsheet_id=spreadsheet_id,
+            summary={'spreadsheet_id': spreadsheet_id, 'range': range_name, 'clear_range': clear_range},
+            error_message=str(exc),
+        )
+        raise
+
+    _finish_sheet_sync_job(
+        connection,
+        job,
+        status=SyncJob.STATUS_SUCCEEDED,
+        spreadsheet_id=spreadsheet_id,
+        summary=summary,
+    )
+    return summary
+
+
+def _google_merchant_connection() -> IntegrationConnection | None:
+    active = (
+        IntegrationConnection.objects.filter(
+            connection_type=IntegrationConnection.TYPE_GOOGLE_MERCHANT,
+            is_active=True,
+            status=IntegrationConnection.STATUS_ACTIVE,
+        )
+        .order_by('id')
+        .first()
+    )
+    if active:
+        return active
+
+    return (
+        IntegrationConnection.objects.filter(
+            connection_type=IntegrationConnection.TYPE_GOOGLE_MERCHANT,
+            is_active=True,
+        )
+        .order_by('id')
+        .first()
+    )
+
+
+def _start_sheet_sync_job(connection: IntegrationConnection | None, *, created_by=None) -> SyncJob | None:
+    if connection is None:
+        return None
+
+    return SyncJob.objects.create(
+        connection=connection,
+        job_type=SyncJob.TYPE_GOOGLE_SHEETS_EXPORT,
+        direction=SyncJob.DIRECTION_OUTBOUND,
+        status=SyncJob.STATUS_RUNNING,
+        created_by=created_by if getattr(created_by, 'is_authenticated', False) else None,
+        started_at=timezone.now(),
+    )
+
+
+def _finish_sheet_sync_job(
+    connection: IntegrationConnection | None,
+    job: SyncJob | None,
+    *,
+    status: str,
+    spreadsheet_id: str,
+    summary: dict[str, Any],
+    error_message: str = '',
+) -> None:
+    if connection is None or job is None:
+        return
+
+    now = timezone.now()
+    job.status = status
+    job.summary = sanitize_metadata(summary)
+    job.error_message = error_message
+    job.finished_at = now
+    job.save(update_fields=['status', 'summary', 'error_message', 'finished_at'])
+
+    metadata = connection.metadata or {}
+    metadata['google_sheets_last_sync'] = job.summary
+    connection.metadata = metadata
+    if status == SyncJob.STATUS_SUCCEEDED:
+        connection.status = IntegrationConnection.STATUS_ACTIVE
+        connection.last_successful_sync_at = now
+        connection.save(update_fields=['status', 'metadata', 'last_successful_sync_at', 'updated_at'])
+        event_status = SyncEventLog.STATUS_PROCESSED
+    else:
+        connection.status = IntegrationConnection.STATUS_ERROR
+        connection.last_failed_sync_at = now
+        connection.save(update_fields=['status', 'metadata', 'last_failed_sync_at', 'updated_at'])
+        event_status = SyncEventLog.STATUS_FAILED
+
+    SyncEventLog.objects.create(
+        connection=connection,
+        job=job,
+        direction=SyncJob.DIRECTION_OUTBOUND,
+        entity_type='google_sheet',
+        external_reference=spreadsheet_id,
+        status=event_status,
+        payload_excerpt=job.summary,
+        error_message=error_message,
+    )
 
 
 def _sheets_service():

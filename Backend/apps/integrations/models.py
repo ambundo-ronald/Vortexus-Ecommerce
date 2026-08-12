@@ -194,6 +194,7 @@ class SyncJob(models.Model):
     TYPE_ORDERS_EXPORT = 'orders_export'
     TYPE_FULFILLMENT_IMPORT = 'fulfillment_import'
     TYPE_CONNECTION_TEST = 'connection_test'
+    TYPE_GOOGLE_SHEETS_EXPORT = 'google_sheets_export'
 
     TYPE_CHOICES = [
         (TYPE_PRODUCTS_IMPORT, 'Products Import'),
@@ -204,6 +205,7 @@ class SyncJob(models.Model):
         (TYPE_ORDERS_EXPORT, 'Orders Export'),
         (TYPE_FULFILLMENT_IMPORT, 'Fulfillment Import'),
         (TYPE_CONNECTION_TEST, 'Connection Test'),
+        (TYPE_GOOGLE_SHEETS_EXPORT, 'Google Sheets Export'),
     ]
 
     DIRECTION_INBOUND = 'inbound'

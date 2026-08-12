@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -15,6 +16,7 @@ from .integration_serializers import (
     IntegrationConnectionSerializer,
     IntegrationPreviewQuerySerializer,
     SyncEventLogSerializer,
+    SyncJobSerializer,
 )
 
 
@@ -105,6 +107,60 @@ class IntegrationLogCollectionAPIView(APIView):
         connection = get_object_or_404(IntegrationConnection, id=connection_id)
         queryset = connection.event_logs.order_by('-created_at', '-id')[:100]
         return Response({'results': SyncEventLogSerializer(queryset, many=True).data})
+
+
+def _google_merchant_connection():
+    return (
+        IntegrationConnection.objects.filter(
+            connection_type=IntegrationConnection.TYPE_GOOGLE_MERCHANT,
+            is_active=True,
+        )
+        .order_by('-last_successful_sync_at', 'id')
+        .first()
+    )
+
+
+class GoogleMerchantSheetLogAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        connection = _google_merchant_connection()
+        jobs = SyncJob.objects.none()
+        events = SyncEventLog.objects.none()
+        if connection:
+            jobs = connection.sync_jobs.filter(job_type=SyncJob.TYPE_GOOGLE_SHEETS_EXPORT).order_by('-created_at', '-id')[:25]
+            events = connection.event_logs.filter(entity_type='google_sheet').order_by('-created_at', '-id')[:25]
+
+        return Response(
+            {
+                'connection': IntegrationConnectionSerializer(connection).data if connection else None,
+                'settings': {
+                    'sync_enabled': bool(getattr(settings, 'GOOGLE_MERCHANT_SHEETS_SYNC_ENABLED', False)),
+                    'spreadsheet_id': getattr(settings, 'GOOGLE_MERCHANT_SHEETS_SPREADSHEET_ID', ''),
+                    'range': getattr(settings, 'GOOGLE_MERCHANT_SHEETS_RANGE', 'Sheet1!A1:AN'),
+                    'clear_range': getattr(settings, 'GOOGLE_MERCHANT_SHEETS_CLEAR_RANGE', 'Sheet1!A:AN'),
+                },
+                'jobs': SyncJobSerializer(jobs, many=True).data,
+                'events': SyncEventLogSerializer(events, many=True).data,
+            }
+        )
+
+
+class GoogleMerchantSheetSyncAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request):
+        from apps.integrations.tasks import refresh_google_merchant_sheet
+
+        task = refresh_google_merchant_sheet.delay()
+        record_audit_event(
+            event_type='integrations.google_sheet_sync_queued',
+            request=request,
+            actor=request.user,
+            message='Google Merchant Sheets sync queued.',
+            metadata={'task_id': getattr(task, 'id', '')},
+        )
+        return Response({'queued': True, 'task_id': getattr(task, 'id', '')}, status=status.HTTP_202_ACCEPTED)
 
 
 class ERPNextConnectionTestAPIView(APIView):
