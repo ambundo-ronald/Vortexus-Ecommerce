@@ -8,7 +8,9 @@ import ProductImageGallery from "../../components/catalog/ProductImageGallery.js
 import ProductAlertForm from "../../components/catalog/ProductAlertForm.jsx";
 import ProductSpecifications from "../../components/catalog/ProductSpecifications.jsx";
 import RelatedProducts from "../../components/catalog/RelatedProducts.jsx";
+import BreadcrumbNav from "../../components/seo/BreadcrumbNav.jsx";
 import ReviewList from "../../components/reviews/ReviewList.jsx";
+import Seo, { absoluteUrl } from "../../components/seo/Seo.jsx";
 import StarRating from "../../components/reviews/StarRating.jsx";
 import Alert from "../../components/ui/Alert.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -24,18 +26,22 @@ import { searchAttributionMetadata, trackStorefrontEvent } from "../../utils/ana
 import {
   productBrand,
   productCategory,
+  productCategoryPath,
   productId as resolveProductId,
   productPrice,
   productRating,
   productSku,
   productTitle,
+  productUrl,
   stockTone
 } from "../../utils/productDisplay";
+import { productImageUrl } from "../../utils/productImages";
 import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
-  const { productId: routeProductId } = useParams();
-  const { product, related, loading, error } = useProductDetail(routeProductId);
+  const { "*": routeProductPath = "" } = useParams();
+  const routeProductRef = lastPathSegment(routeProductPath);
+  const { product, related, loading, error } = useProductDetail(routeProductRef);
   const addItem = useCartStore((state) => state.addItem);
   const cartLoading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -52,19 +58,35 @@ export default function ProductDetailPage() {
     () => productOptions.filter((option) => option.required && !selectedOptions[option.id || option.code]),
     [productOptions, selectedOptions]
   );
-  const category = useMemo(() => product?.categories?.[0] || null, [product]);
+  const breadcrumbCategories = useMemo(() => productCategoryPath(product || {}), [product]);
+  const category = useMemo(() => breadcrumbCategories[breadcrumbCategories.length - 1] || product?.categories?.[0] || null, [breadcrumbCategories, product]);
   const categoryLabel = productCategory(product || {}, "Uncategorized");
   const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
   const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
   const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
-  const resolvedProductId = resolveProductId(product || {}) || routeProductId;
+  const resolvedProductId = resolveProductId(product || {}) || routeProductRef;
   const resolvedTitle = productTitle(product || {});
   const resolvedSku = productSku(product || {}, "Pending");
   const shareUrl = useMemo(() => {
-    const path = `/products/${resolvedProductId || routeProductId}`;
+    const path = product ? productUrl(product) : `/products/${resolvedProductId || routeProductRef}`;
     if (typeof window === "undefined") return path;
     return new URL(path, window.location.origin).toString();
-  }, [resolvedProductId, routeProductId]);
+  }, [product, resolvedProductId, routeProductRef]);
+  const breadcrumbItems = useMemo(() => {
+    const categoryItems = breadcrumbCategories.length
+      ? breadcrumbCategories.map((item) => ({
+          label: item.name || item.title || categoryLabel,
+          href: item.slug ? `/catalog/category/${item.slug}` : categoryHref
+        }))
+      : [{ label: categoryLabel, href: categoryHref }];
+
+    return [
+      { label: "Home", href: "/" },
+      { label: "Shop", href: "/catalog" },
+      ...categoryItems,
+      { label: resolvedTitle }
+    ];
+  }, [breadcrumbCategories, categoryHref, categoryLabel, resolvedTitle]);
 
   useEffect(() => {
     if (user && resolvedProductId) void loadStatus([resolvedProductId]);
@@ -82,7 +104,7 @@ export default function ProductDetailPage() {
       ...searchAttributionMetadata(),
       product_id: resolvedProductId,
       product_title: resolvedTitle,
-      path: `/products/${resolvedProductId}`
+      path: productUrl(product)
     });
   }, [product, resolvedProductId, resolvedTitle]);
 
@@ -97,6 +119,23 @@ export default function ProductDetailPage() {
   const brandLabel = productBrand(product, "Not specified");
   const maxQuantity = stock.count > 0 ? stock.count : 99;
   const boundedQuantity = Math.max(1, Math.min(quantity, maxQuantity || 1));
+  const canonicalPath = productUrl(product);
+  const seoDescription = buildProductSeoDescription(product, resolvedTitle, brandLabel, categoryLabel);
+  const seoImage = productImageUrl(product) || "/Reesolmart logo.png";
+  const seoSchemas = buildProductSeoSchemas({
+    product,
+    title: resolvedTitle,
+    description: seoDescription,
+    canonicalPath,
+    image: seoImage,
+    price,
+    stock,
+    rating,
+    reviewCount,
+    brand: brandLabel,
+    sku: resolvedSku,
+    breadcrumbs: breadcrumbCategories
+  });
 
   async function handleAddToCart() {
     if (!stock.isAvailable) {
@@ -194,15 +233,15 @@ export default function ProductDetailPage() {
 
   return (
     <div className="product-detail-page">
-      <nav className="product-breadcrumbs" aria-label="Breadcrumb">
-        <Link to="/">Home</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <Link to="/catalog">Shop</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <Link to={categoryHref}>{categoryLabel}</Link>
-        <MaterialIcon name="chevron_right" size={16} />
-        <span>{resolvedTitle}</span>
-      </nav>
+      <Seo
+        title={`${resolvedTitle} | Reesolmart`}
+        description={seoDescription}
+        canonicalPath={canonicalPath}
+        image={seoImage}
+        type="product"
+        jsonLd={seoSchemas}
+      />
+      <BreadcrumbNav items={breadcrumbItems} />
 
       <section className="product-detail">
         <div className="product-detail__media-panel">
@@ -457,6 +496,93 @@ function cleanOverview(value = "") {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function lastPathSegment(value = "") {
+  return String(value || "")
+    .split("/")
+    .filter(Boolean)
+    .pop() || "";
+}
+
+function buildProductSeoDescription(product, title, brand, category) {
+  const overview = cleanOverview(product?.description || "");
+  if (overview) return truncateText(overview, 155);
+  return truncateText(`Buy ${title}${brand && brand !== "Not specified" ? ` by ${brand}` : ""} from Reesolmart. View price, stock availability, specifications, and delivery options${category ? ` for ${category}` : ""}.`, 155);
+}
+
+function buildProductSeoSchemas({ product, title, description, canonicalPath, image, price, stock, rating, reviewCount, brand, sku, breadcrumbs }) {
+  const canonicalUrl = absoluteUrl(canonicalPath);
+  const imageUrl = image ? absoluteUrl(image) : undefined;
+  const breadcrumbItems = [
+    { name: "Home", url: absoluteUrl("/") },
+    { name: "Shop", url: absoluteUrl("/catalog") },
+    ...breadcrumbs.map((category) => ({
+      name: category.name || category.title || "Category",
+      url: absoluteUrl(category.slug ? `/catalog/category/${category.slug}` : "/catalog")
+    })),
+    { name: title, url: canonicalUrl }
+  ];
+
+  const productSchema = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: title,
+    description,
+    sku: sku || undefined,
+    image: imageUrl ? [imageUrl] : undefined,
+    brand: brand && brand !== "Not specified" ? { "@type": "Brand", name: brand } : undefined,
+    category: productCategory(product, ""),
+    url: canonicalUrl,
+    offers: price?.isQuote
+      ? undefined
+      : {
+          "@type": "Offer",
+          url: canonicalUrl,
+          priceCurrency: price.currency || product.currency || "KES",
+          price: price.value,
+          availability: stock.isAvailable ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          itemCondition: "https://schema.org/NewCondition"
+        },
+    aggregateRating: reviewCount > 0 && rating > 0
+      ? {
+          "@type": "AggregateRating",
+          ratingValue: Number(rating.toFixed(1)),
+          reviewCount
+        }
+      : undefined
+  };
+
+  return [
+    removeEmptySchemaValues(productSchema),
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: breadcrumbItems.map((item, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.name,
+        item: item.url
+      }))
+    }
+  ];
+}
+
+function removeEmptySchemaValues(value) {
+  if (Array.isArray(value)) return value.map(removeEmptySchemaValues).filter((item) => item !== undefined);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [key, removeEmptySchemaValues(item)])
+      .filter(([, item]) => item !== undefined && item !== "" && !(Array.isArray(item) && item.length === 0))
+  );
+}
+
+function truncateText(value = "", maxLength = 155) {
+  const clean = cleanOverview(value);
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
 function buildProductSpecs(product) {

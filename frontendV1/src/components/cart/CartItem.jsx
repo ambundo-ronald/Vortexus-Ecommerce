@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { formatCurrency } from "../../utils/currency";
-import { productId, productInitials, productSku, productTitle, stockTone } from "../../utils/productDisplay";
+import { productId, productInitials, productSku, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 
 export default function CartItem({ line }) {
@@ -27,7 +27,7 @@ export default function CartItem({ line }) {
     product.price ??
     (Number(line.line_total || 0) / quantity || 0);
   const stock = stockTone({ ...line, product });
-  const productPath = resolvedProductId ? `/products/${resolvedProductId}` : "/catalog";
+  const productPath = resolvedProductId ? productUrl({ ...line, ...product, product }) : "/catalog";
 
   async function handleQuantityChange(quantity) {
     try {

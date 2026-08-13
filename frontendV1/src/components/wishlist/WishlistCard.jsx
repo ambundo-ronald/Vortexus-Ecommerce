@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
-import { productId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
+import { productId, productInitials, productPrice, productTitle, productUrl } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 
 export default function WishlistCard({ item, saving = false, onRemove }) {
@@ -10,15 +10,16 @@ export default function WishlistCard({ item, saving = false, onRemove }) {
   const image = productImageUrl({ ...item, ...product, product });
   const title = productTitle({ ...item, product });
   const price = productPrice(product);
+  const productPath = resolvedProductId ? productUrl({ ...item, ...product, product }) : "/catalog";
 
   return (
     <article className="wishlist-card">
-      <Link className="wishlist-card__media" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
+      <Link className="wishlist-card__media" to={productPath}>
         {image ? <img src={image} alt={title} /> : <span>{productInitials(title)}</span>}
       </Link>
       <div className="wishlist-card__body">
         <h3>
-          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>{title}</Link>
+          <Link to={productPath}>{title}</Link>
         </h3>
         <strong>{price.label || "Quote on request"}</strong>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { productImageList } from "../../utils/productImages";
+import { productImageAlt, productImageList } from "../../utils/productImages";
 import { productInitials } from "../../utils/productDisplay";
 
 const MOBILE_CAROUSEL_DELAY = 3200;
@@ -12,6 +12,7 @@ export default function ProductImageGallery({ product }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const [isPaused, setIsPaused] = useState(false);
+  const imageAlt = productImageAlt(product, product?.title || "Product image");
 
   useEffect(() => {
     setActiveIndex(0);
@@ -52,16 +53,18 @@ export default function ProductImageGallery({ product }) {
         }}
       >
         {images.length ? (
-          <div className="product-gallery-track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
-            {images.map((image, index) => (
-              <div className={`product-gallery-slide${index === activeIndex ? " is-active" : ""}`} key={`${image}-${index}`}>
-                <img
-                  src={image}
-                  alt={index === activeIndex ? product?.title || "Product" : ""}
-                  style={index === activeIndex ? { transformOrigin: zoomOrigin } : undefined}
-                />
-              </div>
-            ))}
+          <div className="product-gallery-track">
+            <div className="product-gallery-slide is-active" key={`${images[activeIndex]}-${activeIndex}`}>
+              <img
+                src={images[activeIndex]}
+                alt={imageAlt}
+                fetchPriority="high"
+                decoding="async"
+                width="900"
+                height="675"
+                style={{ transformOrigin: zoomOrigin }}
+              />
+            </div>
           </div>
         ) : (
           <span className="product-gallery__placeholder">{productInitials(product?.title)}</span>
@@ -79,7 +82,16 @@ export default function ProductImageGallery({ product }) {
               disabled={!image}
               aria-label={`View product image ${index + 1}`}
             >
-              {image ? <img src={image} alt="" /> : <span>{productInitials(product?.title)}</span>}
+              {image ? (
+                <img
+                  src={image}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width="96"
+                  height="96"
+                />
+              ) : <span>{productInitials(product?.title)}</span>}
             </button>
           );
         })}

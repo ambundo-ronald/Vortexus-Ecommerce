@@ -1,4 +1,5 @@
 import logging
+import re
 
 from django.apps import apps
 from django.core.files.base import ContentFile
@@ -15,7 +16,7 @@ from rest_framework.views import APIView
 from apps.auditlog.services import record_audit_event
 from apps.common.catalog import brand_slug, filter_queryset_by_brand, filter_queryset_by_category_slug, product_brand
 from apps.common.currency import resolve_display_currency
-from apps.common.products import product_stock_totals, serialize_product_card, stockrecord_count
+from apps.common.products import product_slug, product_stock_totals, serialize_product_card, stockrecord_count
 from apps.common.taxes import product_tax_status, resolve_tax_country
 from apps.integrations.google_merchant import queue_google_merchant_product_delete, queue_google_merchant_product_sync
 from apps.notifications.services import queue_quote_request_notifications
@@ -494,6 +495,76 @@ class ProductDetailAPIView(StaffWritePermissionMixin, APIView):
             metadata=metadata,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ProductResolveAPIView(APIView):
+    recommendation_service = RecommendationService()
+
+    def get(self, request, reference: str):
+        product = self._resolve_product(reference)
+        if not product:
+            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        display_currency = resolve_display_currency(request)
+        tax_country_code = resolve_tax_country(request)
+        detail = _build_product_detail(
+            product,
+            display_currency=display_currency,
+            include_tax=True,
+            tax_country_code=tax_country_code,
+        )
+        related = self.recommendation_service.recommend_for_product(
+            product_id=product.id,
+            limit=8,
+            display_currency=display_currency,
+            tax_country_code=tax_country_code,
+        )
+        return Response({"product": detail, "related": related})
+
+    def _resolve_product(self, reference: str):
+        normalized = _normalize_product_reference(reference)
+        if not normalized:
+            return None
+
+        queryset = _product_queryset()
+        trailing_id = _trailing_product_id(normalized)
+        if trailing_id:
+            product = queryset.filter(id=trailing_id).first()
+            if product:
+                return product
+
+        if normalized.isdigit():
+            return queryset.filter(id=int(normalized)).first()
+
+        readable_title = normalized.replace("-", " ")
+        exact_candidates = queryset.filter(
+            Q(upc__iexact=reference)
+            | Q(title__iexact=reference)
+            | Q(upc__iexact=normalized)
+            | Q(title__iexact=readable_title)
+        )
+        for product in exact_candidates[:25]:
+            if product_slug(product) == normalized or slugify(product.title or "") == normalized or slugify(product.upc or "") == normalized:
+                return product
+
+        return None
+
+
+def _normalize_product_reference(reference: str) -> str:
+    raw = str(reference or "").strip().strip("/")
+    if not raw:
+        return ""
+    return slugify(raw.split("/")[-1])
+
+
+def _trailing_product_id(normalized_reference: str) -> int | None:
+    match = re.search(r"(?:^|-)(\d+)$", normalized_reference or "")
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return None
 
 
 class AdminProductCollectionAPIView(APIView):

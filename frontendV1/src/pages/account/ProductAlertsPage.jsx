@@ -11,7 +11,7 @@ import { useUiStore } from "../../store/ui.store";
 import { formatDate } from "../../utils/formatDate";
 import { normalizeApiError } from "../../utils/errorHandler";
 import { productImageUrl } from "../../utils/productImages";
-import { productId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
+import { productId, productInitials, productPrice, productTitle, productUrl } from "../../utils/productDisplay";
 
 export default function ProductAlertsPage() {
   const notify = useUiStore((state) => state.notify);
@@ -100,6 +100,7 @@ function ProductAlertCard({ alert, saving, onRemove }) {
   const imageUrl = productImageUrl(product);
   const price = productPrice(product);
   const title = productTitle(product, `Product #${alert.product_id}`);
+  const productPath = resolvedProductId ? productUrl({ ...alert, ...product, product }) : "/catalog";
   const status = alert.status || "Pending";
   const statusKey = String(status).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const dateLabel = alert.date_cancelled
@@ -110,7 +111,7 @@ function ProductAlertCard({ alert, saving, onRemove }) {
 
   return (
     <article className="product-alert-card">
-      <Link className="product-alert-card__media" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
+      <Link className="product-alert-card__media" to={productPath}>
         {imageUrl ? <img src={imageUrl} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
       </Link>
       <div className="product-alert-card__body">
@@ -120,7 +121,7 @@ function ProductAlertCard({ alert, saving, onRemove }) {
         <em className={`product-alert-card__status product-alert-card__status--${statusKey}`}>{status}</em>
       </div>
       <div className="product-alert-card__actions">
-        <Link className="secondary-button" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
+        <Link className="secondary-button" to={productPath}>
           <MaterialIcon name="open_in_new" size={17} />
           View
         </Link>

@@ -2,10 +2,43 @@ from typing import Any
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils.text import slugify
 
 from apps.common.catalog import brand_slug, product_brand
 from apps.common.currency import convert_amount, convert_product_payload, default_currency
 from apps.common.taxes import calculate_tax_amount, product_tax_rate, product_tax_status
+
+
+def _slugify_segment(value: Any) -> str:
+    return slugify(str(value or '').strip())
+
+
+def product_slug(product: Any) -> str:
+    source = (
+        getattr(product, 'slug', None)
+        or getattr(product, 'title', None)
+        or getattr(product, 'upc', None)
+        or getattr(product, 'id', None)
+        or ''
+    )
+    return _slugify_segment(source)
+
+
+def product_url(product: Any) -> str:
+    product_id = getattr(product, 'id', None)
+    slug = product_slug(product)
+    suffix = f'{slug}-{product_id}' if product_id and slug else str(product_id or slug)
+
+    categories = list(product.categories.all()) if hasattr(product, 'categories') else []
+    primary_category = categories[0] if categories else None
+    brand = product_brand(product)
+    segments = [
+        getattr(primary_category, 'slug', '') if primary_category else '',
+        brand_slug(brand),
+        suffix,
+    ]
+    path = '/'.join(segment for segment in segments if segment)
+    return f'/products/{path}' if path else '/catalog'
 
 
 def stockrecord_price(stockrecord: Any) -> float | None:
@@ -146,6 +179,8 @@ def serialize_product_card(
     payload: dict[str, Any] = {
         'id': product.id,
         'title': product.title,
+        'slug': product_slug(product),
+        'url': product_url(product),
         'sku': product.upc,
         'price': display_base_price,
         'currency': base_currency,

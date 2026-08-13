@@ -281,6 +281,7 @@ from .views import (
     CategoryListAPIView,
     ProductDetailAPIView,
     ProductListAPIView,
+    ProductResolveAPIView,
     QuoteRequestAPIView,
 )
 from .user_views import (
@@ -560,6 +561,7 @@ urlpatterns = [
     path('catalog/categories/', CategoryListAPIView.as_view(), name='catalog-categories'),
     path('catalog/ranges/<slug:slug>/', CatalogRangeDetailAPIView.as_view(), name='catalog-range-detail'),
     path('catalog/products/', ProductListAPIView.as_view(), name='catalog-products'),
+    path('catalog/products/resolve/<path:reference>/', ProductResolveAPIView.as_view(), name='catalog-product-resolve'),
     path('catalog/products/<int:product_id>/', ProductDetailAPIView.as_view(), name='catalog-product-detail'),
     path('catalog/products/<int:product_id>/reviews/', ProductReviewCollectionAPIView.as_view(), name='catalog-product-reviews'),
     path('catalog/products/<int:product_id>/reviews/<int:review_id>/vote/', ProductReviewVoteAPIView.as_view(), name='catalog-product-review-vote'),

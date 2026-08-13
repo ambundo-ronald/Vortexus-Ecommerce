@@ -45,6 +45,17 @@ export function productSku(product = {}, fallback = "") {
   );
 }
 
+export function productSlug(product = {}) {
+  return (
+    product.slug ||
+    product.product_slug ||
+    product.productSlug ||
+    product.product?.slug ||
+    product.product?.product_slug ||
+    ""
+  );
+}
+
 export function productBrand(product = {}, fallback = "") {
   return (
     product.brand ||
@@ -55,6 +66,45 @@ export function productBrand(product = {}, fallback = "") {
     product.product?.manufacturer ||
     fallback
   );
+}
+
+export function productCategoryPath(product = {}) {
+  const source =
+    product.category_path ||
+    product.product?.category_path ||
+    product.categories?.[0]?.path ||
+    product.product?.categories?.[0]?.path;
+
+  if (Array.isArray(source) && source.length) {
+    return source.filter(Boolean);
+  }
+
+  const category =
+    product.categories?.[0] ||
+    product.product?.categories?.[0] ||
+    product.category ||
+    product.product?.category;
+
+  if (!category) return [];
+  if (typeof category === "string") return [{ name: category, slug: slugifySegment(category) }];
+  return [category];
+}
+
+export function productUrl(product = {}) {
+  const id = productId(product);
+  const slug = productSlug(product) || slugifySegment(productTitle(product, ""));
+  if (!id && !slug) return "/catalog";
+
+  const finalSegment = [slug, id].filter(Boolean).join("-");
+  const segments = [
+    ...productCategoryPath(product).map((category) => category.slug || category.name || category.title),
+    product.brand_slug || product.product?.brand_slug || slugifySegment(productBrand(product)),
+    finalSegment
+  ]
+    .map(slugifySegment)
+    .filter(Boolean);
+
+  return `/products/${segments.join("/")}`;
 }
 
 export function productCategory(product = {}, fallback = "") {
@@ -129,8 +179,10 @@ export function productPrice(product) {
     return {
       label: "",
       sublabel: "",
+      value: null,
       currency: selected.currency,
       previousLabel: "",
+      previousValue: null,
       discountLabel: "",
       isQuote: true
     };
@@ -139,8 +191,10 @@ export function productPrice(product) {
   return {
     label: formatCurrency(numericValue, selected.currency),
     sublabel: "",
+    value: numericValue,
     currency: selected.currency,
     previousLabel: hasPreviousPrice ? formatCurrency(previousValue, selected.currency) : "",
+    previousValue: hasPreviousPrice ? previousValue : null,
     discountLabel: hasPreviousPrice ? `-${discountPercent}%` : "",
     isQuote: false
   };
@@ -258,4 +312,13 @@ export function stockTone(product) {
 
 function firstValue(...values) {
   return values.find((value) => value !== null && value !== undefined && value !== "");
+}
+
+function slugifySegment(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }

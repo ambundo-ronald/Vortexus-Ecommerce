@@ -4,7 +4,7 @@ import EmailTouchpointCard from "./EmailTouchpointCard.jsx";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
 import { formatDate } from "../../utils/formatDate";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 
 export default function OrderDetailCard({ order, saving = false, onReorder }) {
@@ -118,8 +118,9 @@ export default function OrderDetailCard({ order, saving = false, onReorder }) {
             const resolvedProductId = productId({ ...line, product: line.product || {} });
             const imageUrl = productImageUrl({ ...line, product: line.product || {} });
             const title = productTitle({ ...line, product: line.product || {} });
+            const productPath = resolvedProductId ? productUrl({ ...line, ...(line.product || {}), product: line.product || {} }) : "/catalog";
             return (
-              <Link className="order-line-card" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} key={line.id || index}>
+              <Link className="order-line-card" to={productPath} key={line.id || index}>
                 {imageUrl ? (
                   <img src={imageUrl} alt={title} />
                 ) : (

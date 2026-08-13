@@ -26,6 +26,9 @@ yarn-error.log*
 # Env files / secrets
 .env
 .env.*
+secrets/
+*.service-account.json
+reesolmart-merchant-*.json
 !.env.example
 !.env.production.example
 !.env.docker.local.example

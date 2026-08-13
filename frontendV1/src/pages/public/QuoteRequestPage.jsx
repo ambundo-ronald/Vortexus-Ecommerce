@@ -10,7 +10,7 @@ import { quotesApi } from "../../api/quotes.api";
 import { useAuth } from "../../hooks/useAuth";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productId as resolveProductId, productInitials, productPrice, productTitle } from "../../utils/productDisplay";
+import { productId as resolveProductId, productInitials, productPrice, productTitle, productUrl } from "../../utils/productDisplay";
 
 export default function QuoteRequestPage() {
   const [searchParams] = useSearchParams();
@@ -48,6 +48,7 @@ export default function QuoteRequestPage() {
   const productImage = useMemo(() => (product ? productImageUrl(product) : ""), [product]);
   const resolvedProductId = product ? resolveProductId(product) : "";
   const resolvedTitle = product ? productTitle(product) : "";
+  const productPath = product ? productUrl(product) : "/catalog";
 
   async function submitQuote(payload) {
     setSaving(true);
@@ -69,7 +70,7 @@ export default function QuoteRequestPage() {
 
   return (
     <section className="quote-page">
-      <Link className="back-link" to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"}>
+      <Link className="back-link" to={resolvedProductId ? productPath : "/catalog"}>
         <MaterialIcon name="arrow_back" size={18} />
         {product ? "Product" : "Catalog"}
       </Link>

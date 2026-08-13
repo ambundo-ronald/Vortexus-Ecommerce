@@ -100,6 +100,7 @@ services:
       - backend_static:/app/staticfiles
       - backend_media:/app/media
       - backend_backups:/app/backups
+      - ${GOOGLE_MERCHANT_SHEETS_CREDENTIALS_HOST_PATH:-./secrets/google-merchant-service-account.json}:/run/secrets/google-merchant-service-account.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,6 +134,7 @@ services:
     volumes:
       - backend_media:/app/media
       - backend_backups:/app/backups
+      - ${GOOGLE_MERCHANT_SHEETS_CREDENTIALS_HOST_PATH:-./secrets/google-merchant-service-account.json}:/run/secrets/google-merchant-service-account.json:ro
     depends_on:
       backend:
         condition: service_started
@@ -155,6 +157,7 @@ services:
     volumes:
       - backend_media:/app/media
       - backend_backups:/app/backups
+      - ${GOOGLE_MERCHANT_SHEETS_CREDENTIALS_HOST_PATH:-./secrets/google-merchant-service-account.json}:/run/secrets/google-merchant-service-account.json:ro
     depends_on:
       backend:
         condition: service_started

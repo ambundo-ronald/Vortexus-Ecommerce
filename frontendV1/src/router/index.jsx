@@ -58,7 +58,7 @@ export default function AppRouter() {
       <Route path="/catalog" element={<PageWrapper><ProductListPage /></PageWrapper>} />
       <Route path="/catalog/brand/:brandSlug" element={<PageWrapper><BrandPage /></PageWrapper>} />
       <Route path="/catalog/category/:categorySlug" element={<PageWrapper><CategoryPage /></PageWrapper>} />
-      <Route path="/products/:productId" element={<PageWrapper><ProductDetailPage /></PageWrapper>} />
+      <Route path="/products/*" element={<PageWrapper><ProductDetailPage /></PageWrapper>} />
       <Route path="/quote" element={<PageWrapper><QuoteRequestPage /></PageWrapper>} />
       <Route path="/offers" element={<PageWrapper><OffersPage /></PageWrapper>} />
       <Route path="/offers/:offerSlug" element={<PageWrapper><OfferDetailPage /></PageWrapper>} />

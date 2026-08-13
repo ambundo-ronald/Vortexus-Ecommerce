@@ -15,7 +15,7 @@ import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { mediaUrl } from "../../utils/media";
 import { productImageUrl } from "../../utils/productImages";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
 import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
 
@@ -253,7 +253,7 @@ function ProductThumb({ product }) {
   const image = productImageUrl(product);
 
   return (
-    <Link className="home-product-thumb" to={id ? `/products/${id}` : "/catalog"} title={title}>
+    <Link className="home-product-thumb" to={id ? productUrl(product) : "/catalog"} title={title}>
       {image ? <img src={image} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
     </Link>
   );

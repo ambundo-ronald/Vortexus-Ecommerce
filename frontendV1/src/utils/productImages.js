@@ -1,4 +1,5 @@
 import { mediaUrl } from "./media";
+import { productBrand, productCategory, productTitle } from "./productDisplay";
 
 function imageCandidate(value) {
   if (!value) return "";
@@ -45,6 +46,15 @@ export function productImageList(product = {}) {
   }
 
   return images;
+}
+
+export function productImageAlt(product = {}, fallback = "Product image") {
+  const title = productTitle(product, "").trim();
+  const brand = productBrand(product, "").trim();
+  const category = productCategory(product, "").trim();
+  const parts = [title, brand, category].filter(Boolean);
+  if (!parts.length) return fallback;
+  return `${parts.join(" - ")} product image`;
 }
 
 function withProductVersion(url, product = {}) {

@@ -8,7 +8,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { personalShopperApi } from "../../api/personalShopper.api";
 import { useCartStore } from "../../store/cart.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productInitials, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
+import { productInitials, productPrice, productSku, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
 import "./HubPage.css";
 import "./HubDiscount.css";
 
@@ -141,9 +141,10 @@ function HubItem({ item, added, disabled, onAdd }) {
   const stock = stockTone(product);
   const image = productImageUrl(product);
   const canAdd = stock.isAvailable && !price.isQuote;
+  const productPath = product.id ? productUrl(product) : "/catalog";
   return (
     <article className="hub-item">
-      <Link className="hub-item__product" to={`/products/${product.id}`}>
+      <Link className="hub-item__product" to={productPath}>
         <span className="hub-item__media">{image ? <img src={image} alt={title} /> : productInitials(title)}</span>
         <span><strong>{title}</strong><small>SKU: {productSku(product, "—")}</small>{item.note ? <em>{item.note}</em> : null}</span>
       </Link>

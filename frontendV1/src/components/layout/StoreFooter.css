@@ -176,6 +176,46 @@
   transform: translateY(-2px);
 }
 
+.store-footer__socials {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.store-footer__socials a {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--color-text-inverse) 24%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-4);
+  background: color-mix(in srgb, var(--color-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--color-text-inverse) 86%, transparent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.store-footer__socials svg {
+  width: 18px;
+  height: 18px;
+}
+
+.store-footer__socials a:hover {
+  border-color: color-mix(in srgb, var(--footer-link-hover) 80%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 20%, transparent);
+  color: var(--footer-link-hover);
+  transform: translateY(-2px);
+}
+
 .store-footer__bottom {
   display: grid;
   gap: var(--space-3);

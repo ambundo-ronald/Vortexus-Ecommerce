@@ -5,7 +5,7 @@ import WishlistButton from "../wishlist/WishlistButton.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { productImageUrl } from "../../utils/productImages";
-import { productBrand, productId, productInitials, productPrice, productRating, productTitle, stockTone } from "../../utils/productDisplay";
+import { productBrand, productId, productInitials, productPrice, productRating, productTitle, productUrl, stockTone } from "../../utils/productDisplay";
 import { rememberSearchContext, searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 
 export default function ProductCard({ product, analyticsContext = null, actionVariant = "add" }) {
@@ -21,6 +21,7 @@ export default function ProductCard({ product, analyticsContext = null, actionVa
   const image = productImageUrl(product);
   const brandName = productBrand(product);
   const brandSlug = product.brand_slug || slugify(brandName);
+  const productPath = resolvedProductId ? productUrl(product) : "/catalog";
   const canAdd = stock.isAvailable && !price.isQuote;
   const discountBadge = price.discountLabel ? `${price.discountLabel.replace("-", "")} OFF` : "";
   const isReorder = actionVariant === "reorder";
@@ -67,13 +68,13 @@ export default function ProductCard({ product, analyticsContext = null, actionVa
   return (
     <article className={`product-card${isReorder ? " product-card--reorder" : ""}`}>
       <WishlistButton productId={resolvedProductId} productTitle={title} />
-      <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} className="product-card__media" onClick={trackProductClick}>
+      <Link to={productPath} className="product-card__media" onClick={trackProductClick}>
         {discountBadge ? <span className="product-card__sale-badge">{discountBadge}</span> : null}
         {image ? <img src={image} alt={title} loading="lazy" /> : <span className="product-card__placeholder">{productInitials(title)}</span>}
       </Link>
       <div className="product-card__body">
         <h3>
-          <Link to={resolvedProductId ? `/products/${resolvedProductId}` : "/catalog"} onClick={trackProductClick}>{title}</Link>
+          <Link to={productPath} onClick={trackProductClick}>{title}</Link>
         </h3>
         {brandName ? <Link className="product-card__brand" to={`/catalog/brand/${encodeURIComponent(brandSlug)}`}>{brandName}</Link> : null}
         <span className="product-card__price">

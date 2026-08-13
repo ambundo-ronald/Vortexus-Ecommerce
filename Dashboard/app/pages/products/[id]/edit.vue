@@ -6,7 +6,7 @@ import ProductForm, {
 } from "~/components/Forms/ProductForm.vue";
 import type { ProductImageItem } from "~/types/ProductImage";
 
-const { deleteProduct, getProduct, getCategoryOptions, getProductOptions, syncProductImages, updateProduct } = useProduct();
+const { createProduct, deleteProduct, getProduct, getCategoryOptions, getProductOptions, syncProductImages, updateProduct } = useProduct();
 const { getAttributes } = useAttributes();
 
 const route = useRoute();
@@ -18,6 +18,7 @@ const attributeDefinitions = ref<any[]>([])
 const originalImages = ref<ProductImageItem[]>([])
 const isDeleteModalOpen = ref(false)
 const isDeleting = ref(false)
+const isDuplicating = ref(false)
 const isSaving = ref(false)
 const isLoadingProduct = ref(true)
 const loadError = ref("")
@@ -119,6 +120,65 @@ async function removeProduct() {
   })
 }
 
+function cloneValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value ?? null))
+}
+
+async function duplicateCurrentProduct() {
+  if (isDuplicating.value || !product.value)
+    return
+
+  const source = product.value
+  const timestamp = Date.now()
+  const toast = useToast()
+  isDuplicating.value = true
+
+  const result = await createProduct({
+    name: source.name || '',
+    description: source.description || '',
+    category: source.category || '',
+    metaTitle: source.metaTitle || '',
+    metaDescription: source.metaDescription || '',
+    slug: source.slug ? `${source.slug}-copy-${timestamp}` : '',
+    recommendedProductIds: cloneValue(source.recommendedProductIds || []),
+    productClass: source.productClass,
+    engineeringBrand: source.engineeringBrand || '',
+    packingDimensions: cloneValue(source.packingDimensions || {}),
+    specificationRows: cloneValue(source.specificationRows || []),
+    sku: `COPY-${route.params.id}-${timestamp}`,
+    price: 0,
+    currency: source.currency || 'KES',
+    stock: 0,
+    status: 'draft',
+    chargeTax: true,
+    taxStatus: 'taxable',
+    weight: null,
+    dimensions: '',
+    brand: '',
+    tags: '',
+    attributes: {},
+    images: [],
+  })
+
+  isDuplicating.value = false
+
+  if (!result.success) {
+    toast.add({
+      title: "Duplicate failed",
+      description: result.error || "Could not duplicate this product.",
+      color: "error",
+    })
+    return
+  }
+
+  toast.add({
+    title: "Product duplicated",
+    description: "A draft copy was created with pricing, stock, images, and extra fields cleared.",
+    color: "success",
+  })
+  await navigateTo(`/products/${result.data.id}/edit`)
+}
+
 const statusOptions = [
   {
     label: "Active",
@@ -206,6 +266,10 @@ watch(product, (value) => {
                 variant="outline"
                 @click="discardChanges"
               />
+              <UButton color="neutral" variant="outline" :loading="isDuplicating" @click="duplicateCurrentProduct">
+                Duplicate
+                <UIcon name="i-lucide-copy" />
+              </UButton>
               <UButton color="error" variant="outline" @click="isDeleteModalOpen = true">
                 Delete
                 <UIcon name="i-lucide-trash-2" />

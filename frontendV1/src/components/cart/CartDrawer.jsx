@@ -6,7 +6,7 @@ import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useUiStore } from "../../store/ui.store";
 import { formatCurrency } from "../../utils/currency";
-import { productId, productInitials, productTitle } from "../../utils/productDisplay";
+import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 import "./CartDrawer.css";
 
@@ -110,7 +110,7 @@ function DrawerCartItem({ line, loading = false, onClick, onRemove, onUpdateQuan
   const image = productImageUrl({ ...line, ...product, product });
   const resolvedProductId = productId({ ...line, product });
   const quantity = Math.max(1, Number(line.quantity || 1));
-  const productPath = resolvedProductId ? `/products/${resolvedProductId}` : "/catalog";
+  const productPath = resolvedProductId ? productUrl({ ...line, ...product, product }) : "/catalog";
 
   async function handleQuantityChange(nextQuantity) {
     try {
