@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
@@ -12,6 +12,7 @@ import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useAuthStore } from "../../store/auth.store";
 import { useUiStore } from "../../store/ui.store";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
   PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
@@ -38,6 +39,8 @@ export default function PaymentPage() {
   const [lastPaymentForm, setLastPaymentForm] = useState(null);
   const [confirmationStartedAt, setConfirmationStartedAt] = useState(null);
   const [clockTick, setClockTick] = useState(() => Date.now());
+  const paymentStartedRef = useRef(false);
+  const timeoutTrackedRef = useRef("");
 
   const elapsedMs = confirmationStartedAt ? Math.max(0, clockTick - confirmationStartedAt) : 0;
   const paymentTimedOut = Boolean(
@@ -56,6 +59,24 @@ export default function PaymentPage() {
     user?.payment_permissions?.cash_on_delivery_available ? "cod-available" : "cod-unavailable"
   ].join(":");
 
+  function paymentMetadata(extra = {}) {
+    return {
+      item_count: basket?.item_count || basket?.lines?.length || 0,
+      line_count: basket?.lines?.length || 0,
+      currency: shipping?.totals?.currency || basket?.currency || "",
+      shipping_method: shipping?.selected_method?.code || "",
+      shipping_method_name: shipping?.selected_method?.name || "",
+      payment_method: activePayment?.method || activeMethod?.code || lastPaymentForm?.method || "",
+      payment_status: activePayment?.status || "",
+      payment_reference: activePayment?.reference || "",
+      provider_reference: activePayment?.provider_reference || "",
+      order_total: shipping?.totals?.order_total ?? basket?.totals?.order_total,
+      requires_prepayment: activeMethod ? paymentRequiresPrepayment(activeMethod) : undefined,
+      remaining_seconds: remainingSeconds,
+      ...extra
+    };
+  }
+
   useEffect(() => {
     if (!activePayment || !confirmationStartedAt || isPaymentComplete(activePayment) || isPaymentFailed(activePayment)) return undefined;
     const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
@@ -63,10 +84,34 @@ export default function PaymentPage() {
   }, [activePayment, confirmationStartedAt]);
 
   useEffect(() => {
+    if (loading || paymentState.loading || paymentStartedRef.current) return;
+    paymentStartedRef.current = true;
+    trackStorefrontEvent("payment_started", paymentMetadata());
+  }, [loading, paymentState.loading]);
+
+  useEffect(() => {
+    if (!paymentTimedOut || !activePayment?.reference || timeoutTrackedRef.current === activePayment.reference) return;
+    timeoutTrackedRef.current = activePayment.reference;
+    trackStorefrontEvent("payment_timeout", paymentMetadata({
+      payment_method: activePayment.method,
+      payment_status: activePayment.status,
+      payment_reference: activePayment.reference,
+      provider_reference: activePayment.provider_reference
+    }));
+  }, [activePayment, paymentTimedOut]);
+
+  useEffect(() => {
     void paymentState.loadMethods();
   }, [paymentState.loadMethods, userPaymentStateKey]);
 
   function continueToReview(payment, method, payerEmail) {
+    trackStorefrontEvent("payment_continue_to_review", paymentMetadata({
+      payment_method: payment?.method || method?.code || "",
+      payment_status: payment?.status || "",
+      payment_reference: payment?.reference || "",
+      provider_reference: payment?.provider_reference || "",
+      requires_prepayment: paymentRequiresPrepayment(method || payment?.method)
+    }));
     const reviewPayload = {
       payment_reference: payment.reference,
       payment,
@@ -82,10 +127,18 @@ export default function PaymentPage() {
     setLastPaymentForm(form);
     setConfirmationStartedAt(null);
     setClockTick(Date.now());
+    trackStorefrontEvent("payment_method_selected", paymentMetadata({
+      payment_method: form?.method || "",
+      source: "payment_form"
+    }));
     try {
       const preview = await previewCheckout();
       if (preview && !preview.ready) {
         const missing = preview.missing || [];
+        trackStorefrontEvent("payment_blocked_checkout_incomplete", paymentMetadata({
+          payment_method: form?.method || "",
+          missing: missing.join(",")
+        }));
         notify({
           tone: "warning",
           title: "Checkout needs one more step",
@@ -103,6 +156,13 @@ export default function PaymentPage() {
       setActivePayment(payment);
       setActiveMethod(selectedMethod || null);
       setGuestEmail(form.payerEmail);
+      trackStorefrontEvent(paymentRequiresPrepayment(selectedMethod) ? "payment_prompt_sent" : "payment_initialized", paymentMetadata({
+        payment_method: payment.method,
+        payment_status: payment.status,
+        payment_reference: payment.reference,
+        provider_reference: payment.provider_reference,
+        requires_prepayment: paymentRequiresPrepayment(selectedMethod)
+      }));
 
       const reviewPayload = {
         payment_reference: payment.reference,
@@ -113,11 +173,24 @@ export default function PaymentPage() {
       storePendingCheckout(reviewPayload);
 
       if (payment.method === "pesapal" && payment.redirect_url) {
+        trackStorefrontEvent("payment_redirect_started", paymentMetadata({
+          payment_method: payment.method,
+          payment_status: payment.status,
+          payment_reference: payment.reference
+        }));
         window.location.assign(payment.redirect_url);
         return;
       }
 
       if (!paymentRequiresPrepayment(selectedMethod) || isPaymentComplete(payment)) {
+        if (isPaymentComplete(payment)) {
+          trackStorefrontEvent("payment_confirmed", paymentMetadata({
+            payment_method: payment.method,
+            payment_status: payment.status,
+            payment_reference: payment.reference,
+            provider_reference: payment.provider_reference
+          }));
+        }
         continueToReview(payment, selectedMethod, form.payerEmail);
         return;
       }
@@ -134,8 +207,19 @@ export default function PaymentPage() {
         }
       });
       setActivePayment(finalPayment);
+      trackStorefrontEvent(isPaymentComplete(finalPayment) ? "payment_confirmed" : isPaymentFailed(finalPayment) ? "payment_failed" : "payment_status_checked", paymentMetadata({
+        payment_method: finalPayment?.method || payment.method,
+        payment_status: finalPayment?.status || "",
+        payment_reference: finalPayment?.reference || payment.reference,
+        provider_reference: finalPayment?.provider_reference || "",
+        remaining_seconds: 0
+      }));
       continueToReview(finalPayment, selectedMethod, form.payerEmail);
     } catch {
+      trackStorefrontEvent("payment_prompt_failed", paymentMetadata({
+        payment_method: form?.method || "",
+        reason: "initialize_or_confirm_failed"
+      }));
       // Hook state already exposes the normalized message.
     }
   }
@@ -146,8 +230,20 @@ export default function PaymentPage() {
     try {
       const nextPayment = await paymentState.getPaymentStatus(activePayment.reference, activePayment.method);
       setActivePayment(nextPayment);
+      trackStorefrontEvent("payment_status_checked", paymentMetadata({
+        payment_method: nextPayment?.method || activePayment.method,
+        payment_status: nextPayment?.status || "",
+        payment_reference: nextPayment?.reference || activePayment.reference,
+        provider_reference: nextPayment?.provider_reference || ""
+      }));
       if (isPaymentComplete(nextPayment) || isPaymentFailed(nextPayment)) {
         setConfirmationStartedAt(null);
+        trackStorefrontEvent(isPaymentComplete(nextPayment) ? "payment_confirmed" : "payment_failed", paymentMetadata({
+          payment_method: nextPayment?.method || activePayment.method,
+          payment_status: nextPayment?.status || "",
+          payment_reference: nextPayment?.reference || activePayment.reference,
+          provider_reference: nextPayment?.provider_reference || ""
+        }));
       }
       storePendingCheckout({
         payment_reference: nextPayment.reference,
@@ -161,6 +257,11 @@ export default function PaymentPage() {
         notify({ tone: "warning", title: "Payment not completed", message: "Retry or choose another payment method.", icon: "error" });
       }
     } catch {
+      trackStorefrontEvent("payment_status_checked", paymentMetadata({
+        payment_method: activePayment.method,
+        payment_reference: activePayment.reference,
+        reason: "status_check_failed"
+      }));
       // Hook state already exposes the normalized message.
     } finally {
       setCheckingStatus(false);
@@ -186,6 +287,10 @@ export default function PaymentPage() {
     setClockTick(Date.now());
     paymentState.setError("");
     notify({ title: "Sending a fresh prompt", message: "Check your phone for the new payment prompt.", icon: "phone_iphone" });
+    trackStorefrontEvent("payment_prompt_retry", paymentMetadata({
+      payment_method: lastPaymentForm.method || "",
+      source: "timeout_or_manual_retry"
+    }));
     await handlePaymentSubmit(lastPaymentForm);
   }
 

@@ -76,7 +76,7 @@ export default function PaymentProgressPanel({
         {complete ? (
           <button className="primary-button" type="button" onClick={onContinue}>
             <MaterialIcon name="fact_check" size={19} />
-            Review order
+            Place order
           </button>
         ) : (
           <button

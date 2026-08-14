@@ -2,7 +2,7 @@
 import type { AdminPaymentLogItem } from '~/composables/usePaymentConfig'
 
 const toast = useToast()
-const { cancelPaymentSession, getPaymentLogs, requestPaymentRefund } = usePaymentConfig()
+const { cancelPaymentSession, getPaymentLogs, requestPaymentRefund, verifyPaymentReceived } = usePaymentConfig()
 
 const logs = ref<AdminPaymentLogItem[]>([])
 const selectedLog = ref<AdminPaymentLogItem | null>(null)
@@ -15,6 +15,7 @@ const isLoading = ref(false)
 const detailOpen = ref(false)
 const refundSubmitting = ref(false)
 const cancelSubmitting = ref(false)
+const verifySubmitting = ref(false)
 const refundForm = reactive({
   amount: '',
   reason: '',
@@ -23,6 +24,10 @@ const refundForm = reactive({
 })
 const cancelForm = reactive({
   reason: 'Manual bank payment was not received and is not linked to an order.',
+})
+const verifyForm = reactive({
+  externalReference: '',
+  note: 'KCB PayBill deposit verified by account manager.',
 })
 const ALL_METHODS = '__all_methods__'
 const ALL_STATUSES = '__all_statuses__'
@@ -134,6 +139,14 @@ const canCancelSelectedPayment = computed(() => {
   return !selectedLog.value.order_number && ['initialized', 'pending', 'authorized', 'paid'].includes(selectedLog.value.status)
 })
 
+const canVerifySelectedPayment = computed(() => {
+  if (!selectedLog.value)
+    return false
+  return selectedLog.value.method === 'bank_transfer'
+    && Boolean(selectedLog.value.order_number)
+    && ['initialized', 'pending'].includes(selectedLog.value.status)
+})
+
 function refundDisabledReason() {
   if (!selectedLog.value)
     return 'Select a payment first.'
@@ -156,11 +169,25 @@ function cancelDisabledReason() {
   return ''
 }
 
+function verifyDisabledReason() {
+  if (!selectedLog.value)
+    return 'Select a payment first.'
+  if (selectedLog.value.method !== 'bank_transfer')
+    return 'Only KCB PayBill or bank deposit payments can be verified manually.'
+  if (!selectedLog.value.order_number)
+    return 'Payment must be linked to an order before verification.'
+  if (!['initialized', 'pending'].includes(selectedLog.value.status))
+    return 'Only pending payments need manual verification.'
+  return ''
+}
+
 function resetRefundForm(log: AdminPaymentLogItem | null) {
   refundForm.amount = log ? String(log.amount || '') : ''
   refundForm.reason = ''
   refundForm.refundReference = log ? `REFUND-${log.reference}` : ''
   refundForm.submitGatewayRefund = true
+  verifyForm.externalReference = log?.external_reference || ''
+  verifyForm.note = 'KCB PayBill deposit verified by account manager.'
 }
 
 async function loadLogs() {
@@ -242,6 +269,32 @@ async function cancelSelectedPayment() {
     return
   }
   toast.add({ title: 'Could not cancel payment', description: result.error || 'Please review this payment.', color: 'error' })
+}
+
+async function verifySelectedPayment() {
+  if (!selectedLog.value || !canVerifySelectedPayment.value)
+    return
+  verifySubmitting.value = true
+  const result = await verifyPaymentReceived(selectedLog.value.reference, {
+    external_reference: verifyForm.externalReference,
+    note: verifyForm.note,
+  })
+  verifySubmitting.value = false
+  if (result.success) {
+    toast.add({
+      title: 'Payment verified',
+      description: result.data?.payment?.order_number
+        ? `Order ${result.data.payment.order_number} can continue processing.`
+        : result.data?.payment?.reference || selectedLog.value.reference,
+      color: 'success',
+    })
+    await loadLogs()
+    const refreshed = logs.value.find(log => log.reference === selectedLog.value?.reference)
+    selectedLog.value = refreshed || result.data?.payment || selectedLog.value
+    resetRefundForm(selectedLog.value)
+    return
+  }
+  toast.add({ title: 'Could not verify payment', description: result.error || 'Please review this payment.', color: 'error' })
 }
 
 function applyFilters() {
@@ -405,6 +458,34 @@ onMounted(loadLogs)
               <ul class="mt-2 space-y-1 text-sm text-orange-900">
                 <li v-for="issue in selectedLog.reconciliation.issues" :key="issue">{{ issue }}</li>
               </ul>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-3">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-950">KCB PayBill confirmation</h3>
+                  <p class="mt-1 text-xs text-slate-500">Verify the customer M-Pesa code after confirming the money reached the KCB account.</p>
+                </div>
+                <UBadge :color="canVerifySelectedPayment ? 'success' : 'neutral'" variant="soft">
+                  {{ canVerifySelectedPayment ? 'Ready to verify' : 'Unavailable' }}
+                </UBadge>
+              </div>
+              <p v-if="!canVerifySelectedPayment" class="mt-3 rounded-md bg-slate-50 p-2 text-xs text-slate-500">
+                {{ verifyDisabledReason() }}
+              </p>
+              <div class="mt-3 grid grid-cols-1 gap-3">
+                <UFormField label="M-Pesa confirmation code">
+                  <UInput v-model="verifyForm.externalReference" :disabled="!canVerifySelectedPayment || verifySubmitting" placeholder="e.g. UHEAF2TGMN" />
+                </UFormField>
+                <UFormField label="Verification note">
+                  <UTextarea v-model="verifyForm.note" :rows="2" :disabled="!canVerifySelectedPayment || verifySubmitting" />
+                </UFormField>
+              </div>
+              <div class="mt-3 flex justify-end">
+                <UButton color="primary" :loading="verifySubmitting" :disabled="!canVerifySelectedPayment" @click="verifySelectedPayment">
+                  <UIcon name="i-lucide-badge-check" />
+                  Verify payment received
+                </UButton>
+              </div>
             </div>
             <div class="rounded-lg border border-slate-200 bg-white p-3">
               <div class="flex items-start justify-between gap-3">

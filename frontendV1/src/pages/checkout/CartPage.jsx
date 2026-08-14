@@ -9,6 +9,7 @@ import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import { useCart } from "../../hooks/useCart";
 import { useCartStore } from "../../store/cart.store";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { productInitials, productPrice, productSku, productTitle, stockTone } from "../../utils/productDisplay";
 import { productImageUrl } from "../../utils/productImages";
 import "./CartPage.css";
@@ -25,10 +26,23 @@ export default function CartPage() {
   const itemCount = basket.item_count || lines.reduce((total, line) => total + Number(line.quantity || 0), 0);
   const itemLabel = itemCount === 1 ? "Item" : "Items";
   const savedItemsRef = useRef(null);
+  const viewedRef = useRef(false);
 
   useEffect(() => {
     void loadSavedItems();
   }, [loadSavedItems]);
+
+  useEffect(() => {
+    if (loading || viewedRef.current) return;
+    viewedRef.current = true;
+    trackStorefrontEvent("checkout_cart_viewed", {
+      item_count: itemCount,
+      line_count: lines.length,
+      is_empty: !lines.length,
+      currency: basket?.currency || basket?.totals?.currency || "",
+      order_total: basket?.totals?.order_total ?? basket?.total_incl_tax ?? basket?.total
+    });
+  }, [basket, itemCount, lines.length, loading]);
 
   function scrollSavedItems() {
     savedItemsRef.current?.scrollBy({

@@ -128,6 +128,7 @@ export const ENDPOINTS = {
     sessions: "/checkout/payments/",
     session: (reference) => `/checkout/payments/${reference}/`,
     confirm: (reference) => `/checkout/payments/${reference}/confirm/`,
+    highValueDeposit: "/checkout/payments/high-value-deposit/",
     mpesaInit: "/checkout/payments/mpesa/initiate/",
     mpesaStatus: (reference) => `/checkout/payments/mpesa/${reference}/status/`,
     pesapalInit: "/checkout/payments/pesapal/initiate/",

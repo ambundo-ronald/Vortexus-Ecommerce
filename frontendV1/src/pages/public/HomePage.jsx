@@ -14,7 +14,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCartStore } from "../../store/cart.store";
 import { useUiStore } from "../../store/ui.store";
 import { mediaUrl } from "../../utils/media";
-import { productImageUrl } from "../../utils/productImages";
+import { productImageAlt, productImageUrl } from "../../utils/productImages";
 import { productId, productInitials, productTitle, productUrl } from "../../utils/productDisplay";
 import { groupMarketingBlocks } from "../../utils/marketingBlocks";
 import "./HomePage.css";
@@ -251,10 +251,22 @@ function ProductThumb({ product }) {
   const id = productId(product);
   const title = productTitle(product);
   const image = productImageUrl(product);
+  const imageAlt = productImageAlt(product, title);
 
   return (
     <Link className="home-product-thumb" to={id ? productUrl(product) : "/catalog"} title={title}>
-      {image ? <img src={image} alt={title} loading="lazy" /> : <span>{productInitials(title)}</span>}
+      {image ? (
+        <img
+          src={image}
+          alt={imageAlt}
+          loading="lazy"
+          decoding="async"
+          width="220"
+          height="160"
+        />
+      ) : (
+        <span>{productInitials(title)}</span>
+      )}
     </Link>
   );
 }

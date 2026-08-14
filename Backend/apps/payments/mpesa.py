@@ -1,7 +1,9 @@
 import base64
 import json
+import socket
 from datetime import datetime
 from decimal import Decimal
+from json import JSONDecodeError
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
@@ -218,17 +220,28 @@ def _request_json(url: str, headers: dict | None = None) -> dict:
 
 def _execute_request(request: Request) -> dict:
     try:
-        with urlopen(request, timeout=int(get_payment_setting('mpesa', 'timeout_seconds', settings.MPESA_TIMEOUT_SECONDS))) as response:
+        with urlopen(request, timeout=_timeout_seconds()) as response:
             return json.loads(response.read().decode('utf-8'))
     except HTTPError as exc:  # pragma: no cover
         body = exc.read().decode('utf-8', errors='ignore')
         raise MpesaGatewayError(f'M-Pesa gateway returned HTTP {exc.code}: {body}') from exc
     except URLError as exc:  # pragma: no cover
         raise MpesaGatewayError(f'Unable to reach M-Pesa gateway: {exc.reason}') from exc
-    except TimeoutError as exc:  # pragma: no cover
+    except (TimeoutError, socket.timeout) as exc:  # pragma: no cover
         raise MpesaGatewayError('M-Pesa gateway request timed out.') from exc
+    except JSONDecodeError as exc:  # pragma: no cover
+        raise MpesaGatewayError('M-Pesa gateway returned an invalid response.') from exc
     except OSError as exc:  # pragma: no cover
         raise MpesaGatewayError(f'Unable to reach M-Pesa gateway: {exc}') from exc
+
+
+def _timeout_seconds() -> int:
+    raw_timeout = get_payment_setting('mpesa', 'timeout_seconds', settings.MPESA_TIMEOUT_SECONDS)
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        timeout = int(settings.MPESA_TIMEOUT_SECONDS)
+    return max(3, min(timeout, 12))
 
 
 def _base_url() -> str:

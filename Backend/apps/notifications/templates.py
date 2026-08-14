@@ -104,6 +104,39 @@ CUSTOM_COMMUNICATION_TEMPLATES = [
             '{{ shop_name }}\n'
         ),
     },
+    {
+        'code': 'payment_deposit_submitted_internal',
+        'name': 'Payment Deposit Submitted Internal',
+        'category': 'Payments',
+        'email_subject_template': 'KCB PayBill payment needs confirmation - {{ payment.reference }}',
+        'email_body_template': (
+            'Hello team,\n\n'
+            'A customer submitted a KCB PayBill payment confirmation on {{ shop_name }}.\n\n'
+            'Payment reference: {{ payment.reference }}\n'
+            'Order number: {{ order_number }}\n'
+            'Customer: {{ customer_email }}\n'
+            'Phone: {{ customer_phone }}\n'
+            'M-Pesa code: {{ external_reference }}\n'
+            'Amount: {{ amount }}\n\n'
+            'Please confirm the deposit in the KCB account, then verify the payment from Finance > Payment Logs.\n\n'
+            '{{ shop_name }}\n'
+        ),
+    },
+    {
+        'code': 'payment_received',
+        'name': 'Payment Received',
+        'category': 'Payments',
+        'email_subject_template': 'Payment received for your {{ shop_name }} order',
+        'email_body_template': (
+            'Hello {{ display_name }},\n\n'
+            'We have received your payment on {{ shop_name }}.\n\n'
+            'Payment reference: {{ payment.reference }}\n'
+            'Order number: {{ order_number }}\n'
+            'Amount: {{ amount }}\n\n'
+            'Your order is now being processed.\n\n'
+            '{{ shop_name }}\n'
+        ),
+    },
 ]
 
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { useCartStore } from "../../store/cart.store";
 import { basketTaxStatuses, normalizeCheckoutTotals } from "../../utils/checkoutTotals";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
 
 export default function CartSummary({ basket }) {
@@ -30,6 +31,18 @@ export default function CartSummary({ basket }) {
     } catch {
       // Store notification already explains why the coupon was not applied.
     }
+  }
+
+  function handleCheckoutStart() {
+    trackStorefrontEvent("checkout_started", {
+      item_count: basket?.item_count || 0,
+      line_count: basket?.lines?.length || 0,
+      subtotal,
+      discount,
+      tax,
+      order_total: orderTotal,
+      currency
+    });
   }
 
   return (
@@ -108,7 +121,7 @@ export default function CartSummary({ basket }) {
           ))}
         </div>
       ) : null}
-      <Link className="primary-button" to="/checkout/shipping">
+      <Link className="primary-button" to="/checkout" onClick={handleCheckoutStart}>
         <MaterialIcon name="lock" size={19} />
         Checkout
       </Link>

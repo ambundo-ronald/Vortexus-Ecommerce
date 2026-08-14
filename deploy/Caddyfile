@@ -28,9 +28,19 @@
 {$API_DOMAIN} {
     encode zstd gzip
 
+    @corsOrigin {
+        header_regexp Origin ^https://(www\.)?reesolmart\.com$|^https://reesolmart\.cloud$|^https://(store|admin)\.vortexusindustrial\.com$
+    }
+
+    header @corsOrigin {
+        ?Access-Control-Allow-Origin "{http.request.header.Origin}"
+        ?Access-Control-Allow-Credentials "true"
+        ?Vary "Origin"
+    }
+
     @preflight {
         method OPTIONS
-        header_regexp Origin ^https://(www\.)?reesolmart\.com$|^https://reesolmart\.cloud$
+        header_regexp Origin ^https://(www\.)?reesolmart\.com$|^https://reesolmart\.cloud$|^https://(store|admin)\.vortexusindustrial\.com$
     }
 
     header @preflight {

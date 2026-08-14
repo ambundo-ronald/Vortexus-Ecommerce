@@ -1,16 +1,26 @@
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import { formatCurrency } from "../../utils/currency";
 
-export default function ShippingMethodSelector({ methods = [], selectedCode = "", saving = false, onSelect }) {
+export default function ShippingMethodSelector({
+  methods = [],
+  selectedCode = "",
+  saving = false,
+  estimated = false,
+  title = "Delivery method",
+  note = "",
+  onSelect
+}) {
   if (!methods.length) {
     return (
       <section className="checkout-card">
         <div className="checkout-card__title">
           <span><MaterialIcon name="local_shipping" size={20} /></span>
           <div>
-            <h2>Delivery method</h2>
+            <h2>{title}</h2>
+            {note ? <p>{note}</p> : null}
           </div>
         </div>
+        {estimated ? <p className="checkout-note">Pin your delivery location to calculate exact delivery choices.</p> : null}
       </section>
     );
   }
@@ -18,31 +28,37 @@ export default function ShippingMethodSelector({ methods = [], selectedCode = ""
   return (
     <section className="checkout-card">
       <div className="checkout-card__title">
-        <span><MaterialIcon name="local_shipping" size={20} /></span>
-        <div>
-          <h2>Delivery method</h2>
+          <span><MaterialIcon name="local_shipping" size={20} /></span>
+          <div>
+          <h2>{title}</h2>
+          {note ? <p>{note}</p> : null}
         </div>
       </div>
 
       <div className="choice-list">
         {methods.map((method) => {
           const active = selectedCode === method.code || method.selected;
+          const disabled = saving || estimated || method.needs_location;
           return (
             <button
               className={`choice-card ${active ? "active" : ""}`}
               type="button"
               key={method.code}
-              disabled={saving}
+              disabled={disabled}
               onClick={() => onSelect?.(method.code)}
             >
               <span className="choice-card__icon">
                 <MaterialIcon name={method.is_pickup ? "storefront" : "local_shipping"} size={22} />
               </span>
               <span className="choice-card__copy">
-                <strong>{method.name}</strong>
+                <strong>
+                  {method.name}
+                  {method.estimated || estimated ? <em className={method.needs_location ? "muted" : ""}>{method.estimate_label || "Estimate"}</em> : null}
+                </strong>
                 <small>{deliveryDescription(method)}</small>
+                {method.estimate_note ? <small>{method.estimate_note}</small> : null}
               </span>
-              <span className="choice-card__price">{formatCurrency(method.charge, method.currency)}</span>
+              <span className="choice-card__price">{deliveryPrice(method)}</span>
             </button>
           );
         })}
@@ -63,4 +79,10 @@ function deliveryDescription(method) {
     return method.description || deliveryEta(method);
   }
   return method.description || deliveryEta(method);
+}
+
+function deliveryPrice(method) {
+  if (method?.needs_location && !Number(method?.charge)) return "After pinning";
+  const price = formatCurrency(method?.charge, method?.currency);
+  return method?.needs_location ? `From ${price}` : price;
 }

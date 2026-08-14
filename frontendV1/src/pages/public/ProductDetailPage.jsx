@@ -52,6 +52,7 @@ export default function ProductDetailPage() {
   const [copiedShare, setCopiedShare] = useState(false);
   const [alertSaving, setAlertSaving] = useState(false);
   const [callbackOpen, setCallbackOpen] = useState(false);
+  const [activeInfoTab, setActiveInfoTab] = useState("description");
   const [quantity, setQuantity] = useState(1);
   const productOptions = useMemo(() => product?.options || product?.product_options || [], [product]);
   const missingRequiredOptions = useMemo(
@@ -63,7 +64,9 @@ export default function ProductDetailPage() {
   const categoryLabel = productCategory(product || {}, "Uncategorized");
   const categoryHref = category ? `/catalog/category/${category.slug || category.id}` : "/catalog";
   const detailSpecs = useMemo(() => buildProductSpecs(product), [product]);
-  const overviewText = useMemo(() => cleanOverview(product?.description) || "No product description has been added yet.", [product?.description]);
+  const quickSpecs = useMemo(() => buildQuickSpecs(detailSpecs), [detailSpecs]);
+  const overviewText = useMemo(() => cleanOverview(product?.description), [product?.description]);
+  const productHighlights = useMemo(() => normalizeProductHighlights(product?.highlights), [product?.highlights]);
   const resolvedProductId = resolveProductId(product || {}) || routeProductRef;
   const resolvedTitle = productTitle(product || {});
   const resolvedSku = productSku(product || {}, "Pending");
@@ -252,25 +255,25 @@ export default function ProductDetailPage() {
           <div className="product-detail__topline">
             <div>
               <h1>{resolvedTitle}</h1>
+              <dl className="product-detail__identity product-detail__identity--inline">
+                <div>
+                  <dt>Brand</dt>
+                  <dd>{brandLabel}</dd>
+                </div>
+                <div>
+                  <dt>SKU</dt>
+                  <dd>{resolvedSku}</dd>
+                </div>
+              </dl>
               <div className="product-detail__rating">
                 <StarRating value={rating || 0} size={17} />
                 <span>{rating ? rating.toFixed(1) : "0.0"}</span>
-                <a href="#reviews">
+                <a href="#reviews" onClick={() => setActiveInfoTab("reviews")}>
                   ({reviewCount} review{reviewCount === 1 ? "" : "s"})
                 </a>
-                {!reviewCount ? <a href="#reviews">Be the first to review</a> : null}
+                {!reviewCount ? <a href="#reviews" onClick={() => setActiveInfoTab("reviews")}>Be the first to review</a> : null}
               </div>
             </div>
-            <dl className="product-detail__identity">
-              <div>
-                <dt>SKU</dt>
-                <dd>{resolvedSku}</dd>
-              </div>
-              <div>
-                <dt>Brand</dt>
-                <dd>{brandLabel}</dd>
-              </div>
-            </dl>
           </div>
 
           <div className="product-price-block">
@@ -283,7 +286,7 @@ export default function ProductDetailPage() {
             ) : price.sublabel ? <span>{price.sublabel}</span> : null}
           </div>
 
-          <dl className="product-quick-facts">
+          <dl className="product-quick-facts" aria-label="Product facts">
             <div>
               <dt>Category</dt>
               <dd>{categoryLabel}</dd>
@@ -294,9 +297,40 @@ export default function ProductDetailPage() {
             </div>
           </dl>
 
-          <section className="product-overview" aria-label="Quick overview">
-            <p>{overviewText}</p>
-          </section>
+          {quickSpecs.length ? (
+            <section className="product-spec-summary" aria-label="Technical specification summary">
+              <h2>Technical specification</h2>
+              <div className="product-spec-summary__table-wrap">
+                <table className="product-spec-summary__table">
+                  <tbody>
+                    {quickSpecs.map((spec) => (
+                      <tr key={spec.code || spec.name}>
+                        <th scope="row">{spec.name}</th>
+                        <td>{formatSpecValue(spec.value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+
+          {productHighlights.length ? (
+            <section className="product-overview" aria-label="Product highlights">
+              <div className="product-overview__head">
+                <MaterialIcon name="checklist" size={18} />
+                <h2>Product highlights</h2>
+              </div>
+              <ul>
+                {productHighlights.map((item, index) => (
+                  <li className={item.type === "number" ? "is-numbered" : ""} key={`${item.type}-${item.text}-${index}`}>
+                    <span>{item.type === "number" ? index + 1 : ""}</span>
+                    {item.text}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {productOptions.length ? (
             <div className="product-options">
@@ -313,26 +347,32 @@ export default function ProductDetailPage() {
             </div>
           ) : null}
 
-          <div className="product-actions">
-            <QuantityStepper
-              value={boundedQuantity}
-              max={maxQuantity}
-              disabled={!canAddToCart || cartLoading}
-              onChange={setQuantity}
-            />
+          <div className="product-purchase-panel">
+            <div className="product-actions">
+              <QuantityStepper
+                value={boundedQuantity}
+                max={maxQuantity}
+                disabled={!canAddToCart || cartLoading}
+                onChange={setQuantity}
+              />
+              <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
+              {!stock.isAvailable ? (
+                <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
+                  <MaterialIcon name="request_quote" size={19} />
+                  Request quote
+                </Link>
+              ) : null}
+            </div>
             <button className={`primary-button${canAddToCart ? "" : " primary-button--muted"}`} type="button" disabled={cartLoading} onClick={() => void handleAddToCart()}>
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
             </button>
-            <WishlistButton productId={resolvedProductId} productTitle={resolvedTitle} variant="detail" />
-            <Link className="secondary-button" to={`/quote?product=${resolvedProductId}`}>
-              <MaterialIcon name="request_quote" size={19} />
-              Request quote
-            </Link>
-            <button className="secondary-button callback-button" type="button" onClick={() => setCallbackOpen(true)}>
-              <MaterialIcon name="phone_callback" size={19} />
-              Call me back
-            </button>
+            <div className="product-secondary-actions">
+              <button className="secondary-button callback-button" type="button" onClick={() => setCallbackOpen(true)}>
+                <MaterialIcon name="phone_callback" size={19} />
+                Call me back
+              </button>
+            </div>
           </div>
 
           {!stock.isAvailable ? (
@@ -343,26 +383,57 @@ export default function ProductDetailPage() {
             />
           ) : null}
         </div>
+
+        <ProductSharePanel
+          product={product}
+          shareUrl={shareUrl}
+          copied={copiedShare}
+          onCopy={() => void handleCopyShare()}
+          onNativeShare={() => void handleNativeShare()}
+        />
       </section>
 
-      <ProductSharePanel
-        product={product}
-        shareUrl={shareUrl}
-        copied={copiedShare}
-        onCopy={() => void handleCopyShare()}
-        onNativeShare={() => void handleNativeShare()}
-      />
-
-      <section className="product-info-grid product-info-grid--single">
-        <article className="product-info-card">
-          <h2>Technical specifications</h2>
-          <ProductSpecifications specifications={detailSpecs} />
-        </article>
+      <section className="product-info-tabs" aria-label="Product information">
+        <div className="product-info-tabs__nav" role="tablist" aria-label="Product details">
+          {[
+            ["description", "Description"],
+            ["reviews", "Reviews"]
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              id={`product-tab-${key}`}
+              aria-selected={activeInfoTab === key}
+              aria-controls={`product-panel-${key}`}
+              className={activeInfoTab === key ? "is-active" : ""}
+              onClick={() => setActiveInfoTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="product-info-tabs__body">
+          <article
+            id="product-panel-description"
+            role="tabpanel"
+            aria-labelledby="product-tab-description"
+            hidden={activeInfoTab !== "description"}
+          >
+            {overviewText ? <p>{overviewText}</p> : <p>No product description has been added yet.</p>}
+          </article>
+          <article
+            id="product-panel-reviews"
+            role="tabpanel"
+            aria-labelledby="product-tab-reviews"
+            hidden={activeInfoTab !== "reviews"}
+          >
+            <div id="reviews">
+              <ReviewList productId={resolvedProductId} />
+            </div>
+          </article>
+        </div>
       </section>
-
-      <div id="reviews">
-        <ReviewList productId={resolvedProductId} />
-      </div>
 
       <RelatedProducts products={related} />
       {callbackOpen ? (
@@ -426,7 +497,7 @@ function CallbackRequestModal({ productId, productTitle: title, user, onClose })
         </button>
         <span className="callback-modal__icon"><MaterialIcon name="phone_callback" size={26} /></span>
         <h2 id="callback-title">Call me back</h2>
-        <p>Ask our team about <strong>{title}</strong>. We respond within three working hours, Monday–Friday, 7:00 AM–8:00 PM.</p>
+        <p>Ask our team about <strong>{title}</strong>. We respond within three working hours, Monday-Friday, 7:00 AM-8:00 PM.</p>
         <Alert>{error}</Alert>
         <label>
           <span>Name</span>
@@ -496,6 +567,22 @@ function cleanOverview(value = "") {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeProductHighlights(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const source = item && typeof item === "object" ? item : { text: item };
+      const text = cleanOverview(source.text || source.value || "");
+      if (!text) return null;
+      return {
+        type: ["number", "numbered", "ordered"].includes(String(source.type || "").toLowerCase()) ? "number" : "bullet",
+        text
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function lastPathSegment(value = "") {
@@ -607,6 +694,33 @@ function buildProductSpecs(product) {
   addSpec("Dimensions", product.dimensions, "dimensions");
 
   return specs;
+}
+
+function buildQuickSpecs(specs = []) {
+  const hidden = new Set(["sku", "brand", "category", "tags"]);
+  return specs
+    .filter((spec) => {
+      const key = String(spec.code || spec.name || "").toLowerCase();
+      return key && !hidden.has(key) && spec.value !== null && spec.value !== undefined && spec.value !== "";
+    })
+    .slice(0, 4);
+}
+
+function formatSpecValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== null && entryValue !== undefined && entryValue !== "")
+      .map(([key, entryValue]) => `${humanizeSpecKey(key)}: ${entryValue}`)
+      .join(", ");
+  }
+  return String(value);
+}
+
+function humanizeSpecKey(key) {
+  return String(key || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function ProductSharePanel({ product, shareUrl, copied, onCopy, onNativeShare }) {

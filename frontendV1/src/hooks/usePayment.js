@@ -47,7 +47,8 @@ export function usePayment({ auto = true } = {}) {
     phoneNumber = "",
     payerEmail = "",
     customerName = "",
-    cardDetails = {}
+    cardDetails = {},
+    mpesaCode = ""
   }) => {
     setProcessing(true);
     setError("");
@@ -74,6 +75,12 @@ export function usePayment({ auto = true } = {}) {
         });
       } else if (method === "airtel_money") {
         payload = await paymentsApi.initializeAirtel({ phone_number: phoneNumber, payer_email: payerEmail });
+      } else if (method === "high_value_deposit") {
+        payload = await paymentsApi.initializeHighValueDeposit({
+          mpesa_code: mpesaCode,
+          phone_number: phoneNumber,
+          payer_email: payerEmail
+        });
       } else {
         payload = await paymentsApi.initialize({
           method,

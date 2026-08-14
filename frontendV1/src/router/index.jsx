@@ -19,10 +19,8 @@ import RecentlyViewedPage from "../pages/account/RecentlyViewedPage.jsx";
 import ReviewsPage from "../pages/account/ReviewsPage.jsx";
 import WishlistPage from "../pages/account/WishlistPage.jsx";
 import CartPage from "../pages/checkout/CartPage.jsx";
-import CheckoutReviewPage from "../pages/checkout/CheckoutReviewPage.jsx";
 import OrderConfirmationPage from "../pages/checkout/OrderConfirmationPage.jsx";
-import PaymentPage from "../pages/checkout/PaymentPage.jsx";
-import ShippingPage from "../pages/checkout/ShippingPage.jsx";
+import UnifiedCheckoutPage from "../pages/checkout/UnifiedCheckoutPage.jsx";
 import NotFoundPage from "../pages/errors/NotFoundPage.jsx";
 import UnauthorizedPage from "../pages/errors/UnauthorizedPage.jsx";
 import ForgotPasswordPage from "../pages/auth/ForgotPasswordPage.jsx";
@@ -70,9 +68,10 @@ export default function AppRouter() {
       <Route path="/product-alerts/cancel/:key" element={<PageWrapper><ProductAlertActionPage action="cancel" /></PageWrapper>} />
       <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
       <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
-      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><ShippingPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><PaymentPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><CheckoutReviewPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/checkout/confirmation" element={<PageWrapper><ProtectedRoute><OrderConfirmationPage /></ProtectedRoute></PageWrapper>} />
       <Route path="/login" element={<PageWrapper><LoginPage /></PageWrapper>} />
       <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />

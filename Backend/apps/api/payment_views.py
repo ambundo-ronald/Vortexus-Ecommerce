@@ -1,3 +1,5 @@
+import logging
+
 from django.apps import apps
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -38,6 +40,7 @@ from apps.payments.services import (
     confirm_payment_session,
     initialize_payment_session,
     log_payment_event,
+    notify_admin_deposit_submitted,
     serialize_payment_session,
 )
 
@@ -45,6 +48,7 @@ from .payment_serializers import (
     AirtelMoneyCallbackSerializer,
     AirtelMoneyInitializationSerializer,
     CardInitializationSerializer,
+    HighValueBankDepositSerializer,
     MpesaCallbackSerializer,
     MpesaInitializationSerializer,
     PaymentConfirmationSerializer,
@@ -53,6 +57,12 @@ from .payment_serializers import (
     PesapalInitializationSerializer,
     PesapalNotificationSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
+HIGH_VALUE_DEPOSIT_LIMIT_KES = 150000
+KCB_PAYBILL_BUSINESS_NUMBER = '522522'
+KCB_PAYBILL_ACCOUNT_NUMBER = '1354483790'
 
 
 def _payment_session_queryset_for_request(request):
@@ -105,6 +115,87 @@ class PaymentSessionDetailAPIView(APIView):
     def get(self, request, reference: str):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference)
         return Response({'payment': serialize_payment_session(payment_session)})
+
+
+class HighValueBankDepositAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_scope = 'payment_init'
+    throttle_classes = [ScopedRateThrottle]
+
+    def post(self, request):
+        serializer = HighValueBankDepositSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        pricing = serializer.validated_data['pricing']
+        amount = pricing['order_total'].incl_tax
+        currency = pricing['order_total'].currency
+        if currency != 'KES' or amount <= HIGH_VALUE_DEPOSIT_LIMIT_KES:
+            return Response(
+                {
+                    'error': {
+                        'code': 'high_value_deposit_not_required',
+                        'detail': 'KCB PayBill deposit is not available for this order.',
+                        'status': 400,
+                    }
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        mpesa_code = serializer.validated_data['mpesa_code']
+        payment_session = initialize_payment_session(
+            basket=request.basket,
+            user=request.user,
+            method_code='bank_transfer',
+            amount=amount,
+            currency=currency,
+            payer_email=serializer.validated_data['payer_email'],
+            payer_phone=serializer.validated_data['phone_number'],
+            status=apps.get_model('payments', 'PaymentSession').STATUS_PENDING,
+            metadata={
+                'basket_id': request.basket.id,
+                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
+                'country_code': pricing['tax_breakdown']['country_code'],
+                'high_value_deposit': True,
+                'deposit_provider': 'kcb_paybill',
+                'deposit_business_number': KCB_PAYBILL_BUSINESS_NUMBER,
+                'deposit_account_number': KCB_PAYBILL_ACCOUNT_NUMBER,
+                'customer_mpesa_code': mpesa_code,
+                'verification_status': 'pending_account_manager_confirmation',
+            },
+            provider_payload={
+                'channel': 'kcb_paybill_deposit',
+                'instructions': 'Customer deposited to KCB account via M-Pesa PayBill and submitted the confirmation code.',
+                'business_number': KCB_PAYBILL_BUSINESS_NUMBER,
+                'account_number': KCB_PAYBILL_ACCOUNT_NUMBER,
+                'customer_reference': mpesa_code,
+                'amount': float(amount),
+                'currency': currency,
+            },
+            allow_unapproved_bank_transfer=True,
+        )
+        payment_session.external_reference = mpesa_code
+        payment_session.save(update_fields=['external_reference', 'updated_at'])
+        log_payment_event(
+            payment_session,
+            kind='provider_submitted',
+            status_before=payment_session.STATUS_PENDING,
+            status_after=payment_session.STATUS_PENDING,
+            external_reference=mpesa_code,
+            message='Customer submitted KCB PayBill deposit reference for high-value order.',
+            payload={
+                'business_number': KCB_PAYBILL_BUSINESS_NUMBER,
+                'account_number': KCB_PAYBILL_ACCOUNT_NUMBER,
+                'verification_status': 'pending_account_manager_confirmation',
+            },
+        )
+        notify_admin_deposit_submitted(payment_session)
+        return Response(
+            {
+                'detail': 'Payment reference received. Your order will remain pending until our team confirms the deposit.',
+                'payment': serialize_payment_session(payment_session),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PaymentConfirmationAPIView(APIView):
@@ -171,6 +262,21 @@ class MpesaInitializationAPIView(APIView):
                     'error': {
                         'code': 'mpesa_gateway_error',
                         'detail': str(exc),
+                        'status': 502,
+                    }
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception as exc:
+            logger.exception('Unexpected M-Pesa initialization failure for payment %s', payment_session.reference)
+            payment_session.status = payment_session.STATUS_FAILED
+            payment_session.metadata = {**payment_session.metadata, 'gateway_error': 'Unexpected M-Pesa gateway failure.'}
+            payment_session.save(update_fields=['status', 'metadata', 'updated_at'])
+            return Response(
+                {
+                    'error': {
+                        'code': 'mpesa_gateway_error',
+                        'detail': 'M-Pesa could not start the payment prompt. Please try again.',
                         'status': 502,
                     }
                 },

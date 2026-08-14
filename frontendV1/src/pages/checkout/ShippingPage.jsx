@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 
@@ -13,6 +13,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
 import { useUiStore } from "../../store/ui.store";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
 import "./CheckoutFlow.css";
 
@@ -46,6 +47,8 @@ export default function ShippingPage() {
   const [quoteSuccess, setQuoteSuccess] = useState("");
   const [quoteError, setQuoteError] = useState("");
   const [logisticsAlertKey, setLogisticsAlertKey] = useState("");
+  const shippingStartedRef = useRef(false);
+  const defaultAddressAutoUsedRef = useRef("");
 
   const lines = basket?.lines || [];
   const hasSavedAddresses = Boolean(user && addresses.length);
@@ -59,13 +62,35 @@ export default function ShippingPage() {
   const dispatchHubPickup = shippingMethods.find((method) => isDispatchHubPickup(method));
   const deliveryFeeAboveLimit = shippingMethods.some((method) => !isDispatchHubPickup(method) && Number(method.charge || 0) > LOGISTICS_DELIVERY_LIMIT_KES);
   const visibleShippingMethods = deliveryFeeAboveLimit && dispatchHubPickup ? [dispatchHubPickup] : shippingMethods;
+  const estimatedShippingMethods = shipping?.estimated_methods || [];
   const canContinue = Boolean(shipping?.ready_for_checkout && !editingDeliveryDetails && hasPinnedAddress(shipping?.address));
   const baseOrderTotal = Number(shipping?.totals?.base_order_total ?? basket?.totals?.base_subtotal ?? 0);
   const exceedsMpesaLimit = baseOrderTotal > MPESA_TRANSACTION_LIMIT_KES;
 
+  function shippingMetadata(extra = {}) {
+    return {
+      item_count: basket?.item_count || lines.length,
+      line_count: lines.length,
+      currency: shipping?.totals?.currency || basket?.currency || "",
+      subtotal: shipping?.totals?.subtotal ?? basket?.totals?.subtotal,
+      shipping_total: shipping?.totals?.shipping_total,
+      order_total: shipping?.totals?.order_total ?? basket?.totals?.order_total,
+      has_saved_addresses: hasSavedAddresses,
+      shipping_method: selectedCode,
+      quote_required: exceedsMpesaLimit,
+      ...extra
+    };
+  }
+
   useEffect(() => {
     if (user) void loadAddresses().catch(() => {});
   }, [loadAddresses, user]);
+
+  useEffect(() => {
+    if (loading || shippingStartedRef.current) return;
+    shippingStartedRef.current = true;
+    trackStorefrontEvent("shipping_started", shippingMetadata());
+  }, [loading]);
 
   useEffect(() => {
     if (!hasSavedAddresses) {
@@ -76,6 +101,18 @@ export default function ShippingPage() {
       setSelectedAddressId(String(fallbackAddress?.id || ""));
     }
   }, [addresses, fallbackAddress?.id, hasSavedAddresses, selectedAddressId]);
+
+  useEffect(() => {
+    if (!hasSavedAddresses || deliveryMode === "new" || saving) return;
+    const defaultAddress = addresses.find((address) => address.is_default_for_shipping && hasPinnedAddress(address));
+    if (!defaultAddress?.id) return;
+    if (shipping?.address?.id && String(shipping.address.id) === String(defaultAddress.id)) return;
+    const autoKey = `${defaultAddress.id}:${defaultAddress.location?.latitude ?? defaultAddress.latitude}:${defaultAddress.location?.longitude ?? defaultAddress.longitude}`;
+    if (defaultAddressAutoUsedRef.current === autoKey) return;
+    defaultAddressAutoUsedRef.current = autoKey;
+    setSelectedAddressId(String(defaultAddress.id));
+    void handleUseShippingAddress(defaultAddress, { auto: true });
+  }, [addresses, deliveryMode, hasSavedAddresses, saving, shipping?.address?.id]);
 
   useEffect(() => {
     if (!deliveryFeeAboveLimit || !dispatchHubPickup) return;
@@ -92,6 +129,10 @@ export default function ShippingPage() {
   }, [deliveryFeeAboveLimit, dispatchHubPickup, logisticsAlertKey, selectMethod, selectedCode, shipping?.address?.id]);
 
   async function handleAddressSubmit(address) {
+    trackStorefrontEvent("shipping_save_attempted", shippingMetadata({
+      country_code: address?.country_code,
+      has_coordinates: hasPinnedAddress(address)
+    }));
     try {
       await saveAddress(address);
       await saveBillingAddress({ ...address, phone_number: address.phone_number || "" });
@@ -99,18 +140,37 @@ export default function ShippingPage() {
       const newestAddress = findMatchingSavedAddress(address, latestAddresses) || latestAddresses[0];
       if (newestAddress?.id) setSelectedAddressId(String(newestAddress.id));
       setDeliveryMode("saved");
+      trackStorefrontEvent("shipping_saved", shippingMetadata({
+        selected_address_id: newestAddress?.id,
+        country_code: address?.country_code,
+        has_coordinates: hasPinnedAddress(address)
+      }));
     } catch {
+      trackStorefrontEvent("shipping_save_failed", shippingMetadata({
+        country_code: address?.country_code,
+        has_coordinates: hasPinnedAddress(address)
+      }));
       // Hook state already exposes the normalized message.
     }
   }
 
-  async function handleUseShippingAddress(address) {
+  async function handleUseShippingAddress(address, options = {}) {
     if (!address?.id) {
       setDeliveryMode("saved");
       return;
     }
 
+    trackStorefrontEvent("saved_shipping_selected", shippingMetadata({
+      selected_address_id: address.id,
+      has_coordinates: hasPinnedAddress(address),
+      source: options.auto ? "default_address_auto" : "saved_address_picker"
+    }));
+
     if (!hasPinnedAddress(address)) {
+      trackStorefrontEvent("saved_shipping_missing_pin", shippingMetadata({
+        selected_address_id: address.id,
+        has_coordinates: false
+      }));
       await Swal.fire({
         icon: "warning",
         title: "Pin delivery location",
@@ -127,7 +187,16 @@ export default function ShippingPage() {
       await useBillingAddress(address.id);
       setSelectedAddressId(String(address.id));
       setDeliveryMode("saved");
+      trackStorefrontEvent("saved_shipping_used", shippingMetadata({
+        selected_address_id: address.id,
+        has_coordinates: true,
+        source: options.auto ? "default_address_auto" : "saved_address_picker"
+      }));
     } catch {
+      trackStorefrontEvent("saved_shipping_failed", shippingMetadata({
+        selected_address_id: address.id,
+        has_coordinates: hasPinnedAddress(address)
+      }));
       // Hook state already exposes the normalized message.
     }
   }
@@ -141,18 +210,34 @@ export default function ShippingPage() {
 
   function handleCreateNewDetails() {
     setDeliveryMode("new");
+    trackStorefrontEvent("shipping_new_address_started", shippingMetadata());
   }
 
   async function handleMethodSelect(methodCode) {
+    const method = shippingMethods.find((item) => item.code === methodCode);
     try {
       await selectMethod(methodCode);
+      trackStorefrontEvent("shipping_method_selected", shippingMetadata({
+        shipping_method: methodCode,
+        shipping_method_name: method?.name || ""
+      }));
     } catch {
+      trackStorefrontEvent("shipping_method_failed", shippingMetadata({
+        shipping_method: methodCode,
+        shipping_method_name: method?.name || ""
+      }));
       // Hook state already exposes the normalized message.
     }
   }
 
   function handleContinueToPayment() {
+    trackStorefrontEvent("shipping_continue_clicked", shippingMetadata({
+      has_coordinates: hasPinnedAddress(shipping?.address)
+    }));
     if (exceedsMpesaLimit) {
+      trackStorefrontEvent("checkout_high_value_quote_required", shippingMetadata({
+        reason: "mpesa_transaction_limit"
+      }));
       setQuotePromptOpen(true);
       return;
     }
@@ -174,10 +259,16 @@ export default function ShippingPage() {
       const message = response.detail || "Quote request received. Our team will contact you shortly.";
       setQuoteSuccess(message);
       notify({ title: "Quote request sent", message, icon: "request_quote" });
+      trackStorefrontEvent("checkout_high_value_quote_sent", shippingMetadata({
+        reason: "mpesa_transaction_limit"
+      }));
     } catch (requestError) {
       const message = requestError.normalized?.message || requestError.message || "Could not submit quote request.";
       setQuoteError(message);
       notify({ tone: "danger", title: "Quote request failed", message, icon: "request_quote" });
+      trackStorefrontEvent("checkout_high_value_quote_failed", shippingMetadata({
+        reason: "mpesa_transaction_limit"
+      }));
     } finally {
       setQuoteSubmitting(false);
     }
@@ -235,7 +326,7 @@ export default function ShippingPage() {
                 </button>
                 <button className="secondary-button" type="button" disabled={saving} onClick={handleCreateNewDetails}>
                   <MaterialIcon name="add_location_alt" size={18} />
-                  Create new delivery
+                  Change delivery location
                 </button>
               </div>
             </section>
@@ -250,13 +341,14 @@ export default function ShippingPage() {
             />
           ) : null}
           {editingDeliveryDetails ? (
-            <section className="checkout-card checkout-note-panel delivery-save-required">
-              <MaterialIcon name="info" size={20} />
-              <div>
-                <strong>Save delivery details to calculate delivery.</strong>
-                <span>The price below will update after the pinned location is saved.</span>
-              </div>
-            </section>
+            <ShippingMethodSelector
+              methods={estimatedShippingMethods}
+              selectedCode=""
+              saving={saving}
+              estimated
+              title="Estimated delivery"
+              note="These are available before checkout. Exact fees recalculate after you pin and save the delivery location."
+            />
           ) : (
             <ShippingMethodSelector
               methods={visibleShippingMethods}
@@ -300,8 +392,7 @@ function HighValueQuoteModal({ total, submitting, success, error, onClose, onSub
         </div>
         <h2 id="quote-limit-title">Request quotation</h2>
         <p>
-          Your order total is {formatCurrency(total, "KES")}. M-Pesa allows up to{" "}
-          {formatCurrency(MPESA_TRANSACTION_LIMIT_KES, "KES")} per transaction, so this order needs a quotation before payment.
+          Your order total is {formatCurrency(total, "KES")}. Submit a quotation request and our team will guide the next payment step.
         </p>
         <Alert tone="success">{success}</Alert>
         <Alert>{error}</Alert>
@@ -344,7 +435,6 @@ function buildHighValueQuoteMessage({ basket, shipping, total }) {
   return [
     "Please prepare a quotation for this high-value checkout.",
     `Cart total: ${formatCurrency(total, "KES")}.`,
-    `Reason: M-Pesa transaction limit is ${formatCurrency(MPESA_TRANSACTION_LIMIT_KES, "KES")}.`,
     items ? `Items: ${items}.` : "",
     `Delivery: ${delivery}.`
   ].filter(Boolean).join("\n");

@@ -165,6 +165,11 @@ export interface AdminPaymentRefundPayload {
   submit_gateway_refund?: boolean
 }
 
+export interface AdminPaymentVerifyReceivedPayload {
+  external_reference?: string
+  note?: string
+}
+
 function readApiError(err: any) {
   return err?.data?.error?.detail || err?.data?.detail || err?.message || 'Unknown error'
 }
@@ -274,6 +279,25 @@ export function usePaymentConfig() {
     }
   }
 
+  async function verifyPaymentReceived(reference: string, payload: AdminPaymentVerifyReceivedPayload = {}) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await request<{ detail: string, payment: AdminPaymentLogItem }>(`/admin/payments/${reference}/verify-received/`, {
+        method: 'POST',
+        body: payload,
+      })
+      return { success: true, data: result }
+    }
+    catch (err: any) {
+      error.value = readApiError(err)
+      return { success: false, error: error.value }
+    }
+    finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -282,5 +306,6 @@ export function usePaymentConfig() {
     getPaymentLogs,
     requestPaymentRefund,
     cancelPaymentSession,
+    verifyPaymentReceived,
   }
 }

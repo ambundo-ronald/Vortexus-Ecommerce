@@ -193,10 +193,13 @@ def initialize_payment_session(
     metadata: dict | None = None,
     status: str | None = None,
     provider_payload: dict | None = None,
+    allow_unapproved_bank_transfer: bool = False,
 ):
     PaymentSession = apps.get_model('payments', 'PaymentSession')
 
     method = get_payment_method(method_code, user=user, basket=basket)
+    if method is None and allow_unapproved_bank_transfer and method_code == 'bank_transfer':
+        method = payment_method_definition(method_code)
     if method is None:
         raise ValueError('Unsupported payment method.')
 
@@ -1270,6 +1273,7 @@ def _notify_admin_payment_status(payment_session, *, previous_status: str = '') 
     method_name = method.get('name') or payment_session.method
     amount = f'{payment_session.currency} {payment_session.amount}'
     if payment_session.status in SUCCESS_PAYMENT_STATUSES:
+        _notify_customer_payment_received(payment_session)
         create_admin_notification(
             event_type='payment_confirmed',
             event_key=f'payment-confirmed:{payment_session.reference}',
@@ -1307,6 +1311,106 @@ def _notify_admin_payment_status(payment_session, *, previous_status: str = '') 
                 'currency': payment_session.currency,
             },
         )
+
+
+def notify_admin_deposit_submitted(payment_session) -> None:
+    from apps.notifications.config import configured_sales_recipients
+    from apps.notifications.services import create_admin_notification, notification_service
+
+    amount = f'{payment_session.currency} {payment_session.amount}'
+    order_number = getattr(payment_session.order, 'number', '') if getattr(payment_session, 'order_id', None) else ''
+    customer_email = payment_session.payer_email or getattr(payment_session.user, 'email', '') or ''
+    customer_phone = payment_session.payer_phone or ''
+    external_reference = payment_session.external_reference or ''
+    create_admin_notification(
+        event_type='payment_deposit_submitted',
+        event_key=f'payment-deposit-submitted:{payment_session.reference}',
+        title='KCB PayBill payment needs confirmation',
+        message=f'Payment {payment_session.reference} for {amount} needs account manager confirmation.',
+        severity='warning',
+        action_url=f'/payment-logs?reference={payment_session.reference}',
+        related_object_type='payment_session',
+        related_object_id=payment_session.reference,
+        metadata={
+            'support_ticket': True,
+            'support_type': 'payment_verification',
+            'payment_reference': payment_session.reference,
+            'order_number': order_number,
+            'external_reference': external_reference,
+            'customer_email': customer_email,
+            'customer_phone': customer_phone,
+            'amount': str(payment_session.amount),
+            'currency': payment_session.currency,
+            'status': payment_session.status,
+        },
+    )
+    context = {
+        'shop_name': getattr(settings, 'OSCAR_SHOP_NAME', 'Reesolmart'),
+        'payment': payment_session,
+        'order_number': order_number or 'Pending order link',
+        'customer_email': customer_email or 'Not provided',
+        'customer_phone': customer_phone or 'Not provided',
+        'external_reference': external_reference or 'Not provided',
+        'amount': amount,
+    }
+    for recipient in configured_sales_recipients():
+        notification_service.send(
+            event_type='payment_deposit_submitted_internal',
+            to_email=recipient,
+            subject_template='emails/payment_deposit_submitted_internal_subject.txt',
+            body_template='emails/payment_deposit_submitted_internal_body.txt',
+            context=context,
+            related_object_type='payment_session',
+            related_object_id=payment_session.reference,
+            metadata={
+                'support_ticket': True,
+                'support_type': 'payment_verification',
+                'payment_reference': payment_session.reference,
+                'order_number': order_number,
+                'external_reference': external_reference,
+                'customer_email': customer_email,
+                'customer_phone': customer_phone,
+                'amount': str(payment_session.amount),
+                'currency': payment_session.currency,
+            },
+        )
+
+
+def _notify_customer_payment_received(payment_session) -> None:
+    from apps.notifications.services import notification_service
+
+    recipient = getattr(payment_session.user, 'email', '') if getattr(payment_session, 'user_id', None) else ''
+    recipient = recipient or payment_session.payer_email
+    if not recipient:
+        return
+    order_number = getattr(payment_session.order, 'number', '') if getattr(payment_session, 'order_id', None) else ''
+    display_name = 'Customer'
+    if getattr(payment_session, 'user_id', None):
+        display_name = payment_session.user.get_full_name() or payment_session.user.email or display_name
+    notification_service.send(
+        event_type='payment_received',
+        to_email=recipient,
+        subject_template='emails/payment_received_subject.txt',
+        body_template='emails/payment_received_body.txt',
+        context={
+            'shop_name': getattr(settings, 'OSCAR_SHOP_NAME', 'Reesolmart'),
+            'payment': payment_session,
+            'order_number': order_number or 'Pending order',
+            'amount': f'{payment_session.currency} {payment_session.amount}',
+            'display_name': display_name,
+        },
+        related_object_type='payment_session',
+        related_object_id=payment_session.reference,
+        metadata={
+            'payment_reference': payment_session.reference,
+            'external_reference': payment_session.external_reference,
+            'order_number': order_number,
+            'status': payment_session.status,
+            'amount': str(payment_session.amount),
+            'currency': payment_session.currency,
+            'message': 'Payment received. Order processing is ongoing.',
+        },
+    )
 
 
 def _notify_admin_paid_order(payment_session) -> None:

@@ -49,6 +49,37 @@ class PaymentConfirmationSerializer(serializers.Serializer):
     external_reference = serializers.CharField(required=False, allow_blank=True, max_length=128)
 
 
+class HighValueBankDepositSerializer(serializers.Serializer):
+    mpesa_code = serializers.RegexField(
+        regex=r'^[A-Za-z0-9]{6,32}$',
+        max_length=32,
+        error_messages={'invalid': 'Enter the M-Pesa confirmation code exactly as received.'},
+    )
+    payer_email = serializers.EmailField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
+
+    def validate(self, attrs):
+        request = self.context['request']
+        basket = request.basket
+        shipping_address = get_shipping_address(request, basket)
+        shipping_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
+
+        if basket.is_empty:
+            raise serializers.ValidationError({'basket': 'Your basket is empty.'})
+        if basket.is_shipping_required() and not shipping_address:
+            raise serializers.ValidationError({'shipping_address': 'Shipping address is required before payment initialization.'})
+        if basket.is_shipping_required() and not shipping_method:
+            raise serializers.ValidationError({'shipping_method': 'Shipping method is required before payment initialization.'})
+
+        attrs['shipping_address'] = shipping_address
+        attrs['shipping_method'] = shipping_method
+        attrs['pricing'] = build_order_prices(basket, shipping_address, shipping_method)
+        attrs['payer_email'] = (attrs.get('payer_email') or '').strip().lower()
+        attrs['mpesa_code'] = attrs['mpesa_code'].strip().upper()
+        attrs['phone_number'] = (attrs.get('phone_number') or '').strip()
+        return attrs
+
+
 class MpesaInitializationSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=40)
     payer_email = serializers.EmailField(required=False, allow_blank=True)

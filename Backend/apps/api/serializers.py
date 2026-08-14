@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.apps import apps
 from django.template.defaultfilters import slugify
 from rest_framework import serializers
@@ -300,7 +302,24 @@ class ProductWriteSerializer(serializers.Serializer):
                 product.attribute_values.filter(attribute=attribute).delete()
                 continue
 
+            value = self._normalize_attribute_value(attribute, value)
             attribute.save_value(product, value)
+
+    def _normalize_attribute_value(self, attribute, value):
+        if getattr(attribute, 'type', '') != getattr(attribute, 'DATE', 'date'):
+            return value
+
+        for date_format in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except ValueError:
+                continue
+
+        raise serializers.ValidationError({
+            'attributes': {
+                attribute.code: 'Enter a valid date in YYYY-MM-DD or DD/MM/YYYY format.'
+            }
+        })
 
     def _prepare_tax_configuration(self, attrs):
         tax_fields_present = any(field in attrs for field in ('charge_tax', 'tax_status'))

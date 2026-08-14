@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
@@ -10,6 +10,7 @@ import Spinner from "../../components/ui/Spinner.jsx";
 import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
+import { trackStorefrontEvent } from "../../utils/analytics";
 import { normalizeCheckoutTotals } from "../../utils/checkoutTotals";
 import { formatCurrency } from "../../utils/currency";
 import {
@@ -47,6 +48,8 @@ export default function CheckoutReviewPage() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [confirmationStartedAt, setConfirmationStartedAt] = useState(() => pending?.payment && !isPaymentComplete(pending.payment) ? Date.now() : null);
   const [clockTick, setClockTick] = useState(() => Date.now());
+  const reviewViewedRef = useRef(false);
+  const timeoutTrackedRef = useRef("");
 
   useEffect(() => {
     let active = true;
@@ -118,8 +121,49 @@ export default function CheckoutReviewPage() {
     ? Math.max(0, Math.ceil((PAYMENT_CONFIRMATION_TIMEOUT_MS - elapsedMs) / 1000))
     : 0;
 
+  function reviewMetadata(extra = {}) {
+    return {
+      item_count: preview?.basket?.item_count || preview?.basket?.lines?.length || 0,
+      line_count: preview?.basket?.lines?.length || 0,
+      currency: shipping?.totals?.currency || preview?.basket?.currency || "",
+      shipping_method: preview?.shipping?.selected_method?.code || "",
+      shipping_method_name: preview?.shipping?.selected_method?.name || "",
+      payment_method: payment?.method || pending?.method?.code || "",
+      payment_status: payment?.status || "",
+      payment_reference: payment?.reference || pending?.payment_reference || "",
+      provider_reference: payment?.provider_reference || "",
+      order_total: shipping?.totals?.order_total ?? preview?.basket?.totals?.order_total,
+      requires_prepayment: requiresPrepayment,
+      remaining_seconds: remainingSeconds,
+      ...extra
+    };
+  }
+
+  useEffect(() => {
+    if (!preview || reviewViewedRef.current) return;
+    reviewViewedRef.current = true;
+    trackStorefrontEvent("review_viewed", reviewMetadata({
+      missing: Array.isArray(preview?.missing) ? preview.missing.join(",") : "",
+      reason: preview?.ready ? "ready" : "incomplete"
+    }));
+  }, [preview]);
+
+  useEffect(() => {
+    if (!paymentTimedOut || !payment?.reference || timeoutTrackedRef.current === payment.reference) return;
+    timeoutTrackedRef.current = payment.reference;
+    trackStorefrontEvent("payment_timeout", reviewMetadata({
+      source: "review",
+      payment_reference: payment.reference
+    }));
+  }, [payment, paymentTimedOut]);
+
   async function handlePlaceOrder() {
+    trackStorefrontEvent("order_place_clicked", reviewMetadata());
     if (!preview?.ready) {
+      trackStorefrontEvent("order_place_blocked", reviewMetadata({
+        reason: "checkout_incomplete",
+        missing: Array.isArray(preview?.missing) ? preview.missing.join(",") : ""
+      }));
       notify({
         tone: "warning",
         title: "Checkout is incomplete",
@@ -136,7 +180,16 @@ export default function CheckoutReviewPage() {
         paymentForOrder = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
         setVerifiedPayment(paymentForOrder);
         storePendingCheckout({ ...pending, payment: paymentForOrder });
+        trackStorefrontEvent("review_payment_status_checked", reviewMetadata({
+          payment_method: paymentForOrder?.method || payment?.method || "",
+          payment_status: paymentForOrder?.status || "",
+          payment_reference: paymentForOrder?.reference || pending.payment_reference,
+          provider_reference: paymentForOrder?.provider_reference || ""
+        }));
       } catch {
+        trackStorefrontEvent("order_place_failed", reviewMetadata({
+          reason: "payment_status_check_failed"
+        }));
         return;
       } finally {
         setCheckingStatus(false);
@@ -144,6 +197,11 @@ export default function CheckoutReviewPage() {
 
       if (!isPaymentComplete(paymentForOrder)) {
         const latestView = paymentStatusView(paymentForOrder);
+        trackStorefrontEvent("order_place_blocked", reviewMetadata({
+          reason: isPaymentFailed(paymentForOrder) ? "payment_failed" : "payment_pending",
+          payment_status: paymentForOrder?.status || "",
+          payment_reference: paymentForOrder?.reference || pending.payment_reference
+        }));
         notify({
           tone: isPaymentFailed(paymentForOrder) ? "warning" : "info",
           title: latestView.title,
@@ -161,9 +219,18 @@ export default function CheckoutReviewPage() {
       sessionStorage.removeItem("vortexus:pendingCheckout");
       sessionStorage.setItem("vortexus:lastOrder", JSON.stringify(orderPayload));
       const orderNumber = orderPayload?.order?.number || orderPayload?.order?.order_number;
+      trackStorefrontEvent("order_placed", reviewMetadata({
+        order_number: orderNumber,
+        payment_method: paymentForOrder?.method || payment?.method || "",
+        payment_status: paymentForOrder?.status || payment?.status || "",
+        payment_reference: paymentForOrder?.reference || pending.payment_reference
+      }));
       notify({ title: "Order placed", message: "Your order has been received.", icon: "task_alt" });
       navigate(`/checkout/confirmation${orderNumber ? `?order_number=${encodeURIComponent(orderNumber)}` : ""}`, { replace: true, state: { orderPayload } });
     } catch {
+      trackStorefrontEvent("order_place_failed", reviewMetadata({
+        reason: "place_order_failed"
+      }));
       // Hook state already exposes the normalized message.
     }
   }
@@ -174,8 +241,20 @@ export default function CheckoutReviewPage() {
     try {
       const nextPayment = await paymentState.getPaymentStatus(pending.payment_reference, payment?.method);
       setVerifiedPayment(nextPayment);
+      trackStorefrontEvent("review_payment_status_checked", reviewMetadata({
+        payment_method: nextPayment?.method || payment?.method || "",
+        payment_status: nextPayment?.status || "",
+        payment_reference: nextPayment?.reference || pending.payment_reference,
+        provider_reference: nextPayment?.provider_reference || ""
+      }));
       if (isPaymentComplete(nextPayment) || isPaymentFailed(nextPayment)) {
         setConfirmationStartedAt(null);
+        trackStorefrontEvent(isPaymentComplete(nextPayment) ? "payment_confirmed" : "payment_failed", reviewMetadata({
+          source: "review",
+          payment_method: nextPayment?.method || payment?.method || "",
+          payment_status: nextPayment?.status || "",
+          payment_reference: nextPayment?.reference || pending.payment_reference
+        }));
       }
       storePendingCheckout({ ...pending, payment: nextPayment });
       notify({
@@ -185,6 +264,10 @@ export default function CheckoutReviewPage() {
         icon: paymentStatusView(nextPayment).icon
       });
     } catch {
+      trackStorefrontEvent("review_payment_status_checked", reviewMetadata({
+        reason: "status_check_failed",
+        payment_reference: pending.payment_reference
+      }));
       // Hook state already exposes the normalized message.
     } finally {
       setCheckingStatus(false);

@@ -45,6 +45,7 @@ from apps.payments.pesapal import (
     request_refund as request_pesapal_refund,
 )
 from apps.payments.services import (
+    confirm_payment_session,
     create_payment_return_case,
     initialize_payment_session,
     log_payment_event,
@@ -172,6 +173,11 @@ class FinanceRefundStatusSerializer(serializers.Serializer):
 
 class AdminPaymentCancelSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+
+class AdminPaymentVerifyReceivedSerializer(serializers.Serializer):
+    external_reference = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=500)
 
 
 class AdminCodMpesaPromptSerializer(serializers.Serializer):
@@ -1951,6 +1957,66 @@ class AdminPaymentCancelAPIView(APIView):
             metadata={'payment_reference': payment.reference, 'old_status': old_status, 'reason': reason},
         )
         return Response({'payment': _payment_session_payload(payment), 'detail': 'Payment cancelled.'})
+
+
+class AdminPaymentVerifyReceivedAPIView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    def post(self, request, reference: str):
+        if not can_access_finance_data(request.user):
+            return Response({'detail': 'Finance access is required.'}, status=status.HTTP_403_FORBIDDEN)
+
+        payment = get_payment_or_404(reference)
+        if payment.method != PaymentSession.METHOD_BANK_TRANSFER:
+            return Response({'detail': 'Only bank/KCB deposit payments can be verified manually.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not payment.order_id:
+            return Response({'detail': 'Payment must be linked to an order before it can be verified.'}, status=status.HTTP_400_BAD_REQUEST)
+        if payment.status in {PaymentSession.STATUS_PAID, PaymentSession.STATUS_AUTHORIZED}:
+            return Response({'payment': _payment_session_payload(payment), 'detail': 'Payment is already verified.'})
+        if payment.status in {PaymentSession.STATUS_CANCELLED, PaymentSession.STATUS_FAILED}:
+            return Response({'detail': f'Cannot verify a {payment.status} payment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = AdminPaymentVerifyReceivedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        external_reference = serializer.validated_data.get('external_reference') or payment.external_reference
+        note = serializer.validated_data.get('note') or 'KCB PayBill deposit verified by staff.'
+        if not external_reference:
+            return Response({'detail': 'Enter the M-Pesa confirmation code before verifying this payment.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_status = payment.status
+        verified = confirm_payment_session(
+            payment,
+            success=True,
+            external_reference=external_reference,
+            metadata={
+                'manual_verification': True,
+                'manual_verification_note': note,
+                'manual_verified_by': request.user.id,
+                'manual_verified_at': timezone.now().isoformat(),
+            },
+        )
+        log_payment_event(
+            verified,
+            kind=PaymentEvent.KIND_STATUS_APPLIED,
+            status_before=old_status,
+            status_after=verified.status,
+            external_reference=verified.external_reference,
+            message=note,
+            payload={'admin_action': 'verify_payment_received'},
+        )
+        record_audit_event(
+            event_type='payments.deposit_verified',
+            request=request,
+            actor=request.user,
+            target=verified,
+            message='Staff verified a KCB PayBill deposit payment.',
+            metadata={
+                'payment_reference': verified.reference,
+                'order_number': getattr(verified.order, 'number', ''),
+                'external_reference': verified.external_reference,
+            },
+        )
+        return Response({'payment': _payment_session_payload(verified), 'detail': 'Payment verified.'})
 
 
 class AdminPaymentRefundAPIView(APIView):

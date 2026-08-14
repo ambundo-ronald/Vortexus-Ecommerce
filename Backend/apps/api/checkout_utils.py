@@ -208,6 +208,62 @@ def build_weight_based_shipping_methods(metrics: dict) -> list:
     return methods
 
 
+def build_estimated_shipping_methods(basket, metrics: dict, country_code: str, display_currency: str | None = None) -> list[dict]:
+    estimates = []
+    for method in build_weight_based_shipping_methods(metrics):
+        payload = serialize_shipping_method(method, basket, selected=False, display_currency=display_currency)
+        payload.update(
+            {
+                'estimated': True,
+                'needs_location': False,
+                'estimate_label': 'Available now',
+                'estimate_note': 'Final total updates after delivery details are saved.',
+            }
+        )
+        estimates.append(payload)
+
+    normalized_country = (country_code or '').strip().upper()
+    if normalized_country and normalized_country != 'KE':
+        return estimates
+
+    DistanceDeliveryMethod = apps.get_model('accounts', 'DistanceDeliveryMethod')
+    base_currency = basket_currency(basket)
+    for method in DistanceDeliveryMethod.objects.filter(is_active=True).order_by('sort_order', 'name'):
+        max_weight = _decimal(method.maximum_weight_kg)
+        if max_weight and metrics['total_weight_kg'] > max_weight:
+            continue
+        base_estimate = method.minimum_fee or method.base_fee or ZERO
+        display_amount, output_currency = convert_amount(base_estimate, base_currency, display_currency)
+        estimates.append(
+            {
+                'code': f'distance-{method.code}',
+                'name': method.name,
+                'description': method.description or 'Delivery to your pinned location.',
+                'carrier_code': 'distance_delivery',
+                'service_code': method.vehicle_type,
+                'method_type': 'distance_delivery',
+                'is_pickup': False,
+                'eta': {'min_days': 0, 'max_days': 1},
+                'distance': {
+                    'km': None,
+                    'vehicle_type': method.vehicle_type,
+                    'rate_per_km': _money_payload(method.rate_per_km),
+                    'base_fee': _money_payload(method.base_fee),
+                },
+                'charge': display_amount,
+                'currency': output_currency,
+                'base_charge': _money_payload(base_estimate),
+                'base_currency': base_currency,
+                'selected': False,
+                'estimated': True,
+                'needs_location': True,
+                'estimate_label': 'Estimate',
+                'estimate_note': 'Exact fee recalculates after you pin the delivery location.',
+            }
+        )
+    return estimates
+
+
 def charge_for_weight_based_method(method, basket_weight: Decimal) -> Decimal | None:
     effective_weight = basket_weight
     if effective_weight <= ZERO:
@@ -569,6 +625,7 @@ def build_checkout_payload(request) -> dict:
     methods = get_shipping_methods(request, basket, shipping_address=shipping_address)
     selected_method = get_selected_shipping_method(request, basket, shipping_address=shipping_address)
     metrics = basket_shipping_metrics(basket)
+    estimated_methods = build_estimated_shipping_methods(basket, metrics, country_code, display_currency)
     subtotal = basket_subtotal_excl_tax(basket)
     shipping_total = shipping_charge_for_method(selected_method, basket)
     taxes = calculate_checkout_taxes(
@@ -617,6 +674,7 @@ def build_checkout_payload(request) -> dict:
                 )
                 for method in methods
             ],
+            'estimated_methods': estimated_methods,
             'selected_method': (
                 serialize_shipping_method(selected_method, basket, selected=True, display_currency=display_currency)
                 if selected_method

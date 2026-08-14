@@ -824,9 +824,14 @@ class AdminSupportAPIView(APIView):
         page_size = min(max(int(request.query_params.get('page_size', 25) or 25), 1), 100)
 
         quote_notifications = []
+        payment_notifications = []
         if EmailNotification:
             quote_notifications = list(
                 EmailNotification.objects.filter(event_type__in=['quote_request_customer', 'quote_request_internal'])
+                .order_by('-created_at')[:page_size]
+            )
+            payment_notifications = list(
+                EmailNotification.objects.filter(event_type='payment_deposit_submitted_internal')
                 .order_by('-created_at')[:page_size]
             )
 
@@ -880,6 +885,22 @@ class AdminSupportAPIView(APIView):
                     'created_at': notification.created_at,
                 }
             )
+        for notification in payment_notifications[:10]:
+            metadata = notification.metadata or {}
+            tickets.append(
+                {
+                    'id': f'payment-{notification.id}',
+                    'type': 'payment',
+                    'customer': metadata.get('customer_email') or notification.recipient or 'Payment customer',
+                    'contact': metadata.get('customer_phone') or metadata.get('customer_email') or notification.recipient,
+                    'subject': notification.subject,
+                    'message': f"KCB PayBill confirmation {metadata.get('external_reference') or 'submitted'} needs verification.",
+                    'status': 'Pending confirmation',
+                    'source': 'Payment verification',
+                    'reference': metadata.get('payment_reference') or notification.related_object_id or '',
+                    'created_at': notification.created_at,
+                }
+            )
 
         for order in order_cases[:15]:
             status_label = order.status or 'Pending'
@@ -914,6 +935,7 @@ class AdminSupportAPIView(APIView):
                     'quote_cases': len([ticket for ticket in tickets if ticket['type'] == 'quote']),
                     'order_cases': len([ticket for ticket in tickets if ticket['type'] == 'order']),
                     'callback_leads': len([ticket for ticket in tickets if ticket['type'] == 'callback']),
+                    'payment_cases': len([ticket for ticket in tickets if ticket['type'] == 'payment']),
                     'overdue_callbacks': len([ticket for ticket in tickets if ticket.get('is_overdue')]),
                     'failed_notifications': failed_notifications,
                 },

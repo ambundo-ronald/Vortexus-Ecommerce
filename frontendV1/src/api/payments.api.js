@@ -7,6 +7,8 @@ export const paymentsApi = {
   detail: (reference) => apiClient.get(ENDPOINTS.payments.session(reference)).then((response) => response.data),
   confirm: (reference, payload) =>
     apiClient.post(ENDPOINTS.payments.confirm(reference), payload).then((response) => response.data),
+  initializeHighValueDeposit: (payload) =>
+    apiClient.post(ENDPOINTS.payments.highValueDeposit, payload).then((response) => response.data),
   initializeMpesa: (payload) => apiClient.post(ENDPOINTS.payments.mpesaInit, payload).then((response) => response.data),
   mpesaStatus: (reference) => apiClient.get(ENDPOINTS.payments.mpesaStatus(reference)).then((response) => response.data),
   initializePesapal: (payload) => apiClient.post(ENDPOINTS.payments.pesapalInit, payload).then((response) => response.data),
