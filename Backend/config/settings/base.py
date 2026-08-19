@@ -403,6 +403,7 @@ MPESA_BASE_URL = env('MPESA_BASE_URL', default='https://sandbox.safaricom.co.ke'
 MPESA_CONSUMER_KEY = env('MPESA_CONSUMER_KEY', default='')
 MPESA_CONSUMER_SECRET = env('MPESA_CONSUMER_SECRET', default='')
 MPESA_SHORTCODE = env('MPESA_SHORTCODE', default='')
+MPESA_TILL_NUMBER = env('MPESA_TILL_NUMBER', default='')
 MPESA_PASSKEY = env('MPESA_PASSKEY', default='')
 MPESA_CALLBACK_URL = env(
     'MPESA_CALLBACK_URL',

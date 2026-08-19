@@ -15,6 +15,7 @@ from apps.payments.mpesa import (
     handle_callback,
     handle_stk_query_result,
     initiate_stk_push,
+    mpesa_integration_name,
     mpesa_is_configured,
     query_stk_push_status,
 )
@@ -248,7 +249,7 @@ class MpesaInitializationAPIView(APIView):
                 'basket_id': request.basket.id,
                 'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
                 'country_code': pricing['tax_breakdown']['country_code'],
-                'integration': 'daraja_sandbox',
+                'integration': mpesa_integration_name(),
             },
         )
         try:

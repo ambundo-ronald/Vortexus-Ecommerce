@@ -72,6 +72,7 @@ const paymentConfig = ref({
     consumer_secret: "",
     has_consumer_secret: false,
     shortcode: "",
+    till_number: "",
     passkey: "",
     has_passkey: false,
     callback_url: "",
@@ -323,6 +324,7 @@ async function savePaymentConfig() {
     is_enabled: paymentConfig.value.mpesa.is_enabled,
     base_url: paymentConfig.value.mpesa.base_url,
     shortcode: paymentConfig.value.mpesa.shortcode,
+    till_number: paymentConfig.value.mpesa.till_number,
     callback_url: paymentConfig.value.mpesa.callback_url,
     transaction_type: paymentConfig.value.mpesa.transaction_type,
     timeout_seconds: Number(paymentConfig.value.mpesa.timeout_seconds || 30),
@@ -746,7 +748,10 @@ onMounted(() => {
                 <PasswordInput v-model="paymentConfig.mpesa.consumer_secret" :loading="isPaymentLoading" :placeholder="paymentConfig.mpesa.has_consumer_secret ? 'Saved' : 'Required'" autocomplete="new-password" />
               </UFormField>
               <UFormField label="Shortcode">
-                <UInput v-model="paymentConfig.mpesa.shortcode" :loading="isPaymentLoading" placeholder="174379" />
+                <UInput v-model="paymentConfig.mpesa.shortcode" :loading="isPaymentLoading" placeholder="API shortcode from the Daraja activation email" />
+              </UFormField>
+              <UFormField label="Till number (PartyB)">
+                <UInput v-model="paymentConfig.mpesa.till_number" :loading="isPaymentLoading" placeholder="Required for CustomerBuyGoodsOnline" />
               </UFormField>
               <UFormField label="Passkey">
                 <PasswordInput v-model="paymentConfig.mpesa.passkey" :loading="isPaymentLoading" :placeholder="paymentConfig.mpesa.has_passkey ? 'Saved' : 'Required'" autocomplete="new-password" />

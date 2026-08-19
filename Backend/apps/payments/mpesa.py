@@ -32,6 +32,8 @@ def mpesa_is_configured() -> bool:
         get_payment_setting('mpesa', 'passkey', ''),
         get_payment_setting('mpesa', 'callback_url', ''),
     ]
+    if _transaction_type() == 'CustomerBuyGoodsOnline':
+        required.append(get_payment_setting('mpesa', 'till_number', ''))
     return all(required)
 
 
@@ -48,10 +50,10 @@ def initiate_stk_push(payment_session) -> dict:
         'BusinessShortCode': get_payment_setting('mpesa', 'shortcode', ''),
         'Password': password,
         'Timestamp': timestamp,
-        'TransactionType': get_payment_setting('mpesa', 'transaction_type', 'CustomerPayBillOnline'),
+        'TransactionType': _transaction_type(),
         'Amount': int(Decimal(str(payment_session.amount)).quantize(Decimal('1'))),
         'PartyA': phone_number,
-        'PartyB': get_payment_setting('mpesa', 'shortcode', ''),
+        'PartyB': _party_b(),
         'PhoneNumber': phone_number,
         'CallBackURL': get_payment_setting('mpesa', 'callback_url', ''),
         'AccountReference': payment_session.reference,
@@ -250,6 +252,21 @@ def _base_url() -> str:
     if not parsed.scheme or not parsed.netloc:
         raise MpesaConfigurationError('M-Pesa base URL must be an absolute URL.')
     return urlunsplit((parsed.scheme, parsed.netloc, '', '', '')).rstrip('/')
+
+
+def mpesa_integration_name() -> str:
+    return 'daraja_sandbox' if 'sandbox' in _base_url().lower() else 'daraja_live'
+
+
+def _transaction_type() -> str:
+    return str(get_payment_setting('mpesa', 'transaction_type', 'CustomerPayBillOnline') or '').strip()
+
+
+def _party_b() -> str:
+    shortcode = str(get_payment_setting('mpesa', 'shortcode', '') or '').strip()
+    if _transaction_type() == 'CustomerBuyGoodsOnline':
+        return str(get_payment_setting('mpesa', 'till_number', '') or '').strip()
+    return shortcode
 
 
 def _timestamp() -> str:

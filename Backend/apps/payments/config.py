@@ -11,6 +11,7 @@ PROVIDER_SETTINGS = {
         'public': {
             'base_url': 'MPESA_BASE_URL',
             'shortcode': 'MPESA_SHORTCODE',
+            'till_number': 'MPESA_TILL_NUMBER',
             'callback_url': 'MPESA_CALLBACK_URL',
             'transaction_type': 'MPESA_TRANSACTION_TYPE',
             'timeout_seconds': 'MPESA_TIMEOUT_SECONDS',
@@ -112,6 +113,7 @@ def provider_is_configured(provider: str) -> bool:
 
 def provider_missing_requirements(provider: str) -> list[str]:
     if provider == 'mpesa':
+        transaction_type = get_payment_setting('mpesa', 'transaction_type', 'CustomerPayBillOnline')
         required = {
             'consumer_key': get_payment_setting('mpesa', 'consumer_key', ''),
             'consumer_secret': get_payment_setting('mpesa', 'consumer_secret', ''),
@@ -119,6 +121,8 @@ def provider_missing_requirements(provider: str) -> list[str]:
             'passkey': get_payment_setting('mpesa', 'passkey', ''),
             'callback_url': get_payment_setting('mpesa', 'callback_url', ''),
         }
+        if transaction_type == 'CustomerBuyGoodsOnline':
+            required['till_number'] = get_payment_setting('mpesa', 'till_number', '')
         return [key for key, value in required.items() if not value]
     if provider == 'pesapal':
         required = {

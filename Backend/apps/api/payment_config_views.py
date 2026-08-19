@@ -66,6 +66,7 @@ class MpesaConfigSerializer(serializers.Serializer):
     consumer_key = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=255)
     consumer_secret = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=255)
     shortcode = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    till_number = serializers.CharField(required=False, allow_blank=True, max_length=40)
     passkey = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=255)
     callback_url = serializers.URLField(required=False, allow_blank=True)
     transaction_type = serializers.CharField(required=False, allow_blank=True, max_length=80)
@@ -198,6 +199,7 @@ def _serialize_provider(provider: str) -> dict:
             'has_consumer_key': has_payment_secret('mpesa', 'consumer_key'),
             'has_consumer_secret': has_payment_secret('mpesa', 'consumer_secret'),
             'shortcode': get_payment_setting('mpesa', 'shortcode', settings.MPESA_SHORTCODE),
+            'till_number': get_payment_setting('mpesa', 'till_number', settings.MPESA_TILL_NUMBER),
             'has_passkey': has_payment_secret('mpesa', 'passkey'),
             'callback_url': get_payment_setting('mpesa', 'callback_url', settings.MPESA_CALLBACK_URL),
             'transaction_type': get_payment_setting('mpesa', 'transaction_type', settings.MPESA_TRANSACTION_TYPE),
@@ -300,7 +302,7 @@ def _update_payment_configuration(request) -> Response:
             is_enabled=data.get('is_enabled'),
             public_config={
                 key: data[key]
-                for key in ['base_url', 'shortcode', 'callback_url', 'transaction_type', 'timeout_seconds']
+                for key in ['base_url', 'shortcode', 'till_number', 'callback_url', 'transaction_type', 'timeout_seconds']
                 if key in data
             },
             secret_config={

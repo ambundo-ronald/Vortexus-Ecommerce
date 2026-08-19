@@ -8,6 +8,7 @@ export interface AdminPaymentConfiguration {
     has_consumer_key: boolean
     has_consumer_secret: boolean
     shortcode: string
+    till_number: string
     has_passkey: boolean
     callback_url: string
     transaction_type: string
@@ -70,6 +71,7 @@ export interface AdminPaymentConfigurationPayload {
     consumer_key?: string
     consumer_secret?: string
     shortcode?: string
+    till_number?: string
     passkey?: string
     callback_url?: string
     transaction_type?: string

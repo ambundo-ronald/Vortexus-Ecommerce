@@ -1,6 +1,7 @@
 from decimal import Decimal
 from datetime import timedelta
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -13,6 +14,7 @@ from apps.api.payment_config_views import _refund_request_summary
 from apps.accounts.models import CustomerProfile
 
 from .models import PaymentEvent, PaymentProviderConfiguration, PaymentReconciliation, PaymentRefundLedger, PaymentReturnCase, PaymentSession
+from .mpesa import initiate_stk_push, query_stk_push_status
 from .pesapal import PesapalGatewayError, handle_transaction_status, request_refund
 from .services import (
     _payment_method_capabilities,
@@ -48,6 +50,82 @@ class PaymentMethodCapabilityTests(SimpleTestCase):
             _payment_method_capabilities('credit_card', 'card'),
             {'flow': 'card_token', 'is_sandbox': True},
         )
+
+
+class MpesaBuyGoodsRequestTests(SimpleTestCase):
+    def _payment(self):
+        return SimpleNamespace(
+            amount=Decimal('8.70'),
+            payer_phone='0712345678',
+            reference='PAY-LIVE-1',
+            provider_payload={},
+            STATUS_PENDING='pending',
+            status='initialized',
+            save=Mock(),
+        )
+
+    @staticmethod
+    def _setting(provider, key, default=''):
+        values = {
+            'base_url': 'https://api.safaricom.co.ke',
+            'consumer_key': 'live-key',
+            'consumer_secret': 'live-secret',
+            'shortcode': '4342093',
+            'till_number': '1550097',
+            'passkey': 'live-passkey',
+            'callback_url': 'https://api.example.com/api/v1/payments/mpesa/callback/',
+            'transaction_type': 'CustomerBuyGoodsOnline',
+        }
+        return values.get(key, default)
+
+    @patch('apps.payments.mpesa._timestamp', return_value='20260819122446')
+    @patch('apps.payments.mpesa._generate_access_token', return_value='TOKEN')
+    @patch('apps.payments.mpesa._post_json', return_value={
+        'MerchantRequestID': 'merchant-1',
+        'CheckoutRequestID': 'checkout-1',
+        'ResponseCode': '0',
+    })
+    @patch('apps.payments.mpesa.get_payment_setting')
+    @patch('apps.payments.mpesa.provider_is_enabled', return_value=True)
+    def test_buy_goods_uses_api_shortcode_and_separate_till_number(
+        self,
+        _provider_enabled,
+        get_setting,
+        post_json,
+        _access_token,
+        _timestamp,
+    ):
+        get_setting.side_effect = self._setting
+
+        initiate_stk_push(self._payment())
+
+        payload = post_json.call_args.kwargs['payload']
+        self.assertEqual(payload['BusinessShortCode'], '4342093')
+        self.assertEqual(payload['PartyB'], '1550097')
+        self.assertEqual(payload['TransactionType'], 'CustomerBuyGoodsOnline')
+
+    @patch('apps.payments.mpesa._timestamp', return_value='20260819122446')
+    @patch('apps.payments.mpesa._generate_access_token', return_value='TOKEN')
+    @patch('apps.payments.mpesa._post_json', return_value={'ResultCode': '0'})
+    @patch('apps.payments.mpesa.get_payment_setting')
+    @patch('apps.payments.mpesa.provider_is_enabled', return_value=True)
+    def test_status_query_uses_api_shortcode_not_till_number(
+        self,
+        _provider_enabled,
+        get_setting,
+        post_json,
+        _access_token,
+        _timestamp,
+    ):
+        get_setting.side_effect = self._setting
+        payment = self._payment()
+        payment.provider_payload = {'checkout_request_id': 'checkout-1'}
+
+        query_stk_push_status(payment)
+
+        payload = post_json.call_args.kwargs['payload']
+        self.assertEqual(payload['BusinessShortCode'], '4342093')
+        self.assertNotIn('PartyB', payload)
 
 
 class CashOnDeliveryAvailabilityTests(TestCase):
