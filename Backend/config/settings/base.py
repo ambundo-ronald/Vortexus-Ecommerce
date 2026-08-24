@@ -140,8 +140,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': env('DRF_THROTTLE_ANON_RATE', default='120/hour'),
-        'user': '1200/hour',
-        'account_csrf': '60/hour',
+        'user': env('DRF_THROTTLE_USER_RATE', default='1200/hour'),
+        'account_csrf': env('DRF_THROTTLE_ACCOUNT_CSRF_RATE', default='60/hour'),
         'account_register': '5/hour',
         'account_register_identity': '3/hour',
         'account_login': '20/hour',

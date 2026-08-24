@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FaFacebookF, FaLinkedinIn, FaWhatsapp } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { storefrontExtrasApi } from "../../api/storefrontExtras.api";
 import ProductImageGallery from "../../components/catalog/ProductImageGallery.jsx";
@@ -40,6 +40,7 @@ import "./ProductDetailPage.css";
 
 export default function ProductDetailPage() {
   const { "*": routeProductPath = "" } = useParams();
+  const navigate = useNavigate();
   const routeProductRef = lastPathSegment(routeProductPath);
   const { product, related, loading, error } = useProductDetail(routeProductRef);
   const addItem = useCartStore((state) => state.addItem);
@@ -147,7 +148,7 @@ export default function ProductDetailPage() {
         title: "Sold out",
         message: `${resolvedTitle} is out of stock right now.`
       });
-      return;
+      return false;
     }
     if (price.isQuote) {
       notify({
@@ -155,11 +156,11 @@ export default function ProductDetailPage() {
         title: "Price unavailable",
         message: "Request a quote for this product before checkout."
       });
-      return;
+      return false;
     }
     if (missingRequiredOptions.length) {
       setOptionError(`Choose ${missingRequiredOptions.map((option) => option.name || option.code).join(", ")} before adding to cart.`);
-      return;
+      return false;
     }
     try {
       setOptionError("");
@@ -174,9 +175,16 @@ export default function ProductDetailPage() {
         product_id: Number(resolvedProductId),
         product_title: resolvedTitle
       }));
+      return true;
     } catch {
       // Global notification state already shows the failed action.
+      return false;
     }
+  }
+
+  async function handleBuyNow() {
+    const added = await handleAddToCart();
+    if (added) navigate("/checkout");
   }
 
   async function handleNativeShare() {
@@ -249,6 +257,21 @@ export default function ProductDetailPage() {
       <section className="product-detail">
         <div className="product-detail__media-panel">
           <ProductImageGallery product={product} />
+          <div className="product-detail__media-actions" aria-label="Product quick actions">
+            <button
+              className={`primary-button${canAddToCart ? "" : " primary-button--muted"}`}
+              type="button"
+              disabled={cartLoading}
+              onClick={() => void handleBuyNow()}
+            >
+              <MaterialIcon name="bolt" size={19} />
+              {cartLoading ? "Adding..." : canAddToCart ? "Buy Now" : "Sold out"}
+            </button>
+            <button className="secondary-button callback-button" type="button" onClick={() => setCallbackOpen(true)}>
+              <MaterialIcon name="phone_callback" size={19} />
+              Call me back
+            </button>
+          </div>
         </div>
 
         <div className="product-detail__body">
@@ -367,12 +390,6 @@ export default function ProductDetailPage() {
               <MaterialIcon name="add_shopping_cart" size={19} />
               {cartLoading ? "Adding..." : canAddToCart ? "Add to cart" : "Sold out"}
             </button>
-            <div className="product-secondary-actions">
-              <button className="secondary-button callback-button" type="button" onClick={() => setCallbackOpen(true)}>
-                <MaterialIcon name="phone_callback" size={19} />
-                Call me back
-              </button>
-            </div>
           </div>
 
           {!stock.isAvailable ? (

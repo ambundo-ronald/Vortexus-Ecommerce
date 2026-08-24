@@ -6,9 +6,11 @@ from urllib.request import Request, urlopen
 
 from django.apps import apps
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.text import slugify
 from oscar.apps.order.utils import OrderCreator, OrderNumberGenerator
 from rest_framework import permissions, serializers, status
 from rest_framework.response import Response
@@ -16,8 +18,8 @@ from rest_framework.views import APIView
 
 from apps.auditlog.services import record_audit_event
 from apps.common.async_utils import dispatch_background_task
-from apps.integrations.tasks import export_order_to_erpnext
-from apps.notifications.services import queue_order_confirmation_email
+from apps.integrations.tasks import export_order_to_erpnext, sync_customer_to_erpnext
+from apps.notifications.services import queue_order_confirmation_email, queue_password_reset_email
 from apps.inventory.services import (
     InventoryReservationError,
     prepare_basket_for_order_submission,
@@ -51,6 +53,69 @@ from .checkout_utils import (
 from .order_serializers import OrderPlacementSerializer, OrderSummarySerializer, build_order_prices
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_customer_username(email: str) -> str:
+    User = get_user_model()
+    base = slugify(email.split('@', 1)[0]).replace('-', '_')[:120] or 'customer'
+    candidate = base
+    suffix = 1
+    while User.objects.filter(username__iexact=candidate).exists():
+        suffix += 1
+        candidate = f'{base[:140]}_{suffix}'
+    return candidate[:150]
+
+
+def _create_or_link_guest_customer(*, guest_email: str, shipping_address=None, payment_session=None) -> tuple[object | None, dict]:
+    email = (guest_email or '').strip().lower()
+    account_setup = {
+        'required': False,
+        'email': email,
+        'created': False,
+        'existing_account': False,
+        'setup_email_sent': False,
+    }
+    if not email:
+        return None, account_setup
+
+    User = get_user_model()
+    user = User.objects.filter(email__iexact=email).first()
+    if user:
+        account_setup['existing_account'] = True
+    else:
+        user = User(
+            username=_generate_customer_username(email),
+            email=email,
+            first_name=(getattr(shipping_address, 'first_name', '') or '').strip(),
+            last_name=(getattr(shipping_address, 'last_name', '') or '').strip(),
+            is_active=True,
+        )
+        user.set_unusable_password()
+        user.save()
+        account_setup['created'] = True
+
+    CustomerProfile = apps.get_model('accounts', 'CustomerProfile')
+    profile, _ = CustomerProfile.objects.get_or_create(user=user)
+    phone = str(getattr(shipping_address, 'phone_number', '') or '').strip()
+    dirty_fields = []
+    if phone and not profile.phone:
+        profile.phone = phone
+        dirty_fields.append('phone')
+    if not profile.receive_order_updates:
+        profile.receive_order_updates = True
+        dirty_fields.append('receive_order_updates')
+    if dirty_fields:
+        profile.save(update_fields=[*dirty_fields, 'updated_at'])
+
+    if payment_session and not payment_session.user_id:
+        payment_session.user = user
+        payment_session.save(update_fields=['user', 'updated_at'])
+
+    if user.is_active and account_setup['created']:
+        queue_password_reset_email(user)
+        account_setup['setup_email_sent'] = True
+    account_setup['required'] = True
+    return user, account_setup
 
 
 def _save_shipping_address_to_book(request, serializer: ShippingAddressSerializer):
@@ -136,7 +201,7 @@ def _nominatim_place_payload(item: dict) -> dict:
 
 
 class DeliveryPlaceSearchAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         query = str(request.query_params.get('q') or '').strip()
@@ -315,14 +380,14 @@ class BasketLineDetailAPIView(APIView):
 
 
 class ShippingStateAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         return Response(build_checkout_payload(request))
 
 
 class ShippingAddressAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def put(self, request):
         serializer = ShippingAddressSerializer(data=request.data)
@@ -336,7 +401,7 @@ class ShippingAddressAPIView(APIView):
 
 
 class ShippingMethodSelectionAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         serializer = ShippingMethodSelectionSerializer(data=request.data)
@@ -365,7 +430,7 @@ class ShippingMethodSelectionAPIView(APIView):
 
 
 class CheckoutPreviewAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         basket = request.basket
@@ -399,10 +464,12 @@ class CheckoutPreviewAPIView(APIView):
 
 
 class CheckoutThankYouAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
-        order_number = request.query_params.get('order_number') or get_checkout_session(request).get_order_number()
+        checkout_session = get_checkout_session(request)
+        session_order_number = checkout_session.get_order_number()
+        order_number = request.query_params.get('order_number') or session_order_number
         if not order_number:
             raise serializers.ValidationError({'order_number': 'Order number is required.'})
         Order = apps.get_model('order', 'Order')
@@ -410,6 +477,8 @@ class CheckoutThankYouAPIView(APIView):
         if request.user.is_authenticated:
             order = get_object_or_404(queryset, number=order_number, user=request.user)
         else:
+            if not session_order_number or str(order_number) != str(session_order_number):
+                raise serializers.ValidationError({'order_number': 'Order confirmation is only available for this checkout session.'})
             order = get_object_or_404(queryset, number=order_number)
         return Response(
             {
@@ -421,7 +490,7 @@ class CheckoutThankYouAPIView(APIView):
 
 
 class OrderPlacementAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     @transaction.atomic
     def post(self, request):
@@ -491,6 +560,21 @@ class OrderPlacementAPIView(APIView):
             shipping_address.save()
         delivery_location = get_session_location(request)
 
+        order_user = request.user if request.user.is_authenticated else None
+        account_setup = {
+            'required': False,
+            'email': guest_email,
+            'created': False,
+            'existing_account': False,
+            'setup_email_sent': False,
+        }
+        if not order_user and guest_email:
+            order_user, account_setup = _create_or_link_guest_customer(
+                guest_email=guest_email,
+                shipping_address=shipping_address,
+                payment_session=payment_session,
+            )
+
         extra_order_fields = {'guest_email': guest_email} if guest_email else {}
         try:
             order = OrderCreator().place_order(
@@ -498,7 +582,7 @@ class OrderPlacementAPIView(APIView):
                 total=pricing['order_total'],
                 shipping_method=shipping_method,
                 shipping_charge=pricing['shipping_price'],
-                user=request.user if request.user.is_authenticated else None,
+                user=order_user,
                 shipping_address=shipping_address,
                 order_number=order_number,
                 status=getattr(settings, 'OSCAR_INITIAL_ORDER_STATUS', 'Pending'),
@@ -520,11 +604,17 @@ class OrderPlacementAPIView(APIView):
             run_kwargs={'order_number': order.number},
             async_kwargs={'order_number': order.number},
         )
+        if account_setup.get('created') and order_user:
+            dispatch_background_task(
+                sync_customer_to_erpnext,
+                run_kwargs={'user_id': order_user.id},
+                async_kwargs={'user_id': order_user.id},
+            )
         logger.info('Order placed successfully: number=%s user=%s', order.number, getattr(request.user, 'id', None))
         record_audit_event(
             event_type='orders.placed',
             request=request,
-            actor=request.user if request.user.is_authenticated else None,
+            actor=request.user if request.user.is_authenticated else order_user,
             target=order,
             message='Order placed successfully.',
             metadata={
@@ -532,6 +622,8 @@ class OrderPlacementAPIView(APIView):
                 'payment_reference': payment_session.reference,
                 'payment_method': payment_session.method,
                 'guest_checkout': bool(guest_email and not request.user.is_authenticated),
+                'customer_account_created': account_setup.get('created', False),
+                'customer_account_existing': account_setup.get('existing_account', False),
             },
         )
 
@@ -540,6 +632,7 @@ class OrderPlacementAPIView(APIView):
                 'detail': 'Order placed successfully.',
                 'order': OrderSummarySerializer(order).data,
                 'payment': serialize_payment_session(payment_session),
+                'account_setup': account_setup,
                 'taxes': pricing['tax_breakdown'],
             },
             status=status.HTTP_201_CREATED,

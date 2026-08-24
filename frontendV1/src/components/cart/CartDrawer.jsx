@@ -85,9 +85,9 @@ export default function CartDrawer() {
             <strong>{formatCurrency(totals.subtotal, totals.currency)}</strong>
           </div>
           <div className="cart-drawer__footer-actions">
-            <Link className="primary-button cart-drawer__view-cart" to="/checkout/cart" onClick={handleClose}>
+            <Link className="primary-button cart-drawer__view-cart" to="/checkout" onClick={handleClose}>
               <MaterialIcon name="shopping_cart" size={18} />
-              View cart
+              Buy Now
             </Link>
             {lines.length ? (
               <button className="cart-drawer__clear-text" type="button" disabled={loading} onClick={() => void handleClearCart()}>

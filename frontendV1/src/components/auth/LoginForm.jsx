@@ -170,6 +170,22 @@ export default function LoginForm({
       <p className="auth-switch">
         New here? <Link to="/register">Create an account</Link>
       </p>
+
+      <div className="auth-benefits" aria-label="Account benefits">
+        <div className="auth-benefits__head">
+          <span><MaterialIcon name="verified_user" size={20} /></span>
+          <strong>Checkout is faster with an account</strong>
+        </div>
+        <div className="auth-benefits__grid">
+          <span><MaterialIcon name="receipt_long" size={16} /> Order history</span>
+          <span><MaterialIcon name="location_on" size={16} /> Saved delivery</span>
+          <span><MaterialIcon name="replay" size={16} /> Faster reorders</span>
+        </div>
+        <Link className="secondary-button auth-benefits__action" to="/register">
+          <MaterialIcon name="person_add" size={18} />
+          Create account
+        </Link>
+      </div>
     </form>
   );
 }

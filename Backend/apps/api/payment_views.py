@@ -2,6 +2,7 @@ import logging
 
 from django.apps import apps
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -69,9 +70,17 @@ KCB_PAYBILL_ACCOUNT_NUMBER = '1354483790'
 def _payment_session_queryset_for_request(request):
     PaymentSession = apps.get_model('payments', 'PaymentSession')
     queryset = PaymentSession.objects.all()
-    if request.user.is_staff:
+    if request.user.is_authenticated and request.user.is_staff:
         return queryset
-    return queryset.filter(user=request.user)
+    basket = getattr(request, 'basket', None)
+    if request.user.is_authenticated:
+        filters = Q(user=request.user)
+        if basket and getattr(basket, 'id', None):
+            filters |= Q(user__isnull=True, basket=basket)
+        return queryset.filter(filters)
+    if basket and getattr(basket, 'id', None):
+        return queryset.filter(user__isnull=True, basket=basket)
+    return queryset.none()
 
 
 class PaymentMethodCollectionAPIView(APIView):
@@ -84,7 +93,7 @@ class PaymentMethodCollectionAPIView(APIView):
 
 
 class PaymentInitializationAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -95,7 +104,7 @@ class PaymentInitializationAPIView(APIView):
         pricing = serializer.validated_data['pricing']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code=serializer.validated_data['method'],
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
@@ -111,7 +120,7 @@ class PaymentInitializationAPIView(APIView):
 
 
 class PaymentSessionDetailAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, reference: str):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference)
@@ -119,7 +128,7 @@ class PaymentSessionDetailAPIView(APIView):
 
 
 class HighValueBankDepositAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -145,7 +154,7 @@ class HighValueBankDepositAPIView(APIView):
         mpesa_code = serializer.validated_data['mpesa_code']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code='bank_transfer',
             amount=amount,
             currency=currency,
@@ -217,7 +226,7 @@ class PaymentConfirmationAPIView(APIView):
 
 
 class MpesaInitializationAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -239,7 +248,7 @@ class MpesaInitializationAPIView(APIView):
         pricing = serializer.validated_data['pricing']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code='mpesa',
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
@@ -290,7 +299,7 @@ class MpesaInitializationAPIView(APIView):
 
 
 class MpesaStatusAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, reference: str):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='mpesa')
@@ -342,7 +351,7 @@ class MpesaCallbackAPIView(APIView):
 
 
 class PesapalInitializationAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -364,7 +373,7 @@ class PesapalInitializationAPIView(APIView):
         pricing = serializer.validated_data['pricing']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code='pesapal',
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
@@ -413,7 +422,7 @@ class PesapalInitializationAPIView(APIView):
 
 
 class PesapalStatusAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, reference: str):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='pesapal')
@@ -530,7 +539,7 @@ class PesapalNotificationAPIView(APIView):
 
 
 class CardInitializationAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -540,7 +549,7 @@ class CardInitializationAPIView(APIView):
         pricing = serializer.validated_data['pricing']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code=serializer.validated_data['method'],
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
@@ -581,7 +590,7 @@ class CardInitializationAPIView(APIView):
 
 
 class AirtelMoneyInitializationAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     throttle_scope = 'payment_init'
     throttle_classes = [ScopedRateThrottle]
 
@@ -603,7 +612,7 @@ class AirtelMoneyInitializationAPIView(APIView):
         pricing = serializer.validated_data['pricing']
         payment_session = initialize_payment_session(
             basket=request.basket,
-            user=request.user,
+            user=request.user if request.user.is_authenticated else None,
             method_code='airtel_money',
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
@@ -639,7 +648,7 @@ class AirtelMoneyInitializationAPIView(APIView):
 
 
 class AirtelMoneyStatusAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, reference: str):
         payment_session = get_object_or_404(_payment_session_queryset_for_request(request), reference=reference, method='airtel_money')

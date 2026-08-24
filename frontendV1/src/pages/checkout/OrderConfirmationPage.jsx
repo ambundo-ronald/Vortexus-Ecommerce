@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import EmailTouchpointCard from "../../components/account/EmailTouchpointCard.jsx";
+import { authApi } from "../../api/auth.api";
 import CheckoutStepper from "../../components/checkout/CheckoutStepper.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
 import Alert from "../../components/ui/Alert.jsx";
+import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
 import { searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import { normalizeApiError } from "../../utils/errorHandler";
 import {
   paymentStatusView,
   readablePaymentMethod
@@ -29,6 +32,10 @@ export default function OrderConfirmationPage() {
   const [searchParams] = useSearchParams();
   const storedPayload = location.state?.orderPayload || readStoredOrder();
   const [payload, setPayload] = useState(storedPayload);
+  const [passwordSetupSending, setPasswordSetupSending] = useState(false);
+  const [passwordSetupMessage, setPasswordSetupMessage] = useState("");
+  const [passwordSetupError, setPasswordSetupError] = useState("");
+  const { user } = useAuth();
   const { loading, error, loadOrderConfirmation } = useCheckout({ auto: false });
   const orderNumber = searchParams.get("order_number") || storedPayload?.order?.number || storedPayload?.order?.order_number || "";
 
@@ -49,6 +56,7 @@ export default function OrderConfirmationPage() {
 
   const order = payload?.order;
   const payment = payload?.payment;
+  const accountSetup = payload?.account_setup || {};
   const paymentView = paymentStatusView(payment);
   const paymentMethodName = payment?.method_name || readablePaymentMethod(payment?.method);
   const address = order?.shipping_address;
@@ -62,6 +70,23 @@ export default function OrderConfirmationPage() {
   const emailMessage = order?.guest_email
     ? `Your order summary is being sent to ${order.guest_email}. Keep that email for tracking and support.`
     : "Sent to your inbox.";
+  const accountEmail = accountSetup.email || order?.guest_email || "";
+  const showAccountPrompt = Boolean(!user && accountEmail);
+
+  async function sendPasswordSetupLink() {
+    if (!accountEmail) return;
+    setPasswordSetupSending(true);
+    setPasswordSetupMessage("");
+    setPasswordSetupError("");
+    try {
+      const response = await authApi.requestPasswordReset({ email: accountEmail });
+      setPasswordSetupMessage(response?.detail || "If that email exists, password setup instructions will be sent.");
+    } catch (requestError) {
+      setPasswordSetupError(normalizeApiError(requestError, "Could not send the password setup email.").message);
+    } finally {
+      setPasswordSetupSending(false);
+    }
+  }
 
   useEffect(() => {
     if (!order) return;
@@ -124,6 +149,36 @@ export default function OrderConfirmationPage() {
           title="Confirmation email sent"
           tone="success"
         />
+
+        {showAccountPrompt ? (
+          <div className="checkout-account-setup">
+            <span><MaterialIcon name={accountSetup.existing_account ? "login" : "lock_reset"} size={22} /></span>
+            <div>
+              <strong>{accountSetup.existing_account ? "You already have an account" : "Create your password"}</strong>
+              <p>
+                {accountSetup.existing_account
+                  ? "Sign in with this email to view order history, saved deliveries, and faster reorders."
+                  : accountSetup.setup_email_sent
+                    ? `We sent a secure password setup link to ${accountEmail}. Use it to track this order and save your delivery details.`
+                    : `Set a password for ${accountEmail} to track this order, save delivery details, and reorder faster.`}
+              </p>
+              <Alert tone="success">{passwordSetupMessage}</Alert>
+              <Alert>{passwordSetupError}</Alert>
+              <div className="checkout-account-setup__actions">
+                {!accountSetup.existing_account ? (
+                  <button className="secondary-button" type="button" disabled={passwordSetupSending} onClick={sendPasswordSetupLink}>
+                    <MaterialIcon name="outgoing_mail" size={18} />
+                    {passwordSetupSending ? "Sending..." : accountSetup.setup_email_sent ? "Resend setup link" : "Send setup link"}
+                  </button>
+                ) : null}
+                <Link className="primary-button" to="/login">
+                  <MaterialIcon name="login" size={18} />
+                  Sign in
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="confirmation-grid">
           <div>

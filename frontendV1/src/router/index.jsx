@@ -68,11 +68,11 @@ export default function AppRouter() {
       <Route path="/product-alerts/cancel/:key" element={<PageWrapper><ProductAlertActionPage action="cancel" /></PageWrapper>} />
       <Route path="/wishlists/shared/:key" element={<PageWrapper><SharedWishlistPage /></PageWrapper>} />
       <Route path="/checkout/cart" element={<PageWrapper><CartPage /></PageWrapper>} />
-      <Route path="/checkout" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/shipping" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/payment" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/review" element={<PageWrapper><ProtectedRoute><UnifiedCheckoutPage /></ProtectedRoute></PageWrapper>} />
-      <Route path="/checkout/confirmation" element={<PageWrapper><ProtectedRoute><OrderConfirmationPage /></ProtectedRoute></PageWrapper>} />
+      <Route path="/checkout" element={<PageWrapper><UnifiedCheckoutPage /></PageWrapper>} />
+      <Route path="/checkout/shipping" element={<PageWrapper><UnifiedCheckoutPage /></PageWrapper>} />
+      <Route path="/checkout/payment" element={<PageWrapper><UnifiedCheckoutPage /></PageWrapper>} />
+      <Route path="/checkout/review" element={<PageWrapper><UnifiedCheckoutPage /></PageWrapper>} />
+      <Route path="/checkout/confirmation" element={<PageWrapper><OrderConfirmationPage /></PageWrapper>} />
       <Route path="/login" element={<PageWrapper><LoginPage /></PageWrapper>} />
       <Route path="/register" element={<PageWrapper><RegisterPage /></PageWrapper>} />
       <Route path="/forgot-password" element={<PageWrapper><ForgotPasswordPage /></PageWrapper>} />

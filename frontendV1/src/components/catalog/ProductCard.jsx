@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import MaterialIcon from "../ui/MaterialIcon.jsx";
 import WishlistButton from "../wishlist/WishlistButton.jsx";
@@ -9,6 +9,7 @@ import { productBrand, productId, productInitials, productPrice, productRating, 
 import { rememberSearchContext, searchAttributionMetadata, trackStorefrontEvent } from "../../utils/analytics";
 
 export default function ProductCard({ product, analyticsContext = null, actionVariant = "add" }) {
+  const navigate = useNavigate();
   const addItem = useCartStore((state) => state.addItem);
   const loading = useCartStore((state) => state.loading);
   const notify = useUiStore((state) => state.notify);
@@ -35,7 +36,7 @@ export default function ProductCard({ product, analyticsContext = null, actionVa
         title: "Sold out",
         message: `${title} is out of stock right now.`
       });
-      return;
+      return false;
     }
     if (price.isQuote) {
       notify({
@@ -43,16 +44,23 @@ export default function ProductCard({ product, analyticsContext = null, actionVa
         title: "Price unavailable",
         message: "Request a quote for this product before checkout."
       });
-      return;
+      return false;
     }
     try {
       await addItem(resolvedProductId, isReorder ? reorderQuantity : 1, [], searchAttributionMetadata({
         product_id: Number(resolvedProductId),
         product_title: title
       }));
+      return true;
     } catch {
       // Global notification state already shows the failed action.
+      return false;
     }
+  }
+
+  async function handleBuyNow() {
+    const added = await handleAddToCart();
+    if (added) navigate("/checkout");
   }
 
   function trackProductClick() {
@@ -96,13 +104,26 @@ export default function ProductCard({ product, analyticsContext = null, actionVa
           </span>
           {price.sublabel ? <small>{price.sublabel}</small> : null}
         </span>
-        <div className={`product-card__rating${hasRating ? "" : " is-empty"}`} aria-label={reviewCount > 0 ? `${ratingText} out of 5 from ${reviewCount} reviews` : "No reviews yet"}>
-          <MaterialIcon name="star" size={15} filled={hasRating} className="product-card__rating-icon" />
-          <span className="product-card__rating-value">{ratingText}</span>
-          {reviewCount > 0 ? <span className="product-card__rating-count">({reviewCount})</span> : null}
+        <div className="product-card__signals">
+          <div className={`product-card__rating${hasRating ? "" : " is-empty"}`} aria-label={reviewCount > 0 ? `${ratingText} out of 5 from ${reviewCount} reviews` : "No reviews yet"}>
+            <MaterialIcon name="star" size={15} filled={hasRating} className="product-card__rating-icon" />
+            <span className="product-card__rating-value">{ratingText}</span>
+            {reviewCount > 0 ? <span className="product-card__rating-count">({reviewCount})</span> : null}
+          </div>
+          <span className={`stock-label stock-label--${stock.isAvailable ? "available" : "sold-out"}`}>{stock.label}</span>
         </div>
-        <span className={`stock-label stock-label--${stock.isAvailable ? "available" : "sold-out"}`}>{stock.label}</span>
         <div className="product-card__foot">
+          {!isReorder ? (
+            <button
+              className={`buy-now-button${canAdd ? "" : " buy-now-button--muted"}`}
+              type="button"
+              disabled={loading || !resolvedProductId}
+              onClick={() => void handleBuyNow()}
+              aria-label={canAdd ? `Buy ${title} now` : `${title} is not available for immediate purchase`}
+            >
+              Buy
+            </button>
+          ) : null}
           <button
             className={`add-cart-button ${isReorder ? "add-cart-button--reorder" : "add-cart-button--icon"}${canAdd ? "" : " add-cart-button--muted"}`}
             type="button"

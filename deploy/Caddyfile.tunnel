@@ -54,6 +54,20 @@ http://{$API_DOMAIN} {
 
     respond @preflight 204
 
+    handle_errors {
+        @corsErrorOrigin {
+            header_regexp Origin ^https://(store|admin)\.vortexusindustrial\.com$
+        }
+
+        header @corsErrorOrigin {
+            Access-Control-Allow-Origin "{http.request.header.Origin}"
+            Access-Control-Allow-Credentials "true"
+            Vary "Origin"
+        }
+
+        respond "{err.status_code} {err.status_text}" {err.status_code}
+    }
+
     handle_path /static/* {
         root * /srv/backend/static
         file_server

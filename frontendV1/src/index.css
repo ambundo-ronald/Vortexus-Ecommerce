@@ -2020,6 +2020,8 @@ img {
   border: 1px solid var(--card-border);
   border-radius: var(--product-card-radius);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--card-bg);
   box-shadow: var(--shadow-xs);
   transition:
@@ -2100,10 +2102,11 @@ img {
 }
 
 .product-card__body {
-  position: relative;
-  display: grid;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   gap: 5px;
-  padding: 8px 42px 8px 8px;
+  padding: 8px;
 }
 
 .product-card__meta,
@@ -2155,11 +2158,19 @@ img {
 }
 
 .product-card__foot {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.product-card__signals {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
 }
 
 .product-card__rating {
@@ -2195,17 +2206,15 @@ img {
 }
 
 .product-card--reorder .product-card__body {
-  padding-right: 8px;
-  padding-bottom: 8px;
-}
-
-.product-card--reorder .product-card__foot {
-  right: 8px;
-  bottom: 8px;
+  padding: 8px;
 }
 
 .product-card--reorder .stock-label {
-  max-width: calc(100% - 112px);
+  max-width: 56%;
+}
+
+.product-card:not(.product-card--reorder) .stock-label {
+  max-width: 58%;
 }
 
 .product-card__placeholder {
@@ -2319,16 +2328,27 @@ img {
 
   .app-shell:has(.category-sidebar) .product-card__body {
     gap: 4px;
-    padding: 6px 39px 7px 6px;
+    padding: 6px;
   }
 
   .app-shell:has(.category-sidebar) .product-card__foot {
-    right: 6px;
-    bottom: 7px;
+    gap: 4px;
   }
 
   .app-shell:has(.category-sidebar) .product-card__rating {
     font-size: 0.62rem;
+  }
+
+  .app-shell:has(.category-sidebar) .stock-label {
+    padding-inline: 6px;
+    font-size: 0.59rem;
+  }
+
+  .app-shell:has(.category-sidebar) .buy-now-button {
+    min-width: 38px;
+    min-height: 31px;
+    padding-inline: 8px;
+    font-size: 0.63rem;
   }
 
   .app-shell:has(.category-sidebar) .product-card__price strong {
@@ -2382,7 +2402,30 @@ img {
   color: var(--color-text-muted);
 }
 
+.buy-now-button {
+  min-width: 38px;
+  min-height: 33px;
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.buy-now-button--muted {
+  border-color: var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
 .add-cart-button--muted,
+.buy-now-button--muted,
 .icon-action--muted,
 .primary-button--muted {
   cursor: not-allowed;

@@ -33,6 +33,14 @@ export default function PaymentMethodSelector({
   const [holderName, setHolderName] = useState("");
 
   useEffect(() => {
+    if (!phoneNumber && defaultPhone) setPhoneNumber(defaultPhone);
+  }, [defaultPhone, phoneNumber]);
+
+  useEffect(() => {
+    if (!payerEmail && defaultEmail) setPayerEmail(defaultEmail);
+  }, [defaultEmail, payerEmail]);
+
+  useEffect(() => {
     if (!sortedMethods.length) {
       if (method) setMethod("");
       return;

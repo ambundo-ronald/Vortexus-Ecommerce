@@ -84,8 +84,10 @@ export default function UnifiedCheckoutPage() {
   const hasSavedAddresses = Boolean(user && addresses.length);
   const selectedAddress = addresses.find((address) => String(address.id) === String(selectedAddressId)) || null;
   const fallbackAddress = hasSavedAddresses ? addresses.find((address) => address.is_default_for_shipping) || addresses[0] : null;
+  const hasConfirmedSessionAddress = Boolean(!hasSavedAddresses && deliveryMode !== "new" && hasPinnedAddress(shipping?.address));
   const showSavedAddressPicker = hasSavedAddresses && deliveryMode !== "new";
-  const showDeliveryForm = !hasSavedAddresses || deliveryMode === "new";
+  const showDeliveryForm = deliveryMode === "new" || (!hasSavedAddresses && !hasConfirmedSessionAddress);
+  const showSessionAddressSummary = Boolean(!hasSavedAddresses && !showDeliveryForm && shipping?.address);
   const selectedCode = shipping?.selected_method?.code || "";
   const editingDeliveryDetails = showDeliveryForm;
   const shippingMethods = shipping?.methods || [];
@@ -93,6 +95,7 @@ export default function UnifiedCheckoutPage() {
   const deliveryFeeAboveLimit = shippingMethods.some((method) => !isDispatchHubPickup(method) && Number(method.charge || 0) > LOGISTICS_DELIVERY_LIMIT_KES);
   const visibleShippingMethods = deliveryFeeAboveLimit && dispatchHubPickup ? [dispatchHubPickup] : shippingMethods;
   const estimatedShippingMethods = shipping?.estimated_methods || [];
+  const deliveryAddressReady = Boolean(!editingDeliveryDetails && hasPinnedAddress(shipping?.address));
   const shippingReady = Boolean(shipping?.ready_for_checkout && !editingDeliveryDetails && hasPinnedAddress(shipping?.address));
   const baseOrderTotal = Number(shipping?.totals?.base_order_total ?? basket?.totals?.base_subtotal ?? 0);
   const exceedsMpesaLimit = baseOrderTotal > MPESA_TRANSACTION_LIMIT_KES;
@@ -189,6 +192,12 @@ export default function UnifiedCheckoutPage() {
   }, [deliveryFeeAboveLimit, dispatchHubPickup, logisticsAlertKey, selectMethod, selectedCode, shipping?.address?.id]);
 
   useEffect(() => {
+    if (!deliveryAddressReady || selectedCode || saving || !visibleShippingMethods.length) return;
+    const preferredMethod = visibleShippingMethods.find((method) => !method.needs_location) || visibleShippingMethods[0];
+    if (preferredMethod?.code) void handleMethodSelect(preferredMethod.code);
+  }, [deliveryAddressReady, saving, selectedCode, visibleShippingMethods.map((method) => method.code).join("|")]);
+
+  useEffect(() => {
     if (!activePayment || !confirmationStartedAt || isPaymentComplete(activePayment) || isPaymentFailed(activePayment)) return undefined;
     const timer = window.setInterval(() => setClockTick(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -222,6 +231,17 @@ export default function UnifiedCheckoutPage() {
     try {
       await saveAddress(address);
       await saveBillingAddress({ ...address, phone_number: address.phone_number || "" });
+      if (!user) {
+        setSelectedAddressId("");
+        setDeliveryMode("confirmed");
+        trackStorefrontEvent("shipping_confirmed", checkoutMetadata({
+          source: "guest_session",
+          country_code: address?.country_code,
+          has_coordinates: hasPinnedAddress(address)
+        }));
+        return;
+      }
+
       const latestAddresses = await loadAddresses();
       const newestAddress = findMatchingSavedAddress(address, latestAddresses) || latestAddresses[0];
       if (newestAddress?.id) setSelectedAddressId(String(newestAddress.id));
@@ -587,7 +607,8 @@ export default function UnifiedCheckoutPage() {
     <section className="checkout-page">
       <CheckoutStepper current="checkout" basket={basket} shipping={shipping} />
       <div className="checkout-title-row">
-        <h1>Checkout</h1>
+        <span>Checkout</span>
+        <h1>Complete your order</h1>
       </div>
 
       <Alert>{error || visiblePaymentError}</Alert>
@@ -635,12 +656,39 @@ export default function UnifiedCheckoutPage() {
             </section>
           ) : null}
 
+          {showSessionAddressSummary ? (
+            <section className="checkout-card delivery-choice-card">
+              <div className="checkout-card__title">
+                <span><MaterialIcon name="task_alt" size={20} /></span>
+                <div>
+                  <h2>Delivery details</h2>
+                  <p>Using your pinned delivery location for this checkout.</p>
+                </div>
+              </div>
+              <div className="previous-address-summary">
+                <div>
+                  <strong>{addressTitle(shipping.address)}</strong>
+                  <span>{addressLines(shipping.address)}</span>
+                  {shipping.address.phone_number ? <small>{shipping.address.phone_number}</small> : null}
+                </div>
+                <em>Confirmed</em>
+              </div>
+              <div className="delivery-choice-actions">
+                <button className="secondary-button" type="button" disabled={saving} onClick={handleCreateNewDetails}>
+                  <MaterialIcon name="add_location_alt" size={18} />
+                  Change delivery location
+                </button>
+              </div>
+            </section>
+          ) : null}
+
           {showDeliveryForm ? (
             <ShippingAddressForm
               address={deliveryMode === "new" ? null : shipping?.address}
               countries={shipping?.countries || []}
               saving={saving}
               autoSubmitOnLocationChange
+              submitLabel="Confirm delivery details"
               onSubmit={handleAddressSubmit}
             />
           ) : null}
@@ -652,7 +700,7 @@ export default function UnifiedCheckoutPage() {
               saving={saving}
               estimated
               title="Estimated delivery"
-              note="Exact fees recalculate after you pin and save the delivery location."
+              note="Exact fees recalculate after you confirm the pinned delivery location."
             />
           ) : (
             <ShippingMethodSelector
@@ -662,6 +710,23 @@ export default function UnifiedCheckoutPage() {
               onSelect={handleMethodSelect}
             />
           )}
+
+          {!user && shippingReady ? (
+            <section className="checkout-card checkout-account-prompt">
+              <div className="checkout-card__title">
+                <span><MaterialIcon name="person_add" size={20} /></span>
+                <div>
+                  <h2>Fast checkout, full tracking</h2>
+                  <p>Continue now. After payment, we will email a secure password setup link so you can track this order, save delivery locations, and reorder faster.</p>
+                </div>
+              </div>
+              <div className="checkout-account-prompt__chips">
+                <span><MaterialIcon name="receipt_long" size={16} /> Order history</span>
+                <span><MaterialIcon name="location_on" size={16} /> Saved delivery</span>
+                <span><MaterialIcon name="repeat" size={16} /> Faster reorders</span>
+              </div>
+            </section>
+          ) : null}
 
           {activePayment ? (
             <PaymentProgressPanel
@@ -681,17 +746,19 @@ export default function UnifiedCheckoutPage() {
               onSubmit={handlePaymentSubmit}
               submitLabel="Place order"
               defaultEmail={user?.email || ""}
-              defaultPhone={user?.phone || user?.phone_number || ""}
+              defaultPhone={shipping?.address?.phone_number || selectedAddress?.phone_number || user?.phone || user?.phone_number || ""}
             />
           ) : (
             <section className="checkout-card checkout-note-panel delivery-save-required">
               <MaterialIcon name={exceedsMpesaLimit ? "account_balance" : "lock"} size={20} />
               <div>
-                <strong>{exceedsMpesaLimit ? "Use KCB PayBill deposit for this order." : "Payment unlocks after delivery is ready."}</strong>
+                <strong>{exceedsMpesaLimit ? "Use KCB PayBill deposit for this order." : "Complete delivery to continue."}</strong>
                 <span>
                   {exceedsMpesaLimit
                     ? "Pay by PayBill and submit your M-Pesa confirmation code for account manager confirmation."
-                    : "Pin your delivery location and select a delivery method to pay and place the order."}
+                    : deliveryAddressReady
+                      ? "Select a delivery method to pay and place the order."
+                      : "Confirm your delivery location to see payment options."}
                 </span>
               </div>
             </section>

@@ -34,7 +34,7 @@ export default function ShippingAddressForm({
   title = "Delivery details",
   description = "",
   icon = "location_on",
-  submitLabel = "Save delivery details",
+  submitLabel = "Confirm delivery details",
   requirePhone = true,
   autoSubmitOnLocationChange = false,
   onSubmit
@@ -117,7 +117,7 @@ export default function ShippingAddressForm({
   function handleSubmit(event) {
     event.preventDefault();
     if (!form.latitude || !form.longitude) {
-      setLocationStatus("Pin the delivery location before saving.");
+      setLocationStatus("Pin the delivery location before confirming.");
       trackStorefrontEvent("shipping_save_blocked", {
         reason: "missing_location",
         country_code: form.country_code || "KE",
@@ -126,7 +126,7 @@ export default function ShippingAddressForm({
       void Swal.fire({
         icon: "warning",
         title: "Pin delivery location",
-        text: "Please search and select the delivery location, or use your current location, before saving delivery details.",
+        text: "Please search and select the delivery location, or use your current location, before confirming delivery details.",
         confirmButtonText: "OK",
         confirmButtonColor: "#2563eb"
       });
@@ -230,17 +230,29 @@ export default function ShippingAddressForm({
     const city = addressInfo.city || addressInfo.town || addressInfo.village || addressInfo.county || form.line4;
     const county = addressInfo.state || addressInfo.county || form.state;
     const postcode = addressInfo.postcode || form.postcode;
-    const latitude = place.latitude ?? place.lat;
-    const longitude = place.longitude ?? place.lon;
+    const latitude = parseCoordinate(place.latitude ?? place.lat, -90, 90);
+    const longitude = parseCoordinate(place.longitude ?? place.lon, -180, 180);
+
+    if (latitude === null || longitude === null) {
+      setLocationStatus("That place did not include valid map coordinates. Try another result or use your current location.");
+      trackStorefrontEvent("location_pin_failed", {
+        source: "place_search",
+        provider: place.provider || "",
+        reason: "invalid_coordinates",
+        country_code: form.country_code || "KE"
+      });
+      return;
+    }
 
     setForm((current) => ({
       ...current,
-      line1: current.line1 || compactLocationLabel(addressInfo, label),
+      line1: compactLocationLabel(addressInfo, label),
       line4: city || current.line4,
       state: county || current.state,
       postcode: postcode || current.postcode,
-      latitude: Number(latitude).toFixed(6),
-      longitude: Number(longitude).toFixed(6),
+      country_code: String(addressInfo.country_code || current.country_code || "KE").toUpperCase(),
+      latitude: latitude.toFixed(6),
+      longitude: longitude.toFixed(6),
       location_label: label,
       location_source: "place_search",
       location_provider: place.provider || "",
@@ -254,7 +266,7 @@ export default function ShippingAddressForm({
     trackStorefrontEvent("location_pinned", {
       source: "place_search",
       provider: place.provider || "",
-      has_coordinates: latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null,
+      has_coordinates: true,
       country_code: form.country_code || "KE"
     });
   }
@@ -317,8 +329,8 @@ export default function ShippingAddressForm({
         </div>
         {placeResults.length ? (
           <div className="delivery-place-results" aria-label="Delivery place search results">
-            {placeResults.map((place) => (
-              <button key={place.place_id} type="button" onClick={() => choosePlace(place)}>
+            {placeResults.map((place, index) => (
+              <button key={place.place_id || `${place.latitude || place.lat}:${place.longitude || place.lon}:${index}`} type="button" onClick={() => choosePlace(place)}>
                 <MaterialIcon name="location_on" size={17} />
                 <span>{place.label || place.formatted_address}</span>
               </button>
@@ -376,7 +388,7 @@ export default function ShippingAddressForm({
 
       <button className="primary-button checkout-submit" type="submit" disabled={saving}>
         <MaterialIcon name="check" size={19} />
-        {saving ? "Saving..." : submitLabel}
+        {saving ? "Confirming..." : submitLabel}
       </button>
     </form>
   );
@@ -423,4 +435,11 @@ function normalizeConfidence(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
   return String(Math.max(0, Math.min(1, number)).toFixed(2));
+}
+
+function parseCoordinate(value, min, max) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) return null;
+  return number;
 }
