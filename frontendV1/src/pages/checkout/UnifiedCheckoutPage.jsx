@@ -84,10 +84,10 @@ export default function UnifiedCheckoutPage() {
   const hasSavedAddresses = Boolean(user && addresses.length);
   const selectedAddress = addresses.find((address) => String(address.id) === String(selectedAddressId)) || null;
   const fallbackAddress = hasSavedAddresses ? addresses.find((address) => address.is_default_for_shipping) || addresses[0] : null;
-  const hasConfirmedSessionAddress = Boolean(!hasSavedAddresses && deliveryMode !== "new" && hasPinnedAddress(shipping?.address));
-  const showSavedAddressPicker = hasSavedAddresses && deliveryMode !== "new";
+  const hasConfirmedSessionAddress = Boolean(deliveryMode === "confirmed" && hasPinnedAddress(shipping?.address));
+  const showSavedAddressPicker = hasSavedAddresses && deliveryMode === "saved";
   const showDeliveryForm = deliveryMode === "new" || (!hasSavedAddresses && !hasConfirmedSessionAddress);
-  const showSessionAddressSummary = Boolean(!hasSavedAddresses && !showDeliveryForm && shipping?.address);
+  const showSessionAddressSummary = Boolean(hasConfirmedSessionAddress && shipping?.address);
   const selectedCode = shipping?.selected_method?.code || "";
   const editingDeliveryDetails = showDeliveryForm;
   const shippingMethods = shipping?.methods || [];
@@ -167,6 +167,7 @@ export default function UnifiedCheckoutPage() {
 
   useEffect(() => {
     if (!hasSavedAddresses || deliveryMode === "new" || saving) return;
+    if (hasPinnedAddress(shipping?.address)) return;
     const defaultAddress = addresses.find((address) => address.is_default_for_shipping && hasPinnedAddress(address));
     if (!defaultAddress?.id) return;
     if (shipping?.address?.id && String(shipping.address.id) === String(defaultAddress.id)) return;
@@ -229,7 +230,7 @@ export default function UnifiedCheckoutPage() {
       has_coordinates: hasPinnedAddress(address)
     }));
     try {
-      await saveAddress(address);
+      const checkoutPayload = await saveAddress(address);
       await saveBillingAddress({ ...address, phone_number: address.phone_number || "" });
       if (!user) {
         setSelectedAddressId("");
@@ -243,9 +244,10 @@ export default function UnifiedCheckoutPage() {
       }
 
       const latestAddresses = await loadAddresses();
-      const newestAddress = findMatchingSavedAddress(address, latestAddresses) || latestAddresses[0];
+      const sessionAddress = checkoutPayload?.shipping?.address || address;
+      const newestAddress = findMatchingSavedAddress(sessionAddress, latestAddresses) || findMatchingSavedAddress(address, latestAddresses);
       if (newestAddress?.id) setSelectedAddressId(String(newestAddress.id));
-      setDeliveryMode("saved");
+      setDeliveryMode("confirmed");
       trackStorefrontEvent("shipping_saved", checkoutMetadata({
         selected_address_id: newestAddress?.id,
         country_code: address?.country_code,
