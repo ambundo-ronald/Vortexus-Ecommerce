@@ -1,6 +1,7 @@
 export interface AdminStoreSettings {
   site_name: string
   site_domain: string
+  checkout_whatsapp_number: string
   default_currency: string
   shop_name: string
   support_email: string
@@ -33,7 +34,7 @@ export interface AdminProfileSettings {
 }
 
 export interface AdminSettingsPayload {
-  store?: Partial<Pick<AdminStoreSettings, 'site_name' | 'site_domain'>>
+  store?: Partial<Pick<AdminStoreSettings, 'site_name' | 'site_domain' | 'checkout_whatsapp_number'>>
   profile?: {
     email?: string
     first_name?: string

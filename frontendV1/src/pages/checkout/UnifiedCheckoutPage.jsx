@@ -11,12 +11,14 @@ import PaymentProgressPanel from "../../components/payment/PaymentProgressPanel.
 import Alert from "../../components/ui/Alert.jsx";
 import MaterialIcon from "../../components/ui/MaterialIcon.jsx";
 import Spinner from "../../components/ui/Spinner.jsx";
+import { settingsApi } from "../../api/settings.api";
 import { useAuth } from "../../hooks/useAuth";
 import { useCheckout } from "../../hooks/useCheckout";
 import { usePayment } from "../../hooks/usePayment";
 import { useUiStore } from "../../store/ui.store";
 import { trackStorefrontEvent } from "../../utils/analytics";
 import { formatCurrency } from "../../utils/currency";
+import { productTitle, productUrl } from "../../utils/productDisplay";
 import {
   PAYMENT_CONFIRMATION_TIMEOUT_MS,
   PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE,
@@ -35,6 +37,42 @@ const KCB_PAYBILL_ACCOUNT_NUMBER = "1354483790";
 const LOGISTICS_DELIVERY_LIMIT_KES = 1500;
 const LOGISTICS_PHONE = "+0141316578";
 const LOGISTICS_EMAIL = "logistics@reesolmart.com";
+
+function normalizeWhatsappNumber(value = "") {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("0")) return `254${digits.slice(1)}`;
+  return digits;
+}
+
+function absoluteStorefrontUrl(path = "/") {
+  if (/^https?:\/\//i.test(path)) return path;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function buildWhatsappCheckoutMessage({ basket, shipping }) {
+  const lines = basket?.lines || [];
+  const total = Number(shipping?.totals?.order_total ?? basket?.totals?.total_incl_tax ?? basket?.total_incl_tax ?? 0);
+  const currency = shipping?.totals?.currency || basket?.currency || "KES";
+  const messageLines = [
+    "Hello Reesolmart, I would like to buy these items:",
+    "",
+    ...lines.map((line, index) => {
+      const product = line.product || {};
+      const title = productTitle({ ...line, product });
+      const quantity = Number(line.quantity || 0);
+      const amount = formatCurrency(line.line_total, line.currency || currency);
+      const productLink = product.id || line.product_id ? ` - ${absoluteStorefrontUrl(productUrl({ ...line, ...product, product }))}` : "";
+      return `${index + 1}. ${quantity}x ${title} (${amount})${productLink}`;
+    }),
+    "",
+    `Estimated total: ${formatCurrency(total, currency)}`,
+    `Checkout link: ${absoluteStorefrontUrl("/checkout")}`
+  ];
+
+  return messageLines.join("\n");
+}
 
 export default function UnifiedCheckoutPage() {
   const navigate = useNavigate();
@@ -71,6 +109,7 @@ export default function UnifiedCheckoutPage() {
   const [activePayment, setActivePayment] = useState(null);
   const [activeMethod, setActiveMethod] = useState(null);
   const [guestEmail, setGuestEmail] = useState("");
+  const [checkoutWhatsappNumber, setCheckoutWhatsappNumber] = useState("");
   const [lastPaymentForm, setLastPaymentForm] = useState(null);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [confirmationStartedAt, setConfirmationStartedAt] = useState(null);
@@ -98,6 +137,9 @@ export default function UnifiedCheckoutPage() {
   const deliveryAddressReady = Boolean(!editingDeliveryDetails && hasPinnedAddress(shipping?.address));
   const shippingReady = Boolean(shipping?.ready_for_checkout && !editingDeliveryDetails && hasPinnedAddress(shipping?.address));
   const baseOrderTotal = Number(shipping?.totals?.base_order_total ?? basket?.totals?.base_subtotal ?? 0);
+  const whatsappHref = checkoutWhatsappNumber
+    ? `https://wa.me/${checkoutWhatsappNumber}?text=${encodeURIComponent(buildWhatsappCheckoutMessage({ basket, shipping }))}`
+    : "";
   const exceedsMpesaLimit = baseOrderTotal > MPESA_TRANSACTION_LIMIT_KES;
   const paymentError = paymentState.error;
   const visiblePaymentError = paymentError === PAYMENT_CONFIRMATION_TIMEOUT_MESSAGE ? "" : paymentError;
@@ -154,6 +196,21 @@ export default function UnifiedCheckoutPage() {
     trackStorefrontEvent("shipping_started", checkoutMetadata({ source: "unified_checkout" }));
     trackStorefrontEvent("payment_started", checkoutMetadata({ source: "unified_checkout" }));
   }, [loading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    settingsApi.public()
+      .then((payload) => {
+        if (cancelled) return;
+        setCheckoutWhatsappNumber(normalizeWhatsappNumber(payload?.store?.checkout_whatsapp_number));
+      })
+      .catch(() => {
+        if (!cancelled) setCheckoutWhatsappNumber("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasSavedAddresses) {
@@ -773,7 +830,12 @@ export default function UnifiedCheckoutPage() {
             </button>
           ) : null}
         </div>
-        <OrderSummaryPanel basket={basket} shipping={shipping} loading={saving || paymentState.processing || checkingStatus} />
+        <OrderSummaryPanel
+          basket={basket}
+          shipping={shipping}
+          loading={saving || paymentState.processing || checkingStatus}
+          whatsappHref={whatsappHref}
+        />
       </div>
 
       {!lines.length ? <Alert>Your cart is empty.</Alert> : null}

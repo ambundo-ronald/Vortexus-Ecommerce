@@ -90,3 +90,39 @@ class MarketingMediaAsset(models.Model):
 
     def __str__(self):
         return self.title or self.image.name
+
+
+class StorefrontSetting(models.Model):
+    key = models.SlugField(max_length=80, unique=True)
+    value = models.TextField(blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='updated_storefront_settings',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['key']
+
+    def __str__(self):
+        return self.key
+
+    @classmethod
+    def get_value(cls, key, default=''):
+        setting = cls.objects.filter(key=key).first()
+        return setting.value if setting else default
+
+    @classmethod
+    def set_value(cls, key, value, user=None):
+        setting, _created = cls.objects.update_or_create(
+            key=key,
+            defaults={
+                'value': value,
+                'updated_by': user if getattr(user, 'is_authenticated', False) else None,
+            },
+        )
+        return setting

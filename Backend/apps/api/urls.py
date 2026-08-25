@@ -153,7 +153,7 @@ from .marketing_content_views import (
     AdminMarketingBlockDetailAPIView,
     PublicMarketingBlockCollectionAPIView,
 )
-from .settings_views import AdminSettingsAPIView
+from .settings_views import AdminSettingsAPIView, PublicStoreSettingsAPIView
 from .storefront_views import (
     AccountAddressCollectionAPIView,
     AccountAddressDefaultBillingAPIView,
@@ -574,6 +574,7 @@ urlpatterns = [
     path('callback-requests/', CallbackRequestCreateAPIView.as_view(), name='callback-request-create'),
     path('catalog/products/<int:product_id>/viewed/', ProductViewedAPIView.as_view(), name='catalog-product-viewed'),
     path('content/marketing-blocks/', PublicMarketingBlockCollectionAPIView.as_view(), name='marketing-blocks'),
+    path('content/settings/', PublicStoreSettingsAPIView.as_view(), name='public-store-settings'),
     path('product-alerts/confirm/<str:key>/', ProductAlertConfirmAPIView.as_view(), name='product-alert-confirm'),
     path('product-alerts/cancel/<str:key>/', ProductAlertCancelAPIView.as_view(), name='product-alert-cancel'),
     path('offers/', OfferCollectionAPIView.as_view(), name='offers'),

@@ -22,6 +22,7 @@ const themeOptions = [
 const store = ref({
   site_name: "",
   site_domain: "",
+  checkout_whatsapp_number: "",
   default_currency: "",
   shop_name: "",
   support_email: "",
@@ -286,6 +287,7 @@ async function saveSettings() {
     store: {
       site_name: store.value.site_name,
       site_domain: store.value.site_domain,
+      checkout_whatsapp_number: store.value.checkout_whatsapp_number,
     },
     profile: {
       email: profile.value.email,
@@ -537,6 +539,9 @@ onMounted(() => {
           </UFormField>
           <UFormField label="Site Domain" required>
             <UInput v-model="store.site_domain" :loading="isLoading" placeholder="admin.example.com" />
+          </UFormField>
+          <UFormField label="Checkout WhatsApp Number">
+            <UInput v-model="store.checkout_whatsapp_number" :loading="isLoading" placeholder="+254712345678" />
           </UFormField>
           <UFormField label="Shop Name">
             <UInput v-model="store.shop_name" disabled />

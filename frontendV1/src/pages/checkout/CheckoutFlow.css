@@ -1134,6 +1134,43 @@
   font-size: 1.16rem;
 }
 
+.checkout-page .checkout-whatsapp-button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #0f9f6e;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.checkout-page .checkout-whatsapp-button:hover {
+  background: #059669;
+  box-shadow: 0 10px 22px rgba(16, 185, 129, 0.18);
+  transform: translateY(-1px);
+}
+
+.checkout-page .checkout-whatsapp-button__icon {
+  width: 19px;
+  height: 19px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.checkout-page .checkout-whatsapp-button__icon svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+  fill: currentColor;
+}
+
 .checkout-page .review-card {
   gap: var(--space-3);
 }

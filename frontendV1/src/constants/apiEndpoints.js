@@ -66,7 +66,8 @@ export const ENDPOINTS = {
     detail: (slug) => `/offers/${slug}/`
   },
   content: {
-    marketingBlocks: "/content/marketing-blocks/"
+    marketingBlocks: "/content/marketing-blocks/",
+    settings: "/content/settings/"
   },
   productAlerts: {
     confirm: (key) => `/product-alerts/confirm/${key}/`,
