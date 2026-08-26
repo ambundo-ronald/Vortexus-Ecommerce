@@ -237,6 +237,254 @@ def initialize_payment_session(
     return session
 
 
+def _decimal_or_none(value):
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value)).quantize(Decimal('0.01'))
+    except Exception:
+        return None
+
+
+def _snapshot_shipping_address(snapshot: dict):
+    address_payload = snapshot.get('shipping_address') or {}
+    if not address_payload:
+        return None
+
+    Country = apps.get_model('address', 'Country')
+    ShippingAddress = apps.get_model('order', 'ShippingAddress')
+    country_code = (address_payload.get('country_code') or '').strip().upper()
+    country = Country.objects.filter(iso_3166_1_a2__iexact=country_code).first()
+    if not country:
+        return None
+
+    return ShippingAddress(
+        first_name=address_payload.get('first_name', '') or '',
+        last_name=address_payload.get('last_name', '') or '',
+        line1=address_payload.get('line1', '') or '',
+        line2=address_payload.get('line2', '') or '',
+        line3=address_payload.get('line3', '') or '',
+        line4=address_payload.get('line4', '') or '',
+        state=address_payload.get('state', '') or '',
+        postcode=address_payload.get('postcode', '') or '',
+        country=country,
+        phone_number=address_payload.get('phone_number', '') or '',
+        notes=address_payload.get('notes', '') or '',
+    )
+
+
+def _snapshot_shipping_method(snapshot: dict, basket):
+    method_payload = snapshot.get('shipping_method') or {}
+    pricing = snapshot.get('pricing') or {}
+    if not method_payload:
+        return None
+
+    from oscar.apps.shipping.methods import FixedPrice
+
+    charge_excl = _decimal_or_none(pricing.get('shipping_excl_tax'))
+    charge_incl = _decimal_or_none(pricing.get('shipping_incl_tax'))
+    if charge_excl is None and charge_incl is None:
+        return None
+    if charge_excl is None:
+        charge_excl = charge_incl
+    if charge_incl is None:
+        charge_incl = charge_excl
+
+    class SnapshotShippingMethod(FixedPrice):
+        def __init__(self):
+            super().__init__(charge_excl_tax=charge_excl, charge_incl_tax=charge_incl)
+            self.code = method_payload.get('code', '') or ''
+            self.name = method_payload.get('name', '') or self.code or 'Shipping'
+            self.description = method_payload.get('description', '') or ''
+            self.carrier_code = method_payload.get('carrier_code', '') or 'snapshot'
+            self.service_code = method_payload.get('service_code', '') or self.code
+            self.method_type = method_payload.get('method_type', '') or ''
+            self.is_pickup = bool(method_payload.get('is_pickup', False))
+
+    method = SnapshotShippingMethod()
+    if not method.code:
+        return None
+    return method
+
+
+def attempt_paid_payment_order_recovery(payment_session):
+    try:
+        return _recover_order_for_paid_payment(payment_session)
+    except Exception as exc:
+        logger.exception('Paid payment order recovery failed for %s', getattr(payment_session, 'reference', ''))
+        try:
+            log_payment_event(
+                payment_session,
+                kind='order_recovery_failed',
+                status_before=payment_session.status,
+                status_after=payment_session.status,
+                external_reference=payment_session.external_reference,
+                message=str(exc)[:255],
+                payload={'payment_reference': payment_session.reference},
+            )
+            sync_payment_reconciliation(payment_session)
+        except Exception:
+            logger.exception('Could not record payment order recovery failure for %s', getattr(payment_session, 'reference', ''))
+        return None
+
+
+@transaction.atomic
+def _recover_order_for_paid_payment(payment_session):
+    PaymentSession = apps.get_model('payments', 'PaymentSession')
+    locked_payment = (
+        PaymentSession.objects.select_for_update()
+        .select_related('basket', 'user', 'order')
+        .get(pk=payment_session.pk)
+    )
+    if locked_payment.order_id or locked_payment.status not in SUCCESS_PAYMENT_STATUSES:
+        return locked_payment
+
+    basket = locked_payment.basket
+    snapshot = (locked_payment.metadata or {}).get('checkout_snapshot') or {}
+    if not basket or basket.is_empty or not snapshot:
+        log_payment_event(
+            locked_payment,
+            kind='order_recovery_skipped',
+            status_before=locked_payment.status,
+            status_after=locked_payment.status,
+            external_reference=locked_payment.external_reference,
+            message='Paid payment has no recoverable checkout snapshot.',
+            payload={'has_basket': bool(basket), 'has_snapshot': bool(snapshot)},
+        )
+        sync_payment_reconciliation(locked_payment)
+        return locked_payment
+
+    pricing = snapshot.get('pricing') or {}
+    order_total_incl = _decimal_or_none(pricing.get('order_total_incl_tax'))
+    if order_total_incl is None or order_total_incl != locked_payment.amount.quantize(Decimal('0.01')):
+        log_payment_event(
+            locked_payment,
+            kind='order_recovery_skipped',
+            status_before=locked_payment.status,
+            status_after=locked_payment.status,
+            external_reference=locked_payment.external_reference,
+            message='Checkout snapshot total does not match confirmed payment amount.',
+            payload={'snapshot_total': str(order_total_incl), 'payment_amount': str(locked_payment.amount)},
+        )
+        sync_payment_reconciliation(locked_payment)
+        return locked_payment
+
+    from oscar.apps.order.utils import OrderCreator, OrderNumberGenerator
+    from oscar.core.prices import Price
+    from apps.accounts.delivery_locations import upsert_shipping_address_location
+    from apps.common.async_utils import dispatch_background_task
+    from apps.integrations.tasks import export_order_to_erpnext, sync_customer_to_erpnext
+    from apps.inventory.services import InventoryReservationError, prepare_basket_for_order_submission
+    from apps.marketplace.orders import ensure_supplier_order_groups
+    from apps.notifications.services import queue_order_confirmation_email
+
+    shipping_address = _snapshot_shipping_address(snapshot) if basket.is_shipping_required() else None
+    shipping_method = _snapshot_shipping_method(snapshot, basket) if basket.is_shipping_required() else None
+    if basket.is_shipping_required() and (not shipping_address or not shipping_method):
+        log_payment_event(
+            locked_payment,
+            kind='order_recovery_skipped',
+            status_before=locked_payment.status,
+            status_after=locked_payment.status,
+            external_reference=locked_payment.external_reference,
+            message='Checkout snapshot is missing shipping details.',
+            payload={'has_shipping_address': bool(shipping_address), 'has_shipping_method': bool(shipping_method)},
+        )
+        sync_payment_reconciliation(locked_payment)
+        return locked_payment
+
+    try:
+        prepare_basket_for_order_submission(basket)
+    except InventoryReservationError as exc:
+        log_payment_event(
+            locked_payment,
+            kind='order_recovery_skipped',
+            status_before=locked_payment.status,
+            status_after=locked_payment.status,
+            external_reference=locked_payment.external_reference,
+            message=str(exc)[:255],
+            payload={'reason': 'inventory_unavailable'},
+        )
+        sync_payment_reconciliation(locked_payment)
+        return locked_payment
+
+    if shipping_address and shipping_address.pk is None:
+        shipping_address.save()
+
+    guest_email = (snapshot.get('guest_email') or locked_payment.payer_email or '').strip().lower()
+    order_user = locked_payment.user
+    account_setup = {'created': False}
+    if not order_user and guest_email:
+        try:
+            from apps.api.checkout_views import _create_or_link_guest_customer
+
+            order_user, account_setup = _create_or_link_guest_customer(
+                guest_email=guest_email,
+                shipping_address=shipping_address,
+                payment_session=locked_payment,
+            )
+        except Exception:
+            logger.exception('Could not create/link guest customer during payment order recovery for %s', locked_payment.reference)
+
+    order_number = OrderNumberGenerator().order_number(basket)
+    shipping_excl = _decimal_or_none(pricing.get('shipping_excl_tax')) or Decimal('0.00')
+    shipping_incl = _decimal_or_none(pricing.get('shipping_incl_tax')) or shipping_excl
+    order_excl = _decimal_or_none(pricing.get('order_total_excl_tax')) or order_total_incl
+    currency = pricing.get('currency') or locked_payment.currency
+    shipping_charge = Price(currency=currency, excl_tax=shipping_excl, incl_tax=shipping_incl)
+    order_total = Price(currency=currency, excl_tax=order_excl, incl_tax=order_total_incl)
+
+    extra_order_fields = {'guest_email': guest_email} if guest_email else {}
+    order = OrderCreator().place_order(
+        basket=basket,
+        total=order_total,
+        shipping_method=shipping_method,
+        shipping_charge=shipping_charge,
+        user=order_user,
+        shipping_address=shipping_address,
+        order_number=order_number,
+        status=getattr(settings, 'OSCAR_INITIAL_ORDER_STATUS', 'Pending'),
+        request=None,
+        **extra_order_fields,
+    )
+
+    delivery_location = snapshot.get('delivery_location') or (snapshot.get('shipping_address') or {}).get('location')
+    upsert_shipping_address_location(order.shipping_address, delivery_location)
+    link_payment_to_order(locked_payment, order)
+    ensure_supplier_order_groups(order)
+    try:
+        from apps.accounting.services import post_sales_order
+
+        post_sales_order(order, user=order_user)
+    except Exception:
+        logger.exception('Failed to post recovered sales order accounting for %s', getattr(order, 'number', ''))
+    basket.submit()
+    queue_order_confirmation_email(order)
+    dispatch_background_task(
+        export_order_to_erpnext,
+        run_kwargs={'order_number': order.number},
+        async_kwargs={'order_number': order.number},
+    )
+    if account_setup.get('created') and order_user:
+        dispatch_background_task(
+            sync_customer_to_erpnext,
+            run_kwargs={'user_id': order_user.id},
+            async_kwargs={'user_id': order_user.id},
+        )
+    log_payment_event(
+        locked_payment,
+        kind='order_recovered',
+        status_before=locked_payment.status,
+        status_after=locked_payment.status,
+        external_reference=locked_payment.external_reference,
+        message='Recovered order from confirmed payment snapshot.',
+        payload={'order_id': order.id, 'order_number': order.number},
+    )
+    sync_payment_reconciliation(locked_payment)
+    locked_payment.refresh_from_db()
+    return locked_payment
+
+
 def confirm_payment_session(payment_session, *, success: bool, external_reference: str = '', metadata: dict | None = None):
     previous_status = payment_session.status
     next_status = _success_status_for_method(payment_session.method) if success else payment_session.STATUS_FAILED
@@ -260,6 +508,10 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
         if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
             _post_payment_accounting(payment_session)
             _queue_paid_order_accounting_export(payment_session)
+        elif payment_session.status in SUCCESS_PAYMENT_STATUSES and not payment_session.order_id:
+            recovered_payment = attempt_paid_payment_order_recovery(payment_session)
+            if recovered_payment is not None:
+                payment_session = recovered_payment
         sync_payment_reconciliation(payment_session)
         return payment_session
 
@@ -287,6 +539,10 @@ def confirm_payment_session(payment_session, *, success: bool, external_referenc
     if payment_session.status in SUCCESS_PAYMENT_STATUSES and payment_session.order_id:
         _post_payment_accounting(payment_session)
         _queue_paid_order_accounting_export(payment_session)
+    elif payment_session.status in SUCCESS_PAYMENT_STATUSES and not payment_session.order_id:
+        recovered_payment = attempt_paid_payment_order_recovery(payment_session)
+        if recovered_payment is not None:
+            payment_session = recovered_payment
     elif payment_session.status == payment_session.STATUS_FAILED and payment_session.order_id:
         handle_failed_payment_linked_order(payment_session)
     return payment_session

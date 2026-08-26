@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from django.apps import apps
 from django.db import transaction
@@ -59,12 +60,44 @@ from .payment_serializers import (
     PesapalInitializationSerializer,
     PesapalNotificationSerializer,
 )
+from .checkout_utils import serialize_shipping_address, serialize_shipping_method
+from apps.accounts.delivery_locations import get_session_location
 
 
 logger = logging.getLogger(__name__)
 HIGH_VALUE_DEPOSIT_LIMIT_KES = 150000
 KCB_PAYBILL_BUSINESS_NUMBER = '522522'
 KCB_PAYBILL_ACCOUNT_NUMBER = '1354483790'
+
+
+def _payment_checkout_metadata(request, serializer, pricing, *, extra=None):
+    shipping_address = serializer.validated_data.get('shipping_address')
+    shipping_method = serializer.validated_data.get('shipping_method')
+    delivery_location = get_session_location(request)
+    shipping_price = pricing['shipping_price']
+    order_total = pricing['order_total']
+    metadata = {
+        'basket_id': request.basket.id,
+        'shipping_method': shipping_method.code if shipping_method else '',
+        'country_code': pricing['tax_breakdown']['country_code'],
+        'checkout_snapshot': {
+            'guest_email': serializer.validated_data.get('payer_email', ''),
+            'shipping_address': serialize_shipping_address(shipping_address, location=delivery_location),
+            'shipping_method': serialize_shipping_method(shipping_method, request.basket, selected=True) if shipping_method else None,
+            'delivery_location': delivery_location,
+            'pricing': {
+                'currency': order_total.currency,
+                'order_total_excl_tax': str(order_total.excl_tax),
+                'order_total_incl_tax': str(order_total.incl_tax),
+                'shipping_excl_tax': str(shipping_price.excl_tax),
+                'shipping_incl_tax': str(shipping_price.incl_tax),
+            },
+            'tax_breakdown': pricing['tax_breakdown'],
+        },
+    }
+    if extra:
+        metadata.update(extra)
+    return _json_safe(metadata)
 
 
 def _payment_session_queryset_for_request(request):
@@ -81,6 +114,16 @@ def _payment_session_queryset_for_request(request):
     if basket and getattr(basket, 'id', None):
         return queryset.filter(user__isnull=True, basket=basket)
     return queryset.none()
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 class PaymentMethodCollectionAPIView(APIView):
@@ -110,11 +153,7 @@ class PaymentInitializationAPIView(APIView):
             currency=pricing['order_total'].currency,
             payer_email=serializer.validated_data['payer_email'],
             payer_phone=serializer.validated_data['phone_number'],
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
-            },
+            metadata=_payment_checkout_metadata(request, serializer, pricing),
         )
         return Response({'payment': serialize_payment_session(payment_session)}, status=status.HTTP_201_CREATED)
 
@@ -161,17 +200,14 @@ class HighValueBankDepositAPIView(APIView):
             payer_email=serializer.validated_data['payer_email'],
             payer_phone=serializer.validated_data['phone_number'],
             status=apps.get_model('payments', 'PaymentSession').STATUS_PENDING,
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
+            metadata=_payment_checkout_metadata(request, serializer, pricing, extra={
                 'high_value_deposit': True,
                 'deposit_provider': 'kcb_paybill',
                 'deposit_business_number': KCB_PAYBILL_BUSINESS_NUMBER,
                 'deposit_account_number': KCB_PAYBILL_ACCOUNT_NUMBER,
                 'customer_mpesa_code': mpesa_code,
                 'verification_status': 'pending_account_manager_confirmation',
-            },
+            }),
             provider_payload={
                 'channel': 'kcb_paybill_deposit',
                 'instructions': 'Customer deposited to KCB account via M-Pesa PayBill and submitted the confirmation code.',
@@ -254,12 +290,9 @@ class MpesaInitializationAPIView(APIView):
             currency=pricing['order_total'].currency,
             payer_email=serializer.validated_data['payer_email'],
             payer_phone=serializer.validated_data['phone_number'],
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
+            metadata=_payment_checkout_metadata(request, serializer, pricing, extra={
                 'integration': mpesa_integration_name(),
-            },
+            }),
         )
         try:
             provider_payload = initiate_stk_push(payment_session)
@@ -379,12 +412,9 @@ class PesapalInitializationAPIView(APIView):
             currency=pricing['order_total'].currency,
             payer_email=serializer.validated_data['payer_email'],
             payer_phone=serializer.validated_data['phone_number'],
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
+            metadata=_payment_checkout_metadata(request, serializer, pricing, extra={
                 'integration': 'pesapal_api_3',
-            },
+            }),
         )
         try:
             provider_payload = submit_order_request(
@@ -554,12 +584,9 @@ class CardInitializationAPIView(APIView):
             amount=pricing['order_total'].incl_tax,
             currency=pricing['order_total'].currency,
             payer_email=serializer.validated_data['payer_email'],
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
+            metadata=_payment_checkout_metadata(request, serializer, pricing, extra={
                 'integration': 'card_sandbox',
-            },
+            }),
         )
         try:
             payment_session = authorize_card_payment(
@@ -618,12 +645,9 @@ class AirtelMoneyInitializationAPIView(APIView):
             currency=pricing['order_total'].currency,
             payer_email=serializer.validated_data['payer_email'],
             payer_phone=serializer.validated_data['phone_number'],
-            metadata={
-                'basket_id': request.basket.id,
-                'shipping_method': serializer.validated_data['shipping_method'].code if serializer.validated_data['shipping_method'] else '',
-                'country_code': pricing['tax_breakdown']['country_code'],
+            metadata=_payment_checkout_metadata(request, serializer, pricing, extra={
                 'integration': 'airtel_money_sandbox',
-            },
+            }),
         )
         try:
             provider_payload = initiate_airtel_collection(payment_session)
